@@ -1,0 +1,7 @@
+install.packages("cutpointr")
+install.packages("farver")
+install.packages("PRROC")
+#install.packages("tictoc")
+#install.packages("entropy")
+#install.packages("ggmcmc")
+#install.packages("slider")
