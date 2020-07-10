@@ -1,9 +1,12 @@
 # Hb_predictor_container
 
-Hemoglobin predictor wrapped in a Docker container
+Hemoglobin predictor wrapped in a Docker container. Download
+the docker image with command `docker pull toivoja/hb-predictor-plumber`.
 
-# Creating the docker image
 
+# Creating the docker image from source
+
+You can also build the docker image from source code yourself.
 One can compose a new docker image from several docker images building on top
 of each other. Building images in this layered fashion eases the development.
 There exists a ready-made docker image containing a recent base version of R
