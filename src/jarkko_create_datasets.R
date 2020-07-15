@@ -164,7 +164,8 @@ drop_some_fields <- function(df) {
   return(df)
 }
 
-create_datasets <- function(data, rdatadir, dumpdir, date, sample_fraction, hlen=NULL, Hb_cutoff_male = 135, Hb_cutoff_female = 125, donor_variables=NULL) {
+
+create_datasets <- function(data, rdatadir, dumpdir, date, sample_fraction, hlen=NULL, hlen_exactly=FALSE, Hb_cutoff_male = 135, Hb_cutoff_female = 125, donor_variables=NULL) {
   # Set the directory where the files will be saved:
   #dumpdir = "~/FRCBS/interval_prediction/data/rdump/"
   #rdatadir = "~/FRCBS/interval_prediction/data/rdata/"
@@ -181,7 +182,7 @@ create_datasets <- function(data, rdatadir, dumpdir, date, sample_fraction, hlen
   #data <- fulldata_preprocessed
   
   set.seed(123)
-  
+  message(sprintf("Full dataset size: %i", ndonor(data)))
   data <- data %>% 
     filter(!is.na(Hb))
   data <- data %>% select("Hb", everything())  # Move Hb to first column, because Yrjo's Hb_index stuff does not work
@@ -193,9 +194,10 @@ create_datasets <- function(data, rdatadir, dumpdir, date, sample_fraction, hlen
   # Different datasets for male and female donors
   data.male <-
     data %>% filter(gender == "Men")
-  
+  message(sprintf("Male dataset size: %i", ndonor(data.male)))
   data.female <-
     data %>% filter(gender == "Women")
+  message(sprintf("Female dataset size: %i", ndonor(data.female)))
   
   # Split for men and women separately
   
@@ -204,13 +206,17 @@ create_datasets <- function(data, rdatadir, dumpdir, date, sample_fraction, hlen
   
   names(data.male) <- c("general","validation")
   names(data.female) <- c("general","validation")
-  
+  message(sprintf("Male dataset size after pseudosplit: %i", ndonor(data.male$general)))
+  message(sprintf("Female dataset size after pseudosplit: %i", ndonor(data.female$general)))
   
   
   # Small test sets
   smallm <- split_set(data.male$general, sample_fraction)
   smallf <- split_set(data.female$general, sample_fraction)
-  
+  message(sprintf("Male dataset size after sample_fraction split: %i", ndonor(smallm$train)))
+  message(sprintf("Female dataset size after sample_fraction split: %i", ndonor(smallf$train)))
+
+    
   # smallm.stan <- stan_preprocess(data.male, 0.8)
   # smallf.stan <- stan_preprocess(data.female, 0.8)
   # 
@@ -226,10 +232,10 @@ create_datasets <- function(data, rdatadir, dumpdir, date, sample_fraction, hlen
     Hb_index <- which(colnames(data)=="Hb")
     stopifnot(Hb_index == 1)
     
-    smallm.stan <- stan_preprocess_new(drop_some_fields(smallm$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, donor_variables = donor_variables)
-    smallf.stan <- stan_preprocess_new(drop_some_fields(smallf$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, donor_variables = donor_variables)
-    smallm.stan.icp <- stan_preprocess_icp_new(drop_some_fields(smallm$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, donor_variables = donor_variables)
-    smallf.stan.icp <- stan_preprocess_icp_new(drop_some_fields(smallf$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, donor_variables = donor_variables)
+    smallm.stan <- stan_preprocess_new(drop_some_fields(smallm$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+    smallf.stan <- stan_preprocess_new(drop_some_fields(smallf$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+    smallm.stan.icp <- stan_preprocess_icp_new(drop_some_fields(smallm$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+    smallf.stan.icp <- stan_preprocess_icp_new(drop_some_fields(smallf$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
     
     #    
   }
