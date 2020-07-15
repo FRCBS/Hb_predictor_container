@@ -9,6 +9,8 @@ params:
   hlen_exactly: FALSE
   method: "both"
   gender: "both"
+  date: "2020-07-08"
+  id: NULL
   extra_id: NULL
   errors_table_file: NULL
   Hb_cutoff_male: 135
@@ -124,9 +126,14 @@ datadir = "../data/rdata/"
 dumpdir = "../data/rdump/"
 stanfitpath = "../data/stan_fits/"
 
-data_id = paste("2020_07_08", params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_")
+if (is.null(params$id)) {
+  id <- paste(params$date, params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
+} else {
+  id <- params$id
+}
+data_id <- id
 
-fit_id = paste("2020_07_08", params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_")
+fit_id = id
 
 
 #setwd("~/FRCBS/interval_prediction")

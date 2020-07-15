@@ -32,6 +32,8 @@ docker images
 
 # Running the container
 
+## Running from browser
+
 You can run the final image using
 
 ```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor-plumber```  
@@ -41,6 +43,18 @@ Then go to the following address in the browser:
 http://localhost:8080/hb-predictor
 
 Kill the server (and the server) by pressing control-c.
+
+## Running from command line
+
+docker container run -it toivoja/hb-predictor-plumber src/hb-predictor.sh date=2020-07-15 gender=female sample_fraction=0.002 method=icp-fix hlen=1
+
+Options:
+
+- gender is either 'male', 'female', or 'both'
+- method is either 'no-fix', 'icp-fix', or 'both'
+- An alternative input file can be specified with input_file option
+
+The results will be stored to file `results.tar.gz`.
 
 The docker images are normally stored somewhere on the file system
 or on docker hub in an unspecified form.
