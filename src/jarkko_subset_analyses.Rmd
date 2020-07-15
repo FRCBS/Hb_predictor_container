@@ -6,6 +6,7 @@ params:
   input_file: "~/preprocessed_data_6243aede7.rdata"
   sample_fraction: 1.0
   hlen: NULL
+  hlen_exactly: FALSE
   method: "both"
   gender: "both"
   extra_id: NULL
@@ -123,9 +124,9 @@ datadir = "../data/rdata/"
 dumpdir = "../data/rdump/"
 stanfitpath = "../data/stan_fits/"
 
-data_id = paste("2020_07_08", params$sample_fraction, params$hlen, params$extra_id, sep="_")
+data_id = paste("2020_07_08", params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_")
 
-fit_id = paste("2020_07_08", params$sample_fraction, params$hlen, params$extra_id, sep="_")
+fit_id = paste("2020_07_08", params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_")
 
 
 #setwd("~/FRCBS/interval_prediction")
@@ -144,13 +145,29 @@ data <- data %>%
   mutate(days_to_previous_fb = as.double(days_to_previous_fb),
          donor = as.character(donor))   # For some reason this cannot be a factor
 
+
 sample_fraction <- params$sample_fraction
 
 is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
 
 if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If instead of fraction a sample size is given, convert it to sample fraction
-  n <- nrow(data)
+  low_limit <- ifelse(params$method=="no-fix", 2, 1)
+  data <- data %>% group_by(donor) %>%
+    filter(n() > low_limit) %>%
+    ungroup()
+  
+  if (params$gender == "male") {
+    temp <- data %>% filter(gender=="Men")
+  }
+  else if (params$gender == "female") {
+    temp <- data %>% filter(gender=="Women")
+  } else {
+    temp <- data
+  }
+  n <- length(unique(temp$donor))  # number of donors
+  rm(temp)
   sample_fraction <- sample_fraction / n
+  message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
 }
 
 if (!is.null(params$findonor_and_snip_file) && (length(params$findonor_and_snip_file) > 0)) {
@@ -203,7 +220,7 @@ if (!is.null(donor_variables)) {
 
 if (create_datasets_bool) {
   source("jarkko_create_datasets.R")
-  lst <- create_datasets(data, datadir, dumpdir, data_id, sample_fraction, hlen=params$hlen, 
+  lst <- create_datasets(data, datadir, dumpdir, data_id, sample_fraction, hlen=params$hlen, params$hlen_exactly,
                          Hb_cutoff_male = params$Hb_cutoff_male,
                          Hb_cutoff_female = params$Hb_cutoff_female, donor_variables=donor_variables)
   
@@ -227,8 +244,8 @@ if (create_datasets_bool) {
 }
 
 # This in only for plotting purpose
-data.male <- filter_based_on_number_of_donations(data.male, params$hlen)
-data.female <- filter_based_on_number_of_donations(data.female, params$hlen)
+data.male <- filter_based_on_number_of_donations(data.male, params$hlen, params$hlen_exactly)
+data.female <- filter_based_on_number_of_donations(data.female, params$hlen, params$hlen_exactly)
 
 #stanf1 <- "~/FRCBS/interval_prediction/src/stan/mem_qr_1_noa.stan"
 #stanf2 <- "~/FRCBS/interval_prediction/src/stan/mem_2_qr.stan"
