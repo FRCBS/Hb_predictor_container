@@ -8,10 +8,22 @@
 
 # Join parameter by a dash and convert = characters by dash as well
 function myjoin () {
-    OLDIFS=$IFS
-    IFS='-'
-    echo "$*" | tr '=' '-'
-    IFS=$OLDIFS
+    # OLDIFS=$IFS
+    # IFS='-'
+    # echo "$*" | tr '=' '-'
+    # IFS=$OLDIFS
+    result=""
+    for param ; do
+	if [[ $param =~ ^input_file= ]] ; then
+	    continue;
+	fi
+	if [[ -z $result ]] ; then
+	    result="$param"
+	else
+	    result=$result-$param
+	fi
+    done
+    echo $result | tr '=' '-'
 }
 
 id=$(myjoin "$@")
@@ -41,4 +53,5 @@ prefix=$(readlink -f output)   # prefix=/home/toivoja/FRCBS/interval_prediction/
 # Remove the prefix from image links
 sed -i 's!'$prefix'/!!g' output/$outputbase.md
 tar -czvf results.tar.gz data/rdata/*$id.RData data/stan_fits/*$id.RData output/results-$id*
+echo Computation finished
 tail -f /dev/null
