@@ -50,7 +50,7 @@ r-cran-slider \
 r-cran-sn
 #r-cran-cutpointr
 
-
+RUN apt-get -y --no-install-recommends install time
 
 ## copy files
 COPY src/docker-create-r-toolchain.R /docker-create-r-toolchain.R
