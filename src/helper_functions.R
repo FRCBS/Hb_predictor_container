@@ -75,35 +75,49 @@ extra_factor <- 2  # Andrew Gelman recommends scaling continuous variables by di
 normalize_vector <- function(v, pmean=NULL, psd=NULL) {
   if (is.null(pmean)) pmean = mean(v, na.rm = TRUE)
   if (is.null(psd)) psd = sd(v, na.rm = TRUE)
-  return((v - pmean)/(extra_factor*psd))
+  if (psd > 0.0) {
+    return((v - pmean)/(extra_factor*psd))
+  } else {
+    return(v - pmean)
+  }
 }
 
 denormalize_vector <- function(v, pmean, psd) {
   #if (is.null(pmean)) pmean = mean(v, na.rm = TRUE)
   #if (is.null(psd)) psd = sd(v, na.rm = TRUE)
-  return(v*(extra_factor*psd) + pmean)
+  if (psd > 0.0) {
+    return(v*(extra_factor*psd) + pmean)
+  } else {
+    return(v + pmean)    
+  }
 }
 
 normalize <- function(df, columns) {
   # Z-Normalize the data set by columns
-  scale2 <- function(x) ((x - mean(x, na.rm = TRUE)) / (extra_factor*sd(x, na.rm = TRUE)))
-  df <- mutate_at(df, .vars = columns, .funs = scale2)
+  #scale2 <- function(x) ((x - mean(x, na.rm = TRUE)) / (extra_factor*sd(x, na.rm = TRUE)))
+  df <- mutate_at(df, .vars = columns, .funs = normalize_vector)
   return(df)
 }
 
 normalize_with_params <- function(df, means, sds) {
-  df <- as.data.frame(sapply(1:ncol(df), function(i) (df[,i] - means[i]) / (extra_factor*sds[i])))
+  #df <- as.data.frame(sapply(1:ncol(df), function(i) (df[,i] - means[i]) / (extra_factor*sds[i])))
+  df <- as.data.frame(sapply(1:ncol(df), function(i) normalize_vector(df[,i], means[i], sds[i])))
   return(df)
 }
 
 denormalize <- function(df, original = NULL, columns = NULL, means = NULL, sds = NULL) {
   # Transform the normalized data into a comparable set by reversing the normalization
-  denorm2 <- function(x, orig, i) (unlist(x) * (extra_factor*sd(unlist(orig[,i]))) + mean(unlist(orig[,i])))
-  denorm_vec <- function(x, orig) (unlist(x) * (extra_factor*sd(unlist(orig))) + mean(unlist(orig)))
-  denorm_means <- function(x, m, s) (unlist(x) * (extra_factor*s) + m)
-
+  
+  # denorm_vec <- function(x, orig) (unlist(x) * (extra_factor*sd(unlist(orig))) + mean(unlist(orig)))
+  
+  #denorm_means <- function(x, m, s) (unlist(x) * (extra_factor*s) + m)
+  denorm_means <- function(x, m, s) denormalize_vector(x, m, s)
+  
+  denorm2 <- function(x, orig) denormalize_vector(x, mean(orig), sd(orig))
+  
   if (is.null(columns)) {
-    df <- denorm_vec(df, original)
+    #df <- denorm_vec(df, original)
+    df <- denorm2(df, original)
   }
   # Check if df is a vector
   else if (is.vector(df)) {
@@ -114,14 +128,14 @@ denormalize <- function(df, original = NULL, columns = NULL, means = NULL, sds =
     indices <- which(colnames(df) %in% columns)
     for (i in indices) {
       idx <- which(names(means) == colnames(df)[i])
-      df[,i] <- denorm_means(df[,i], means[idx], sds[idx])
+      df[,i] <- denorm_means(df[[i]], means[idx], sds[idx])
     }
   }
   else {
     indices <- which(colnames(df) %in% columns)
     # Did not find a dplyr solution so let's go with for-loop
     for (i in indices) {
-      df[,i] <- denorm2(df[,i], original[,i])
+      df[,i] <- denorm2(df[[i]], original[[i]])
     }
   }
   return(df)

@@ -165,7 +165,8 @@ drop_some_fields <- function(df) {
 }
 
 
-create_datasets <- function(data, rdatadir, dumpdir, date, sample_fraction, hlen=NULL, hlen_exactly=FALSE, Hb_cutoff_male = 135, Hb_cutoff_female = 125, donor_variables=NULL) {
+create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=NULL, hlen_exactly=FALSE, Hb_cutoff_male = 135, Hb_cutoff_female = 125, donor_variables=NULL,
+                            compute_male_nofix, compute_female_nofix, compute_male_icpfix, compute_female_icpfix) {
   # Set the directory where the files will be saved:
   #dumpdir = "~/FRCBS/interval_prediction/data/rdump/"
   #rdatadir = "~/FRCBS/interval_prediction/data/rdata/"
@@ -222,7 +223,8 @@ create_datasets <- function(data, rdatadir, dumpdir, date, sample_fraction, hlen
   # 
   # smallm.stan.icp <- stan_preprocess_icp(data.male, 0.8)
   # smallf.stan.icp <- stan_preprocess_icp(data.female, 0.8)
-  
+
+  stan_preprocessed_objects <- c()  
   if (!use_new_method) {
     smallm.stan <- stan_preprocess_le(smallm$train, hlen=hlen)
     smallf.stan <- stan_preprocess_le(smallf$train, hlen=hlen)
@@ -231,29 +233,48 @@ create_datasets <- function(data, rdatadir, dumpdir, date, sample_fraction, hlen
   } else {
     Hb_index <- which(colnames(data)=="Hb")
     stopifnot(Hb_index == 1)
-    
-    smallm.stan <- stan_preprocess_new(drop_some_fields(smallm$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
-    smallf.stan <- stan_preprocess_new(drop_some_fields(smallf$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
-    smallm.stan.icp <- stan_preprocess_icp_new(drop_some_fields(smallm$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
-    smallf.stan.icp <- stan_preprocess_icp_new(drop_some_fields(smallf$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
-    
-    #    
+    if (compute_male_nofix) {
+      stan.preprocessed.male.nofix <- stan_preprocess_new(drop_some_fields(smallm$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+      stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.male.nofix")
+    }
+    if (compute_female_nofix) {
+      stan.preprocessed.female.nofix <- stan_preprocess_new(drop_some_fields(smallf$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+      stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.female.nofix")
+    }
+    if (compute_male_icpfix) {
+      stan.preprocessed.male.icpfix <- stan_preprocess_icp_new(drop_some_fields(smallm$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+      stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.male.icpfix")
+    }
+    if (compute_female_icpfix) {
+      stan.preprocessed.female.icpfix <- stan_preprocess_icp_new(drop_some_fields(smallf$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+      stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.female.icpfix")
+    }
   }
+  stan_preprocessed_filename <- paste(rdatadir,"stan_preprocessed_datasets_", id, ".RData", sep = '')
+  save(list=stan_preprocessed_objects, file = stan_preprocessed_filename)
   
-  save(smallm.stan, smallf.stan, smallm.stan.icp, smallf.stan.icp, file = paste(rdatadir,"small_stan_datasets_",date,".RData", sep = ''))
-  
-  # 1.
-  smallm.sl.1 <- subset_analyses_create_stan_list(smallm.stan)
-  smallf.sl.1 <- subset_analyses_create_stan_list(smallf.stan)
-  save(smallm.sl.1, smallf.sl.1, file = paste(rdatadir,"small_model1_noicp_",date,".RData", sep = ''))
-  rm(smallm.sl.1, smallf.sl.1)
+  if (compute_male_nofix) {
+    stan.lists.male.nofix <- subset_analyses_create_stan_list(stan.preprocessed.male.nofix)
+    save(stan.lists.male.nofix, file = paste(rdatadir,"stan_lists_male_nofix_", id, ".RData", sep = ''))
+    rm(stan.lists.male.nofix)
+  }
+  if (compute_female_nofix) {
+    stan.lists.female.nofix <- subset_analyses_create_stan_list(stan.preprocessed.female.nofix)
+    save(stan.lists.female.nofix, file = paste(rdatadir,"stan_lists_female_nofix_", id, ".RData", sep = ''))
+    rm(stan.lists.female.nofix)
+  }
   gc()
   
-  # 2.
-  smallm.sl.icp.1 <- subset_analyses_create_stan_list(smallm.stan.icp, icpfix = TRUE)
-  smallf.sl.icp.1 <- subset_analyses_create_stan_list(smallf.stan.icp, icpfix = TRUE)
-  save(smallm.sl.icp.1, smallf.sl.icp.1, file = paste(rdatadir,"small_model1_icp_",date,".RData", sep = ''))
-  rm(smallm.sl.icp.1, smallf.sl.icp.1)
+  if (compute_male_icpfix) {
+    stan.lists.male.icpfix <- subset_analyses_create_stan_list(stan.preprocessed.male.icpfix, icpfix = TRUE)
+    save(stan.lists.male.icpfix, file = paste(rdatadir,"stan_lists_male_icpfix_", id, ".RData", sep = ''))
+    rm(stan.lists.male.icpfix)
+  }
+  if (compute_female_icpfix) {
+    stan.lists.female.icpfix <- subset_analyses_create_stan_list(stan.preprocessed.female.icpfix, icpfix = TRUE)  
+    save(stan.lists.female.icpfix, file = paste(rdatadir,"stan_lists_female_icpfix_", id, ".RData", sep = ''))
+    rm(stan.lists.female.icpfix)
+  }
   gc()
   
   # # 3.

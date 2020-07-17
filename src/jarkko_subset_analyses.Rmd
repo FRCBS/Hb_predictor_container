@@ -2,15 +2,19 @@
 #title: "Subset analyses"
 output: md_document
 params:
-  #input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
-  input_file: "~/preprocessed_data_6243aede7.rdata"
-  sample_fraction: 1.0
+  input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
+  #input_file: "~/preprocessed_data_6243aede7.rdata"
   hlen: NULL
   hlen_exactly: FALSE
+  sample_fraction: 1.0
   method: "both"
   gender: "both"
-  date: "2020-07-08"
   id: NULL
+  # sample_fraction: 0.004
+  # method: "icp-fix"
+  # gender: "male"
+  # id:   date-2020-07-17-gender-male-method-icp-fix-sample_fraction-0.004
+  date: "2020-07-08"
   extra_id: NULL
   errors_table_file: NULL
   Hb_cutoff_male: 135
@@ -92,24 +96,30 @@ knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
 
 # These are used to select which computations to perform,
 # base on params$gender and params$method
-compute_male <- params$gender %in% c("male", "both")
+compute_male   <- params$gender %in% c("male", "both")
 compute_female <- params$gender %in% c("female", "both")
-compute_male_nofix <- FALSE
-compute_male_icp <- FALSE
-compute_female_nofix <- FALSE 
-compute_female_icp <- FALSE
-if (params$method %in% c("no-fix", "both") ) {
-  if (compute_male)
-    compute_male_nofix <- TRUE
-  if (compute_female)
-    compute_female_nofix <- TRUE
-}
-if (params$method %in% c("icp-fix", "both") ) {
-  if (compute_male)
-    compute_male_icp <- TRUE
-  if (compute_female)
-    compute_female_icp <- TRUE
-}
+compute_nofix  <- params$method %in% c("no-fix", "both")
+compute_icpfix <- params$method %in% c("icp-fix", "both")
+# compute_male_nofix <- FALSE
+# compute_male_icp <- FALSE
+# compute_female_nofix <- FALSE 
+# compute_female_icp <- FALSE
+compute_male_nofix <- compute_male && compute_nofix 
+compute_female_nofix <- compute_female && compute_nofix 
+compute_male_icpfix <- compute_male && compute_icpfix 
+compute_female_icpfix <- compute_female && compute_icpfix 
+# if (compute_nofix ) {
+#   if (compute_male)
+#     compute_male_nofix <- TRUE
+#   if (compute_female)
+#     compute_female_nofix <- TRUE
+# }
+# if (compute_icpfix ) {
+#   if (compute_male)
+#     compute_male_icp <- TRUE
+#   if (compute_female)
+#     compute_female_icp <- TRUE
+# }
 
 set.seed(123)
 options(mc.cores = 4)
@@ -229,7 +239,8 @@ if (create_datasets_bool) {
   source("jarkko_create_datasets.R")
   lst <- create_datasets(data, datadir, dumpdir, data_id, sample_fraction, hlen=params$hlen, params$hlen_exactly,
                          Hb_cutoff_male = params$Hb_cutoff_male,
-                         Hb_cutoff_female = params$Hb_cutoff_female, donor_variables=donor_variables)
+                         Hb_cutoff_female = params$Hb_cutoff_female, donor_variables=donor_variables,
+                         compute_male_nofix, compute_female_nofix, compute_male_icpfix, compute_female_icpfix)
   
   data.male <- lst$small.data.male
   data.female <- lst$small.data.female
@@ -429,15 +440,15 @@ rm(data.male, data.female, pmale, pfemale); invisible(gc(reset = TRUE))
 ```{r Model 1 male donors, results="hide", eval=compute_male_nofix}
 # Load first datasets
 message("0")
-load(paste(datadir,"small_model1_noicp_",data_id,".RData", sep = ''))    # Contains smallm.sl.1
-load(paste(datadir,"small_stan_datasets_",data_id,".RData", sep = ''))   # Contains smallm.stan
+load(paste(datadir,"stan_preprocessed_datasets_",data_id,".RData", sep = '')) 
+load(paste(datadir,"stan_lists_male_nofix_",data_id,".RData", sep = ''))       
 cat("1\n")
 message("1")
 if (skip_train == TRUE) {
   load(paste(stanfitpath, "small_model1_male_", fit_id, ".RData", sep = ''))
     } else {
   fit <- stan(file = stanf1, 
-            data = smallm.sl.1,
+            data = stan.lists.male.nofix,
             save_warmup = TRUE,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_male_", fit_id, ".RData", sep = ''))
@@ -448,7 +459,7 @@ max(rhats)
 cat("3\n")
 #
 #original_Hb <- smallm.stan$y_test * smallm.stan$par_sds["Hb"] + smallm.stan$par_means["Hb"]
-original_Hb <- denormalize_vector(smallm.stan$y_test, smallm.stan$par_means["Hb"], smallm.stan$par_sds["Hb"]) 
+original_Hb <- denormalize_vector(stan.preprocessed.male.nofix$y_test, stan.preprocessed.male.nofix$par_means["Hb"], stan.preprocessed.male.nofix$par_sds["Hb"]) 
 
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_male, 0, 1)
 val1.m <- validate_fit(fit, #smallm.sl.1$y_test, 
@@ -473,7 +484,7 @@ cm
 # cm2 <- plot_confusion_matrix(val1.m$optimal.conf.matrix$table, "Optimal confusion matrix")
 # cm2
 
-scores <- get_scores(fit, params$Hb_cutoff_male, smallm.stan$par_means[["Hb"]], smallm.stan$par_sds[["Hb"]])
+scores <- get_scores(fit, params$Hb_cutoff_male, stan.preprocessed.male.nofix$par_means[["Hb"]], stan.preprocessed.male.nofix$par_sds[["Hb"]])
 
 pr <- create_precision_recall(test_labels, scores)
 AUPR <- pr$auc.davis.goadrich
@@ -498,7 +509,7 @@ error_rows[[length(error_rows)+1]] <- c(Model="Male, linear mixed model", MAE=va
 
 
 # Remove unnescessary values to save memory
-if (knit == TRUE) {rm(smallm.sl.1, val1.m, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
+if (knit == TRUE) {rm(stan.lists.male.nofix, val1.m, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
 
 ```
 
@@ -508,16 +519,16 @@ if (knit == TRUE) {rm(smallm.sl.1, val1.m, cm, pROC_obj, sens.ci, fit); invisibl
 ```
 
 ```{r Model 1 female donors, results="hide", eval=compute_female_nofix}
-if (!exists("smallf.sl.1"))
-  load(paste(datadir,"small_model1_noicp_",data_id,".RData", sep = ''))
-if (!exists("smallf.stan"))
-  load(paste(datadir,"small_stan_datasets_",data_id,".RData", sep = ''))
+if (!exists("stan.preprocessed.female.nofix"))
+  load(paste(datadir,"stan_preprocessed_datasets_",data_id,".RData", sep = ''))
+if (!exists("stan.lists.female.nofix"))
+  load(paste(datadir,"stan_lists_female_nofix_",data_id,".RData", sep = ''))
 warning("here1")
 if (skip_train == TRUE) {
   load(paste(stanfitpath, "small_model1_female_", fit_id, ".RData", sep = ''))
 } else {
   fit <- stan(file = stanf1, 
-            data = smallf.sl.1,
+            data = stan.lists.female.nofix,
             save_warmup = TRUE,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_female_", fit_id, ".RData", sep = ''))
@@ -527,7 +538,7 @@ rhats <- rhat(fit)
 max(rhats)
 
 #original_Hb <- smallf.stan$y_test * smallf.stan$par_sds["Hb"] + smallf.stan$par_means["Hb"]
-original_Hb <- denormalize_vector(smallf.stan$y_test, smallf.stan$par_means["Hb"], smallf.stan$par_sds["Hb"]) 
+original_Hb <- denormalize_vector(stan.preprocessed.female.nofix$y_test, stan.preprocessed.female.nofix$par_means["Hb"], stan.preprocessed.female.nofix$par_sds["Hb"]) 
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_female, 0, 1)
 val1.f <- validate_fit(fit, #smallf.stan$y_test, 
                        original_Hb, test_labels, 
@@ -552,7 +563,7 @@ val1.f$comp_plot
 cm <- plot_confusion_matrix(val1.f$conf.matrix$table, "Confusion matrix")
 cm
 
-scores <- get_scores(fit, params$Hb_cutoff_female, smallf.stan$par_means[["Hb"]], smallf.stan$par_sds[["Hb"]])
+scores <- get_scores(fit, params$Hb_cutoff_female, stan.preprocessed.female.nofix$par_means[["Hb"]], stan.preprocessed.female.nofix$par_sds[["Hb"]])
 
 pr <- create_precision_recall(test_labels, scores)
 AUPR <- pr$auc.davis.goadrich
@@ -567,26 +578,27 @@ plot(sens.ci, type="shape", col="lightblue")
 error_rows[[length(error_rows)+1]] <- c(Model="Female, linear mixed model", MAE=val1.f$mae, RMSE=val1.f$rmse, 
                                         MAE2=val1.f$mae2, RMSE2=val1.f$rmse2, AUC=AUC, AUPR=AUPR)
 
-if (knit == TRUE) {rm(smallf.sl.1, val1.f, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
+if (knit == TRUE) {rm(stan.lists.female.nofix, val1.f, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
 
 ```
 
 
-```{asis, echo=compute_male_icp}
+```{asis, echo=compute_male_icpfix}
 ### Model 1, male donors, icp-fix
 ```
 
-```{r Model 1 male donors icp-fix, results="hide", eval=compute_male_icp}
-if (!exists("smallm.sl.icp.1"))
-  load(paste(datadir,"small_model1_icp_",data_id,".RData", sep = ''))
-if (!exists("smallm.stan"))
-  load(paste(datadir,"small_stan_datasets_",data_id,".RData", sep = ''))
-
+```{r Model 1 male donors icp-fix, results="hide", eval=compute_male_icpfix}
+message("heipparallaa")
+if (!exists("stan.preprocessed.male.icpfix"))
+  load(paste(datadir,"stan_preprocessed_datasets_",data_id,".RData", sep = ''))
+if (!exists("stan.lists.male.icpfix"))
+  load(paste(datadir,"stan_lists_male_icpfix_",data_id,".RData", sep = ''))
+message("taalla ollaan")
 if (skip_train == TRUE) {
   load(paste(stanfitpath, "small_model1_male_icp_", fit_id, ".RData", sep = ''))
 } else {
   fit <- stan(file = stanf1.icp, 
-            data = smallm.sl.icp.1,
+            data = stan.lists.male.icpfix,
             save_warmup = TRUE,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_male_icp_", fit_id, ".RData", sep = ''))
@@ -596,7 +608,7 @@ rhats <- rhat(fit)
 max(rhats)
 
 #original_Hb <- smallm.stan.icp$y_test * smallm.stan.icp$par_sds["Hb"] + smallm.stan.icp$par_means["Hb"]
-original_Hb <- denormalize_vector(smallm.stan.icp$y_test, smallm.stan.icp$par_means["Hb"], smallm.stan.icp$par_sds["Hb"]) 
+original_Hb <- denormalize_vector(stan.preprocessed.male.icpfix$y_test, stan.preprocessed.male.icpfix$par_means["Hb"], stan.preprocessed.male.icpfix$par_sds["Hb"]) 
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_male, 0, 1)
 val1.m.icp <- validate_fit(fit, #smallm.stan.icp$y_test, 
                            original_Hb, test_labels, 
@@ -617,7 +629,7 @@ val1.m.icp$comp_plot
 cm <- plot_confusion_matrix(val1.m.icp$conf.matrix$table, "Confusion matrix")
 cm
 
-scores <- get_scores(fit, params$Hb_cutoff_male, smallm.stan.icp$par_means[["Hb"]], smallm.stan.icp$par_sds[["Hb"]])
+scores <- get_scores(fit, params$Hb_cutoff_male, stan.preprocessed.male.icpfix$par_means[["Hb"]], stan.preprocessed.male.icpfix$par_sds[["Hb"]])
 
 pr <- create_precision_recall(test_labels, scores)
 AUPR <- pr$auc.davis.goadrich
@@ -633,25 +645,25 @@ error_rows[[length(error_rows)+1]] <- c(Model="Male, dynamic linear mixed model"
                                         MAE2=val1.m.icp$mae2, RMSE2=val1.m.icp$rmse2, AUC=AUC, AUPR=AUPR)
 
 
-if (knit == TRUE) {rm(smallm.sl.icp.1, val1.m.icp, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
+if (knit == TRUE) {rm(stan.lists.male.icpfix, val1.m.icp, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
 
 ```
 
-```{asis echo=compute_female_icp}
+```{asis echo=compute_female_icpfix}
 ### Model 1, female donors, icp-fix
 ```
 
-```{r Model 1 female donors icp-fix, results="hide", eval=compute_female_icp}
-if (!exists("smallf.sl.icp.1"))
-  load(paste(datadir,"small_model1_icp_",data_id,".RData", sep = ''))
-if (!exists("smallf.stan"))
-  load(paste(datadir,"small_stan_datasets_",data_id,".RData", sep = ''))
+```{r Model 1 female donors icp-fix, results="hide", eval=compute_female_icpfix}
+if (!exists("stan.preprocessed.female.icpfix"))
+  load(paste(datadir,"stan_preprocessed_datasets_",data_id,".RData", sep = ''))
+if (!exists("stan.lists.female.icpfix"))
+  load(paste(datadir,"stan_lists_female_icpfix_",data_id,".RData", sep = ''))
 
 if (skip_train == TRUE) {
   load(paste(stanfitpath, "small_model1_female_icp_", fit_id, ".RData", sep = ''))
 } else {
   fit <- stan(file = stanf1.icp, 
-            data = smallf.sl.icp.1,
+            data = stan.lists.female.icpfix,
             save_warmup = TRUE,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_female_icp_", fit_id, ".RData", sep = ''))
@@ -661,7 +673,7 @@ rhats <- rhat(fit)
 max(rhats)
 
 #original_Hb <- smallf.stan.icp$y_test * smallf.stan.icp$par_sds["Hb"] + smallf.stan.icp$par_means["Hb"]
-original_Hb <- denormalize_vector(smallf.stan.icp$y_test, smallf.stan.icp$par_means["Hb"], smallf.stan.icp$par_sds["Hb"]) 
+original_Hb <- denormalize_vector(stan.preprocessed.female.icpfix$y_test, stan.preprocessed.female.icpfix$par_means["Hb"], stan.preprocessed.female.icpfix$par_sds["Hb"]) 
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_female, 0, 1)
 val1.f.icp <- validate_fit(fit, #smallf.stan.icp$y_test, 
                            original_Hb, test_labels, 
@@ -682,7 +694,7 @@ val1.f.icp$comp_plot
 cm <- plot_confusion_matrix(val1.f.icp$conf.matrix$table, "Confusion matrix")
 cm
 
-scores <- get_scores(fit, params$Hb_cutoff_female, smallf.stan.icp$par_means[["Hb"]], smallf.stan.icp$par_sds[["Hb"]])
+scores <- get_scores(fit, params$Hb_cutoff_female, stan.preprocessed.female.icpfix$par_means[["Hb"]], stan.preprocessed.female.icpfix$par_sds[["Hb"]])
 
 pr <- create_precision_recall(test_labels, scores)
 AUPR <- pr$auc.davis.goadrich

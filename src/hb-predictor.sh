@@ -48,10 +48,16 @@ cd src
 #/usr/bin/time -v --output $output_dir/$outputbase.time ./new_render.R $gender $sample_fraction $hlen $outputbase.md $extra_id ${hlen_exactly} > $output_dir/$outputbase.out 2> $output_dir/$outputbase.err
 /usr/bin/time -v --output $output_dir/$outputbase.time ./hb-predictor-helper.R "$@" id=$id output_file=$outputbase.md > $output_dir/$outputbase.out 2> $output_dir/$outputbase.err
 
+ret=$?
 cd ..
-prefix=$(readlink -f output)   # prefix=/home/toivoja/FRCBS/interval_prediction/output/
-# Remove the prefix from image links
-sed -i 's!'$prefix'/!!g' output/$outputbase.md
-tar -czvf results.tar.gz data/rdata/*$id.RData data/stan_fits/*$id.RData output/results-$id*
-echo Computation finished
+if [[ $ret == 0 ]] ; then 
+    prefix=$(readlink -f output)   # prefix=/home/toivoja/FRCBS/interval_prediction/output/
+    # Remove the prefix from image links
+    sed -i 's!'$prefix'/!!g' output/$outputbase.md
+    tar -czvf results.tar.gz data/rdata/*$id.RData data/stan_fits/*$id.RData output/results-$id*
+    echo Computation finished
+else
+    echo Error >&2
+fi
+
 tail -f /dev/null
