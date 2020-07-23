@@ -100,26 +100,10 @@ compute_male   <- params$gender %in% c("male", "both")
 compute_female <- params$gender %in% c("female", "both")
 compute_nofix  <- params$method %in% c("no-fix", "both")
 compute_icpfix <- params$method %in% c("icp-fix", "both")
-# compute_male_nofix <- FALSE
-# compute_male_icp <- FALSE
-# compute_female_nofix <- FALSE 
-# compute_female_icp <- FALSE
 compute_male_nofix <- compute_male && compute_nofix 
 compute_female_nofix <- compute_female && compute_nofix 
 compute_male_icpfix <- compute_male && compute_icpfix 
 compute_female_icpfix <- compute_female && compute_icpfix 
-# if (compute_nofix ) {
-#   if (compute_male)
-#     compute_male_nofix <- TRUE
-#   if (compute_female)
-#     compute_female_nofix <- TRUE
-# }
-# if (compute_icpfix ) {
-#   if (compute_male)
-#     compute_male_icp <- TRUE
-#   if (compute_female)
-#     compute_female_icp <- TRUE
-# }
 
 set.seed(123)
 options(mc.cores = 4)
@@ -129,9 +113,6 @@ skip_train = params$skip_train
 create_datasets_bool = params$create_datasets_bool
 knit = TRUE
 
-#datadir = "~/FRCBS/interval_prediction/data/rdata/"
-#dumpdir = "~/FRCBS/interval_prediction/data/rdump/"
-#stanfitpath = "~/FRCBS/interval_prediction/data/stan_fits/"
 datadir = "../data/rdata/"
 dumpdir = "../data/rdump/"
 stanfitpath = "../data/stan_fits/"
@@ -146,18 +127,13 @@ data_id <- id
 fit_id = id
 
 
-#setwd("~/FRCBS/interval_prediction")
 source("helper_functions.R")
 source("validate_stan_fit.R")
 source("ppc.R")
 
 
-#load("data/preprocessed_final_with_time.RData")
-#data <- load_single("data/full_data_preprocessed.rdata") # Forgets the name of the object
 data <- load_single(params$input_file) # Forgets the name of the object
-#data <- final_data
-#data <- fulldata_preprocessed
-#rm(final_data)
+
 data <- data %>%
   mutate(days_to_previous_fb = as.double(days_to_previous_fb),
          donor = as.character(donor))   # For some reason this cannot be a factor
@@ -195,8 +171,6 @@ if (!is.null(params$findonor_and_snip_file) && (length(params$findonor_and_snip_
 } else {
   donor_variables = NULL
 }
-#data <- data %>% 
-#  filter(dateonly < ymd("2019-07-13")) # Take only old donations to compare to old results
 
 
 pars1 <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]")
@@ -265,15 +239,7 @@ if (create_datasets_bool) {
 data.male <- filter_based_on_number_of_donations(data.male, params$hlen, params$hlen_exactly)
 data.female <- filter_based_on_number_of_donations(data.female, params$hlen, params$hlen_exactly)
 
-#stanf1 <- "~/FRCBS/interval_prediction/src/stan/mem_qr_1_noa.stan"
-#stanf2 <- "~/FRCBS/interval_prediction/src/stan/mem_2_qr.stan"
-#stanf1.icp <- "~/FRCBS/interval_prediction/src/stan/mem_qr_1_icp_noa.stan"
-#stanf2.icp <- "~/FRCBS/interval_prediction/src/stan/mem_2_qr_icp.stan"
 
-#stanf1     <- "stan/mem_qr_1_noa.stan"
-#stanf1.icp <- "stan/mem_qr_1_icp_noa.stan"
-#stanf1     <- "stan/mem_qr_1_noa_consts.stan"
-#stanf1.icp <- "stan/mem_qr_1_heckman_consts.stan"
 if (is.null(donor_variables)) {
   stanf1     <- "stan/container.stan"
   stanf1.icp <- "stan/container_heckman.stan"
@@ -342,8 +308,7 @@ kable(descript)
 
 ```{r Summary plots for males, echo = FALSE, eval=compute_male}
 #Plot distributions for male donors
-    
-#data.male <- filter(data, gender == "Men")
+
 
 data.male <- data.male %>%
   filter(!is.na(Hb_first), !is.na(days_to_previous_fb),
@@ -385,7 +350,6 @@ if (!is.null(params$findonor_and_snip_file)) {
 
 ```{r Summary plots for females, echo = FALSE, eval=compute_female}
 #Plot distributions for female donors
-#data.female <- filter(data, gender == "Women")
 
 data.female <- data.female %>%
   filter(!is.na(Hb_first), !is.na(days_to_previous_fb),
@@ -457,19 +421,15 @@ cat("2\n")
 rhats <- bayesplot::rhat(fit)
 max(rhats)
 cat("3\n")
-#
-#original_Hb <- smallm.stan$y_test * smallm.stan$par_sds["Hb"] + smallm.stan$par_means["Hb"]
+
 original_Hb <- denormalize_vector(stan.preprocessed.male.nofix$y_test, stan.preprocessed.male.nofix$par_means["Hb"], stan.preprocessed.male.nofix$par_sds["Hb"]) 
 
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_male, 0, 1)
-val1.m <- validate_fit(fit, #smallm.sl.1$y_test, 
+val1.m <- validate_fit(fit, 
                        original_Hb, test_labels, 
                        pars1, vars1, male = TRUE, metric = "mean", cat.plot = FALSE, 
                        Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
-# val1.m <- validate_fit(fit, #smallm.sl.1$y_test, 
-#                        smallm.stan$original_Hb, smallm.stan$test_labels, 
-#                        pars1, vars1, male = TRUE, metric = "mean", cat.plot = FALSE, 
-#                        Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
+
 cat("4\n")
 val1.m$posterior.plot
 #val1.m$cat.plot
@@ -537,17 +497,13 @@ if (skip_train == TRUE) {
 rhats <- rhat(fit)
 max(rhats)
 
-#original_Hb <- smallf.stan$y_test * smallf.stan$par_sds["Hb"] + smallf.stan$par_means["Hb"]
+
 original_Hb <- denormalize_vector(stan.preprocessed.female.nofix$y_test, stan.preprocessed.female.nofix$par_means["Hb"], stan.preprocessed.female.nofix$par_sds["Hb"]) 
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_female, 0, 1)
-val1.f <- validate_fit(fit, #smallf.stan$y_test, 
+val1.f <- validate_fit(fit,  
                        original_Hb, test_labels, 
                        pars1, vars1, male = FALSE, metric = "mean", cat.plot = FALSE, 
                        Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
-# val1.f <- validate_fit(fit, #smallf.stan$y_test, 
-#                        smallf.stan$original_Hb, smallf.stan$test_labels, 
-#                        pars1, vars1, male = FALSE, metric = "mean", cat.plot = FALSE, 
-#                        Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
 
 val1.f$posterior.plot
 
@@ -607,17 +563,13 @@ if (skip_train == TRUE) {
 rhats <- rhat(fit)
 max(rhats)
 
-#original_Hb <- smallm.stan.icp$y_test * smallm.stan.icp$par_sds["Hb"] + smallm.stan.icp$par_means["Hb"]
+
 original_Hb <- denormalize_vector(stan.preprocessed.male.icpfix$y_test, stan.preprocessed.male.icpfix$par_means["Hb"], stan.preprocessed.male.icpfix$par_sds["Hb"]) 
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_male, 0, 1)
-val1.m.icp <- validate_fit(fit, #smallm.stan.icp$y_test, 
+val1.m.icp <- validate_fit(fit, 
                            original_Hb, test_labels, 
                            pars1.icp, vars1.icp, male = TRUE, metric = "mean", cat.plot = FALSE,
                            Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
-# val1.m.icp <- validate_fit(fit, #smallm.stan.icp$y_test, 
-#                            smallm.stan.icp$original_Hb, smallm.stan.icp$test_labels, 
-#                        pars1.icp, vars1.icp, male = TRUE, metric = "mean", cat.plot = FALSE,
-#                        Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
 
 val1.m.icp$posterior.plot
 #val1.m.icp$cat.plot
@@ -672,17 +624,13 @@ if (skip_train == TRUE) {
 rhats <- rhat(fit)
 max(rhats)
 
-#original_Hb <- smallf.stan.icp$y_test * smallf.stan.icp$par_sds["Hb"] + smallf.stan.icp$par_means["Hb"]
+
 original_Hb <- denormalize_vector(stan.preprocessed.female.icpfix$y_test, stan.preprocessed.female.icpfix$par_means["Hb"], stan.preprocessed.female.icpfix$par_sds["Hb"]) 
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_female, 0, 1)
-val1.f.icp <- validate_fit(fit, #smallf.stan.icp$y_test, 
+val1.f.icp <- validate_fit(fit, 
                            original_Hb, test_labels, 
                            pars1.icp, vars1.icp, male = FALSE, metric = "mean", cat.plot = FALSE,
                            Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
-# val1.f.icp <- validate_fit(fit, #smallf.stan.icp$y_test, 
-#                            smallf.stan.icp$original_Hb, smallf.stan.icp$test_labels, 
-#                            pars1.icp, vars1.icp, male = FALSE, metric = "mean", cat.plot = FALSE,
-#                            Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
 
 val1.f.icp$posterior.plot
 #val1.f.icp$cat.plot
@@ -714,425 +662,13 @@ error_rows[[length(error_rows)+1]] <- c(Model="Female, dynamic linear mixed mode
 
 ```
 
-<!-- Model 2 male donors -->
 
-```{r Model 2 male donors, eval=FALSE, include=FALSE, results="hide"}
-load(paste(datadir,"small_model2_noicp_",data_id,".RData", sep = ''))
-load(paste(datadir,"small_stan_datasets_",data_id,".RData", sep = ''))
 
-if (skip_train == TRUE) {
-  load(paste(stanfitpath, "small_model2_male_", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf2, 
-            data = smallm.sl.2,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  save(fit, file = paste(stanfitpath, "small_model2_male_", date, ".RData", sep = ''))
-}
-
-rhats <- rhat(fit)
-max(rhats)
-
-val2.m <- validate_fit(fit, smallm.stan$y_test, smallm.stan$original_Hb, smallm.stan$test_labels, 
-                       pars2, vars2, male = TRUE, metric = "mean")
-
-val2.m$posterior.plot
-val2.m$cat.plot
-#val2.m$loo.plot
-val2.m$conf.matrix
-val2.m$comp_plot
-val2.m$sd_plot
-
-cm <- plot_confusion_matrix(val2.m$conf.matrix$table, "Model 2 male donors")
-cm
-
-maes <- c(maes, val2.m$mae)
-rmses <- c(rmses, val2.m$rmse)
-
-pROC_obj <- roc(response = smallm.stan$test_labels,
-                predictor = val2.m$pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
-
-if (knit == TRUE) {rm(smallm.sl.2, val2.m, cm, pROC_obj, sens.ci, fit); gc(reset = TRUE)}
-```
-
-<!-- Model 2 female donors -->
-
-```{r Model 2 female donors, eval=FALSE, include=FALSE, results="hide"}
-
-if (skip_train == TRUE) {
-  load(paste(stanfitpath, "small_model2_female_", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf2, 
-            data = smallf.sl.2,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  save(fit, file = paste(stanfitpath, "small_model2_female_", date, ".RData", sep = ''))
-}
-
-rhats <- rhat(fit)
-max(rhats)
-
-val2.f <- validate_fit(fit, smallf.stan$y_test, smallf.stan$original_Hb, smallf.stan$test_labels, 
-                       pars2, vars2, male = FALSE, metric = "mean")
-
-val2.f$posterior.plot
-val2.f$cat.plot
-#val2.f$loo.plot
-val2.f$conf.matrix
-val2.f$comp_plot
-val2.f$sd_plot
-
-cm <- plot_confusion_matrix(val2.f$conf.matrix$table, "Model 2 female donors")
-cm
-
-maes <- c(maes, val2.f$mae)
-rmses <- c(rmses, val2.f$rmse)
-
-pROC_obj <- roc(response = smallf.stan$test_labels,
-                predictor = val2.f$pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
-
-if (knit == TRUE) {rm(smallf.sl.2, val2.f, cm, pROC_obj, sens.ci, fit); gc()}
-
-# There were 1 chains where the estimated Bayesian Fraction of Missing Information was low. See
-# http://mc-stan.org/misc/warnings.html#bfmi-lowExamine the pairs() plot to diagnose sampling problems
-```
-
-<!-- Model 2 male donors, icp-fix -->
-
-```{r Model 2 male donors icp-fix, eval=FALSE, results="hide", include=FALSE}
-load(paste(datadir,"small_model2_icp_",data_id,".RData", sep = ''))
-
-if (skip_train == TRUE) {
-  load(paste(stanfitpath, "small_model2_male_icp_", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf2.icp, 
-            data = smallm.sl.icp.2,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  save(fit, file = paste(stanfitpath, "small_model2_male_icp_", date, ".RData", sep = ''))
-}
-
-rhats <- rhat(fit)
-max(rhats)
-
-val2.m.icp <- validate_fit(fit, smallm.stan.icp$y_test, smallm.stan.icp$original_Hb, smallm.stan.icp$test_labels, 
-                       pars2.icp, vars2.icp, male = TRUE, metric = "mean")
-
-val2.m.icp$posterior.plot
-val2.m.icp$cat.plot
-#val2.m.icp$loo.plot
-val2.m.icp$conf.matrix
-val2.m.icp$comp_plot
-val2.m.icp$sd_plot
-
-cm <- plot_confusion_matrix(val2.m.icp$conf.matrix$table, "Model 2 male donors, icp-fix")
-cm
-
-maes <- c(maes, val2.m.icp$mae)
-rmses <- c(rmses, val2.m.icp$rmse)
-
-pROC_obj <- roc(response = smallm.stan.icp$test_labels,
-                predictor = val2.m.icp$pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
-
-if (knit == TRUE) {rm(smallm.sl.icp.2, val2.m.icp, cm, pROC_obj, sens.ci, fit); gc(reset = TRUE)}
-```
-
-<!-- Model 2 female donors, icp-fix -->
-
-```{r Model 2 female donors icp-fix, eval=FALSE, results="hide", include=FALSE}
-if (skip_train == TRUE) {
-  load(paste(stanfitpath, "small_model2_female_icp_", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf2.icp, 
-            data = smallf.sl.icp.2,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  save(fit, file = paste(stanfitpath, "small_model2_female_icp_", date, ".RData", sep = ''))
-}
-
-rhats <- rhat(fit)
-max(rhats)
-
-val2.f.icp <- validate_fit(fit, smallf.stan.icp$y_test, smallf.stan.icp$original_Hb, smallf.stan.icp$test_labels, 
-                       pars2.icp, vars2.icp, male = FALSE, metric = "mean")
-
-val2.f.icp$posterior.plot
-val2.f.icp$cat.plot
-#val2.f.icp$loo.plot
-val2.f.icp$conf.matrix
-val2.f.icp$comp_plot
-val2.f.icp$sd_plot
-
-cm <- plot_confusion_matrix(val2.f.icp$conf.matrix$table, "Model 2 female donors, icp-fix")
-cm
-
-maes <- c(maes, val2.f.icp$mae)
-rmses <- c(rmses, val2.f.icp$rmse)
-
-pROC_obj <- roc(response = smallf.stan.icp$test_labels,
-                predictor = val2.f.icp$pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
-
-if (knit == TRUE) {rm(smallf.sl.icp.2, val2.f.icp, cm, pROC_obj, sens.ci, fit); gc(reset = TRUE)}
-
-# There were 4 chains where the estimated Bayesian Fraction of Missing Information was low. See
-# http://mc-stan.org/misc/warnings.html#bfmi-lowExamine the pairs() plot to diagnose sampling problems
-```
-
-<!-- Model 3 male donors -->
-
-```{r Model 3 male donors, eval=FALSE, include=FALSE, results="hide"}
-load(paste(datadir,"small_model3_noicp_",data_id,".RData", sep = ''))
-
-if (skip_train == TRUE) {
-  load(paste(stanfitpath, "small_model3_male_", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf2, 
-            data = smallm.sl.3,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  save(fit, file = paste(stanfitpath, "small_model3_male_", date, ".RData", sep = ''))
-}
-
-rhats <- rhat(fit)
-max(rhats)
-
-val3.m <- validate_fit(fit, smallm.stan$y_test, smallm.stan$original_Hb, smallm.stan$test_labels, 
-                       pars2, vars1, male = TRUE, metric = "mean")
-
-val3.m$posterior.plot
-val3.m$cat.plot
-#val3.m$loo.plot
-val3.m$conf.matrix
-val3.m$comp_plot
-val3.m$sd_plot
-
-cm <- plot_confusion_matrix(val3.m$conf.matrix$table, "Model 3 male donors")
-cm
-
-maes <- c(maes, val3.m$mae)
-rmses <- c(rmses, val3.m$rmse)
-
-pROC_obj <- roc(response = smallm.stan$test_labels,
-                predictor = val3.m$pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
-
-#pairs_stan(chain=1, stan_model=fit, pars=pars2)
-
-if (knit == TRUE) {rm(smallm.sl.3, val3.m, cm, pROC_obj, sens.ci, fit); gc(reset = TRUE)}
-
-# There were 4 chains where the estimated Bayesian Fraction of Missing Information was low. See
-# http://mc-stan.org/misc/warnings.html#bfmi-lowExamine the pairs() plot to diagnose sampling problems
-```
-
-<!-- Model 3 female donors -->
-
-```{r Model 3 female donors, eval=FALSE, include=FALSE, results="hide"}
-
-if (skip_train == TRUE) {
-  load(paste(stanfitpath, "small_model3_female_", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf2, 
-            data = smallf.sl.3,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  save(fit, file = paste(stanfitpath, "small_model3_female_", date, ".RData", sep = ''))
-}
-
-rhats <- rhat(fit)
-max(rhats)
-
-val3.f <- validate_fit(fit, smallf.stan$y_test, smallf.stan$original_Hb, smallf.stan$test_labels, 
-                       pars2, vars1, male = FALSE, metric = "mean")
-
-val3.f$posterior.plot
-val3.f$cat.plot
-#val3.f$loo.plot
-val3.f$conf.matrix
-val3.f$comp_plot
-val3.f$sd_plot
-
-cm <- plot_confusion_matrix(val3.f$conf.matrix$table, "Model 3 female donors")
-cm
-
-maes <- c(maes, val3.f$mae)
-rmses <- c(rmses, val3.f$rmse)
-
-pROC_obj <- roc(response = smallf.stan$test_labels,
-                predictor = val3.f$pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
-
-if (knit == TRUE) {rm(smallf.sl.3, val3.f, cm, pROC_obj, sens.ci, fit); gc(reset = TRUE)}
-
-# There were 4 chains where the estimated Bayesian Fraction of Missing Information was low. See
-# http://mc-stan.org/misc/warnings.html#bfmi-lowExamine the pairs() plot to diagnose sampling problems
-
-```
-
-<!-- Model 3 male donors, icp-fix -->
-
-```{r Model 3 male donors icp-fix, eval=FALSE, results="hide", include=FALSE}
-load(paste(datadir,"small_model3_icp_",data_id,".RData", sep = ''))
-
-if (skip_train == TRUE) {
-  load(paste(stanfitpath, "small_model3_male_icp_", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf2.icp, 
-            data = smallm.sl.icp.3,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  save(fit, file = paste(stanfitpath, "small_model3_male_icp_", date, ".RData", sep = ''))
-}
-
-rhats <- rhat(fit)
-max(rhats)
-
-val3.m.icp <- validate_fit(fit, smallm.stan.icp$y_test, smallm.stan.icp$original_Hb, smallm.stan.icp$test_labels, 
-                       pars2.icp, vars1.icp, male = TRUE, metric = "mean")
-
-val3.m.icp$posterior.plot
-val3.m.icp$cat.plot
-#val3.m.icp$loo.plot
-val3.m.icp$conf.matrix
-val3.m.icp$comp_plot
-val3.m.icp$sd_plot
-
-cm <- plot_confusion_matrix(val3.m.icp$conf.matrix$table, "Model 3 male donors, icp-fix")
-cm
-
-maes <- c(maes, val3.m.icp$mae)
-rmses <- c(rmses, val3.m.icp$rmse)
-
-pROC_obj <- roc(response = smallm.stan.icp$test_labels,
-                predictor = val3.m.icp$pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
-
-if (knit == TRUE) {rm(smallm.sl.icp.3, val3.m.icp, cm, pROC_obj, sens.ci, fit); gc(reset = TRUE)}
-
-```
-
-<!-- Model 3 female donors, icp-fix -->
-
-```{r Model 3 female donors icp-fix, eval=FALSE, results="hide", include=FALSE}
-if (skip_train == TRUE) {
-  load(paste(stanfitpath, "small_model3_female_icp_", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf2.icp, 
-            data = smallf.sl.icp.3,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  save(fit, file = paste(stanfitpath, "small_model3_female_icp_", date, ".RData", sep = ''))
-}
-
-rhats <- rhat(fit)
-max(rhats)
-
-val3.f.icp <- validate_fit(fit, smallf.stan.icp$y_test, smallf.stan.icp$original_Hb, smallf.stan.icp$test_labels, 
-                       pars2.icp, vars1.icp, male = FALSE, metric = "mean")
-
-val3.f.icp$posterior.plot
-val3.f.icp$cat.plot
-#val3.f.icp$loo.plot
-val3.f.icp$conf.matrix
-val3.f.icp$comp_plot
-
-cm <- plot_confusion_matrix(val3.f.icp$conf.matrix$table, "Model 3 female donors, icp-fix")
-cm
-
-maes <- c(maes, val3.f.icp$mae)
-rmses <- c(rmses, val3.f.icp$rmse)
-
-pROC_obj <- roc(response = smallf.stan.icp$test_labels,
-                predictor = val3.f.icp$pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
-
-if (knit == TRUE) {rm(smallf.sl.icp.3, val3.f.icp, cm, pROC_obj, sens.ci, fit); gc(reset = TRUE)}
-```
 
 ### Errors
 
 ```{r Errors}
-# There must be a better way of doing this!!!!
-# df <- NULL
-# for (row in error_rows) {
-#   df <- rbind(df, row)
-# }
-# Here it is:
+
 df <- do.call(rbind, error_rows)
   
 errors <- as_tibble(df)
@@ -1141,451 +677,13 @@ errors <- errors %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
 if (!is.null(params$errors_table_file)) {
   write_csv(errors, params$errors_table_file)
 }
-# errors <- tibble(model = c("1, male"
-#                            #"1, female", "1, male, icp-fix", "1, female, icp-fix",
-#                            #"2, male", "2, female", "2, male, icp-fix", "2, female, icp-fix",
-#                            #"3, male", "3, female", "3, male, icp-fix", "3, female, icp-fix" 
-#                            ),
-#                  MAEs = maes, RMSEs = rmses)
+
 ```
 
 ```{r}
 kable(errors, digits=3, format.args = list(digits=3))
 ```
 
-<!--
-<h2> Posterior predictive checks </h2>
 
-Let's perform a posterior predictive check for all models. I'm comparing the mean values of the posterior predictive distributions to the actual Hb values. All models generated 4000 (4 chains with 1000 sampling iterations) values for each test sample which correspond to the posterior predictive distributions. These distributions should be normal (conjugate of prior) so that mean value is a good point estimate for the predicted value.
 
-I'll visualize the best and worst predictions for the models and compare the distribution of the prediction means to the actual values.
--->
-
-```{r, echo = FALSE}
-title1 <- "Best Hb-predictions (mean closest to actual value) "
-title2 <- "Most overestimated Hb-predictions (mean larger than actual value) "
-title3 <- "Most underestimated Hb-predictions (mean smaller than actual value) "
-title_comp <- "Comparison of actual and predicted Hb values of model "
-```
-
-
-```{r eval=FALSE, include=FALSE}
-load(paste(datadir,"small_stan_datasets_",data_id,".RData", sep = ''))
-load(paste(stanfitpath, "small_model1_male_", date, ".RData", sep = ''))
-
-model <- "model 1, male donors"
-
-plots <- posterior_check(fit, smallm.stan$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-
-```
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model1_female_", date, ".RData", sep = ''))
-
-model <- "model 1, female donors"
-
-plots <- posterior_check(fit, smallf.stan$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model1_male_icp_", date, ".RData", sep = ''))
-
-model <- "model 1, male donors, icp-fix"
-
-plots <- posterior_check(fit, smallm.stan.icp$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model1_female_icp_", date, ".RData", sep = ''))
-
-model <- "model 1, female donors, icp-fix"
-
-plots <- posterior_check(fit, smallf.stan.icp$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model2_male_", date, ".RData", sep = ''))
-
-model <- "model 2, male donors"
-
-plots <- posterior_check(fit, smallm.stan$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model2_female_", date, ".RData", sep = ''))
-
-model <- "model 2, female donors"
-
-plots <- posterior_check(fit, smallf.stan$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model2_male_icp_", date, ".RData", sep = ''))
-
-model <- "model 2, male donors, icp-fix"
-
-plots <- posterior_check(fit, smallm.stan.icp$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model2_female_icp_", date, ".RData", sep = ''))
-
-model <- "model 2, female donors, icp-fix"
-
-plots <- posterior_check(fit, smallf.stan.icp$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-```{r eval=FALSE, include=FALSE}
-
-load(paste(stanfitpath, "small_model3_male_", date, ".RData", sep = ''))
-
-model <- "model 3, male donors"
-
-plots <- posterior_check(fit, smallm.stan$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model3_female_", date, ".RData", sep = ''))
-
-model <- "model 3, female donors"
-
-plots <- posterior_check(fit, smallf.stan$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model3_male_icp_", date, ".RData", sep = ''))
-
-model <- "model 3, male donors, icp_fix"
-
-plots <- posterior_check(fit, smallm.stan.icp$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-```{r eval=FALSE, include=FALSE}
-load(paste(stanfitpath, "small_model3_female_icp_", date, ".RData", sep = ''))
-
-model <- "model 3, female donors, icp-fix"
-
-plots <- posterior_check(fit, smallf.stan.icp$y_test)
-plots$p1 + ggtitle(paste(title1, model, sep = " "))
-plots$p2 + ggtitle(paste(title2, model, sep = " "))
-plots$p3 + ggtitle(paste(title3, model, sep = " "))
-plots$comp_plot + ggtitle(paste(title_comp, model, sep = " "))
-
-rm(fit); gc()
-```
-
-<!--
-## Subset validation
-
-### Model 1 for female donors:
--->
-
-```{r eval=FALSE, include=FALSE}
-set.seed(123)
-load("~/FRCBS/interval_prediction/data/split_data_full.RData")
-stanf1.val <- "~/FRCBS/interval_prediction/src/stan/mem_qr_1_validate.stan"
-date <- "05_08"
-
-smal.val <- split_set(data.female$validation, 0.01)
-smal.val <- smal.val$train
-smal.val.sl <- stan_preprocess_le(smal.val)
-
-qr <- qr_decomposition(smal.val.sl$x_train)
-
-# Load the fit
-load(paste(stanfitpath, "small_model1_female_", "23_07", ".RData", sep = ''))
-alphas <- unlist(extract(fit, pars = c("alpha")))
-thetas <- extract(fit, names(fit)[grepl("theta", names(fit))])
-thetas <- matrix(unlist(thetas), ncol = length(thetas), byrow = TRUE)
-sigmab_vec <-  unlist(extract(fit, pars = c("sigmab")))
-sigmaeps_vec <- unlist(extract(fit, pars = c("sigmaeps")))
-
-stanlist <- list(N = nrow(smal.val.sl$x_train),
-                 Ndon = length(unique(smal.val.sl$train_dons)),
-                 K = ncol(smal.val.sl$x_train),
-                 Q_star = qr$Q_star,
-                 R_star = qr$R_star,
-                 R_star_inv = qr$R_star_inv,
-                 donor = smal.val.sl$train_dons,
-                 Hb = smal.val.sl$y_train,
-                 Ntest = nrow(smal.val.sl$x_test),
-                 x_test = smal.val.sl$x_test,
-                 test_donor = smal.val.sl$test_dons,
-                 threshold = 0,
-                 Nsamples = length(alphas),
-                 alphas = alphas,
-                 thetas = thetas,
-                 sigmab_vec = sigmab_vec,
-                 sigmaeps_vec = sigmaeps_vec)
-
-
-```
-
-
-<!-- ## First model with fixed parameters -->
-
-```{r eval=FALSE, include=FALSE}
-
-if (skip_train == TRUE) {
-  #load(paste(stanfitpath, "small_model1_female_validation_priors", date, ".RData", sep = ''))
-  load(paste(stanfitpath, "small_model1_female_validation", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf1.val, 
-            data = stanlist,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  #save(fit, file = paste(stanfitpath, "small_model1_female_validation_priors", date, ".RData", sep = ''))
-  save(fit, file = paste(stanfitpath, "small_model1_female_validation", date, ".RData", sep = ''))
-}
-
-y_preds <- extract(fit, pars = names(fit)[grepl("y_pred",names(fit))])
-preds <- matrix(unlist(y_preds), ncol = length(unique(smal.val.sl$train_dons)))
-preds <- colMeans(preds)
-actual <- smal.val.sl$original_Hb
-
-pred <- denormalize(preds, actual)
-
-actual_labels <- smal.val.sl$test_labels
-#prev_labels <- smal.val.sl$x_test$previous_Hb_def
-pred_labels <- ifelse(pred < 125, 1, 0)
-
-pred_results <- prediction_results(actual, pred, actual_labels, pred_labels, male = FALSE)
-
-pROC_obj <- roc(response = actual_labels,
-                predictor = pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="orange")
-
-pred_results$cm.plot + ggtitle("Model 1 female donors, validation")
-pred_results$comp_plot
-
-```
-
-<!-- ### Second model that sets priors for parameters -->
-
-```{r eval=FALSE, include=FALSE}
-if (skip_train == TRUE) {
-  load(paste(stanfitpath, "small_model1_female_validation_priors", date, ".RData", sep = ''))
-  #load(paste(stanfitpath, "small_model1_female_validation", date, ".RData", sep = ''))
-} else {
-  fit <- stan(file = stanf1.val, 
-            data = stanlist,
-            save_warmup = TRUE,
-            control = list(max_treedepth = 12))
-  save(fit, file = paste(stanfitpath, "small_model1_female_validation_priors", date, ".RData", sep = ''))
-  #save(fit, file = paste(stanfitpath, "small_model1_female_validation", date, ".RData", sep = ''))
-}
-
-y_preds <- extract(fit, pars = names(fit)[grepl("y_pred",names(fit))])
-preds <- matrix(unlist(y_preds), ncol = length(unique(smal.val.sl$train_dons)))
-preds <- colMeans(preds)
-actual <- smal.val.sl$original_Hb
-
-pred <- denormalize(preds, actual)
-
-actual_labels <- smal.val.sl$test_labels
-#prev_labels <- smal.val.sl$x_test$previous_Hb_def
-pred_labels <- ifelse(pred < 125, 1, 0)
-
-pred_results <- prediction_results(actual, pred, actual_labels, pred_labels, male = FALSE)
-
-pROC_obj <- roc(response = actual_labels,
-                predictor = pred_labels,
-                smoothed = TRUE,
-                # arguments for ci
-                ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                # arguments for plot
-                plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
-                print.auc=TRUE, show.thres=TRUE)
-
-sens.ci <- ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="orange")
-
-pred_results$cm.plot + ggtitle("Model 1 female donors, validation")
-pred_results$comp_plot
-
-```
-
-
-
-<!-- Comparison of the distribution of the actual Hb-values compared to the predictions -->
-
-<!-- ```{r} -->
-<!-- comp_df <- tibble(x = c(y_real, pred_means), -->
-<!--                   cat = c(rep("actual", length(y_real)), rep("prediction", length(pred_means)))) -->
-
-<!-- ggplot(comp_df, aes(x = x)) +  -->
-<!--   geom_histogram(data=subset(comp_df,cat=='actual'),aes(fill=cat),alpha=0.5)+ -->
-<!--     geom_histogram(data=subset(comp_df,cat=='prediction'),aes(fill=cat),alpha=0.5)+ -->
-<!--     scale_fill_manual(name="category", values=c("orange","blue"),labels=c("actual","prediction")) -->
-
-
-<!-- ``` -->
-
-<!-- Let's try the same thing for non-icp model. -->
-
-<!-- ```{r} -->
-
-<!-- load(paste(stanfitpath, "small_model1_female_", date, ".RData", sep = '')) -->
-<!-- load(paste(datadir,"small_model1_",data_id,".RData", sep = '')) -->
-<!-- load(paste(datadir,"small_stan_datasets_",data_id,".RData", sep = '')) -->
-
-<!-- nrow(smallf.stan$x_test) -->
-<!-- nrow(smallf.sl.1$x_test) -->
-
-<!-- y_pred <- extract(fit, pars = c("y_pred"))$y_pred -->
-<!-- pred_means <- colMeans(y_pred) -->
-<!-- #pred_means <- apply(y_pred, 2, quantile, 0.05) -->
-
-<!-- y_real <- smallm.stan$y_test -->
-<!-- deltas <- y_real - pred_means -->
-
-<!-- delta_idx <- as_tibble(cbind(idx = 1:length(deltas), deltas = deltas)) -->
-<!-- best <- head(delta_idx[order(abs(delta_idx$deltas)),]$idx, 10) -->
-<!-- most_under <- head(delta_idx[order(delta_idx$deltas, decreasing = TRUE),]$idx, 10)  -->
-<!-- most_over <- head(delta_idx[order(delta_idx$deltas),]$idx, 10) -->
-
-<!-- mean(deltas) -->
-<!-- deltas[best] -->
-<!-- deltas[most_under] -->
-<!-- deltas[most_over] -->
-
-<!-- best_preds <- as.tibble(y_pred[,best]) -->
-<!-- best_preds <- gather(best_preds, "V") -->
-<!-- best_preds$V <- factor(best_preds$V, levels = c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10")) -->
-<!-- vline.dat <- tibble(V = levels(best_preds$V), vl = y_real[best]) -->
-<!-- ggplot(best_preds, aes(x = value)) +  -->
-<!--   geom_histogram() +  -->
-<!--   geom_vline(data = vline.dat, mapping = aes(xintercept = vl), colour = "red") +   -->
-<!--   facet_wrap(~ V) + -->
-<!--   ggtitle("Best Hb-predictions (mean closest to actual value)") -->
-
-<!-- over_preds <- as.tibble(y_pred[,most_over]) -->
-<!-- over_preds <- gather(over_preds, "V") -->
-<!-- over_preds$V <- factor(over_preds$V, levels = c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10")) -->
-<!-- vline.dat <- tibble(V = levels(over_preds$V), vl = y_real[most_over]) -->
-<!-- ggplot(over_preds, aes(x = value)) +  -->
-<!--   geom_histogram() +  -->
-<!--   geom_vline(data = vline.dat, mapping = aes(xintercept = vl), col = "blue") +  facet_wrap(~ V) +  -->
-<!--   ggtitle("Most overestimated Hb-predictions (mean larger than actual value)") -->
-
-<!-- under_preds <- as.tibble(y_pred[,most_under]) -->
-<!-- under_preds <- gather(under_preds, "V") -->
-<!-- under_preds$V <- factor(under_preds$V, levels = c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10")) -->
-<!-- vline.dat <- tibble(V = levels(under_preds$V), vl = y_real[most_under]) -->
-<!-- ggplot(under_preds, aes(x = value)) +  -->
-<!--   geom_histogram() +  -->
-<!--   geom_vline(data = vline.dat, mapping = aes(xintercept = vl), col = "orange") +  facet_wrap(~ V) + -->
-<!--   ggtitle("Most underestimated Hb-predictions (mean smaller than actual value)") -->
-
-<!-- ``` -->
-
-
-<!-- Comparison of the distribution of the actual Hb-values compared to the predictions -->
-
-<!-- ```{r} -->
-<!-- comp_df <- tibble(x = c(y_real, pred_means), -->
-<!--                   cat = c(rep("actual", length(y_real)), rep("prediction", length(pred_means)))) -->
-
-<!-- ggplot(comp_df, aes(x = x)) +  -->
-<!--   geom_histogram(data=subset(comp_df,cat=='actual'),aes(fill=cat),alpha=0.5)+ -->
-<!--     geom_histogram(data=subset(comp_df,cat=='prediction'),aes(fill=cat),alpha=0.5)+ -->
-<!--     scale_fill_manual(name="category", values=c("orange","blue"),labels=c("actual","prediction")) -->
-
-
-<!-- ``` -->
-
-<!-- It seems like the model 1 provides wider distribution without the icp-fix. -->
-
-<!-- Let's look at the random intercept values: -->
-
-<!-- ```{r} -->
-<!-- vals <- extract(fit) -->
-<!-- don_a <- vals[grepl("don_a", names(vals))] -->
-
-<!-- means <- colMeans(don_a$don_a) -->
-
-<!-- hist(means) -->
-
-<!-- ex1 <- don_a$don_a[,1] -->
-<!-- ex2 <- don_a$don_a[,2] -->
-
-<!-- hist(ex1) -->
-<!-- hist(ex2) -->
-
-<!-- ``` -->
 

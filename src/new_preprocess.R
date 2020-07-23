@@ -2,7 +2,6 @@ suppressPackageStartupMessages(library(slider, quietly = TRUE))
 suppressPackageStartupMessages(library(tidyverse, quietly = TRUE))
 suppressPackageStartupMessages(library(lubridate, quietly = TRUE))
 suppressPackageStartupMessages(library(tictoc, quietly = TRUE))
-#library(data.table)
 
 source("helper_functions.R")  # For hours_to_numeric
 
@@ -14,8 +13,6 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   
   
   ########## DONATION
-  #donation <- fread(donation.file, stringsAsFactors = TRUE, keepLeadingZeros = TRUE, header=FALSE, sep='|')
-  #donation <- as.tbl(donation)
   # In the full dataset there lots of missing values. This causes automatic recognition of column types to fail.
   # Therefore we give them explicitly here.
   input_col_types <- list(
@@ -67,8 +64,6 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   #ADD THE PARSING OF volume_drawn TO A NUMBER
   
   ######### DONOR
-  #donor <- fread(donor.file,stringsAsFactors = TRUE,header=FALSE,sep='|')
-  #donor <- as.tbl(donor)
   donor <- read_delim(donor.file, col_names=FALSE, delim="|")
   names(donor)=c('donor','first','family', 'gender', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
                  'tel','email', 'mobile',
@@ -107,8 +102,6 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   #print(head(donor))
   donor <- donor %>%
     mutate(gender = as.factor(gender))
-  #donor$gender <- as.factor(donor$gender)
-  #print(head(donor))
   
   donor2 <- donor %>% 
     select(donor,first,family,gender,dob,language,aborh,zip,city,date_first_donation, nb_donat_progesa, nb_donat_outside) %>%
@@ -247,78 +240,16 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
 
 decorateData <- function(data) {
   
-  # get_nb_donations_2y_per_date <- function(current_date, donor_data) {
-  #   donor_data %>%
-  #     filter(date < current_date & date > current_date %m-% years(x = 2)) %>%
-  #     nrow()
-  # }
-  # 
-  # get_nb_donations_2y_per_donor <- function(donor_data) {
-  #   data.frame(recent_donations = donor_data$date %>%
-  #                map_dbl( get_nb_donations_2y_per_date, donor_data %>% filter(donat_phleb == "K")),
-  #              date = donor_data$date)
-  # }
-  # 
-  # get_nb_deferrals_2y_per_date <- function(current_date, donor_data) {
-  #   donor_data %>%
-  #     filter(date < current_date & date > current_date %m-% years(x = 2)) %>%
-  #     nrow()
-  # }
-  # 
-  # get_nb_deferrals_2y_per_donor <- function(donor_data) {
-  #   data.frame(recent_deferrals = donor_data$date %>%
-  #                map_dbl( get_nb_deferrals_2y_per_date, donor_data %>% filter(Hb_deferral == 1)),
-  #              date = donor_data$date)
-  # }
+
   
-  
-  # get_difference_donation <-function(donationID_int, all_data)
-  # {
-  #   
-  #   donation_date <- all_data %>% filter(don_id == donationID_int) %>% .$date
-  #   temp <- all_data %>%
-  #     filter(date < donation_date) %>%
-  #     filter(donat_phleb == 'K' & status == "-" |
-  #              donat_phleb == 'K' & status != "-" & volume_drawn > 100 |
-  #              donat_phleb == 'H' & volume_drawn > 100)
-  #   if(nrow(temp) > 0 ) {
-  #      test <- temp %>%
-  #       summarise(previous_date = max(date))
-  #     days_to_previous_fb = as.numeric(donation_date - test$previous_date)
-  #   }
-  #   else{
-  #     days_to_previous_fb = NA
-  #   }
-  #   return(days_to_previous_fb)
-  # }
-  # 
-  # get_difference_donor <- function(all_data_single_donor){
-  #   donationIDs <- all_data_single_donor$don_id
-  #   
-  #   output <- enframe(sapply(donationIDs, get_difference_donation, all_data = all_data_single_donor)) %>%
-  #     mutate(don_id = donationIDs) %>%
-  #     rename(days_to_previous_fb = value)
-  #   
-  #   return(output)
-  # }
+
   
   #Take all donations events (reagrdless of type)
   data$Hb[is.nan(data$Hb)] <- NA
   
   # Sort the data into ascending timeseries
-  #data <- data[order(data$date),]
   data <- data %>% arrange(date)
-  #print(head(data))
-  
-  previous_nrows <- nrow(data)
-  # This was already done in the earlier proprocessing part. Remove this later.
-  data <- data %>%
-    # We remove events that correspond to the seond try after a first failed venipuncture
-    ### This should be kept right?
-    group_by(donor, date) %>%
-    filter(dateonly == max(dateonly)) %>%
-    ungroup()
-  stopifnot(nrow(data) == previous_nrows)
+ 
   
   # * The donors with K and - events that had 0, or -1 IPVs had indeed donated a normal amount (blood has been processed and distributed)
   # * Donation events with K and R codes thatwere initially platelet collections (location H0092) are still counted as normal donations as longas their IPV is over 100
@@ -333,32 +264,6 @@ decorateData <- function(data) {
   ### Add don_id variable to identify each donation event
   data$don_id <- as.character(seq.int(1:nrow(data)))
   
-  # Deleted as it is not needed, Jarkko 10.4.2020
-  # data <-  data %>%
-  #   # What was donat_phleb = 'H' & volume_drawn > 100
-  #   filter(donat_phleb == 'K' & status == "-" |
-  #            donat_phleb == 'K' & status != "-" & volume_drawn > 100 |
-  #            donat_phleb == 'H' & volume_drawn > 100) %>%
-  #   select(don_id, donor, dateonly) %>%
-  #   group_by(donor) %>%
-  #   mutate(days_to_previous = c(NA,diff.Date(dateonly))) %>%
-  #   ungroup() %>%
-  #   mutate(days_to_previous = ifelse(is.na(days_to_previous), 0, days_to_previous)) %>%
-  #   select(don_id, days_to_previous) %>%
-  #   right_join(data, by = "don_id") %>%
-  #   
-  #   mutate(days_to_previous = round(days_to_previous)) %>%
-  #   droplevels()
-  # 
-  
-  # Replaced by faster version below, Jarkko 10.4.2020
-  # dtp_df <- data %>%
-  #   split(.$donor) %>%
-  #   map_df(~ get_difference_donor(.))
-  # 
-  # data <- data %>%
-  #   full_join(dtp_df, by = "don_id") %>%
-  #   mutate(days_to_previous_fb = round(days_to_previous_fb))
   
   # Compute days to previous full blood donation
   tic("Days to previous")
@@ -397,17 +302,11 @@ decorateData <- function(data) {
   data <- data %>%
     group_by(donor) %>%
     mutate(previous_Hb_def = lag(as.integer(as.character(Hb_deferral)), default = NA),
-           #Hb_first = ifelse(max(first_event), Hb[first_event == T], NA),  # Note, the 'then' part can still be NA
            Hb_first = Hb[first_event == T],
-           #Hb_earliest = Hb,
            previous_Hb = lag(Hb, default=0)
            ) %>%
     fill(previous_Hb) %>% # fills NA with previous non-NA
-    #fill(Hb_earliest, .direction="up") %>% # fills NA with next non-NA, results in earliest known Hb
-    #mutate(Hb_earliest = first(Hb_earliest)) %>%
-    mutate(consecutive_deferrals = consecutive_deferrals_f(Hb_deferral),
-           #Hb_first = ifelse(is.na(Hb_first), Hb_earliest, Hb_first)
-           ) %>%
+    mutate(consecutive_deferrals = consecutive_deferrals_f(Hb_deferral)) %>%
     ungroup()
   toc()
   
@@ -423,31 +322,10 @@ decorateData <- function(data) {
   hour.mean <- mean(data$hour)
   data <- mutate(data, hour = ifelse(hour == 0, mean(data$hour), hour))
   
-  ### Are these nescessary
-  # Was there a break of over 2 years
-  # More than two years since previous FB donation M2y <- "Yes"
-  # Less than two years since previous FB donation M2y <- "No"
-  # data <- data %>%
-  #   mutate(M2y = case_when(
-  #     days_to_previous < (2*365) ~ "No",
-  #     TRUE ~ "Yes")) %>%
-  # Was there a break of less than 6 months
-  # More than 6 months since previous donation L6m <- "No"
-  # Less than 6 months since previous donation L6m <- "Yes"
-  # mutate(L6m = case_when(
-  #   data$days_to_previous <= (6*30) ~ "Yes",
-  #   TRUE ~ "No")) %>%
-  # droplevels()
-  
-  # Add recent_donations and deferrals
-  # data <- data %>%
-  #   mutate(date = as.Date(dateonly))
+
   
   tic("Two year donations/deferrals")
   two_year_sliding_window_sum <- function(weight, date) {
-    #cat("\nLengths:", length(weight), length(date), "\n")
-    #print(weight)
-    #print(date)
     v <- as.numeric(slider::slide_index(weight, date, sum, .before = lubridate::dyears(2))) # years(2) had problems with leap days
     return(v)
   }
@@ -459,10 +337,6 @@ decorateData <- function(data) {
     group_by(donor) %>%
     mutate(recent_donations = two_year_sliding_window_sum(weight_donation, date)) %>%
     mutate(recent_deferrals = two_year_sliding_window_sum(Hb_deferral, date)) %>%
-    #nest() %>%
-    #mutate(recent_donations = future_map(data, get_nb_donations_2y_per_donor)) %>%
-    #mutate(recent_deferrals = future_map(data, get_nb_deferrals_2y_per_donor)) %>%
-    #unnest() %>%
     ungroup() %>%
     mutate(recent_donations = as.integer(recent_donations-weight_donation),   # exclude the current donation from previous two years
            recent_deferrals = as.integer(recent_deferrals-Hb_deferral))       # exclude the current deferral from previous two years
@@ -479,31 +353,22 @@ decorateData <- function(data) {
     filter(donat_phleb == 'K' | donat_phleb == '*') %>%
     filter(!(first_event==FALSE & (is.na(days_to_previous_fb) | is.na(Hb))))
   
-  #Fix the NA age groups
-  #data$age.group[data$age == 18] <- '[18,25]'
-  
-  ### Should I add how many times a person has donated so far?
-  #print(table(data$age.group))
-  #print(table(is.na(data$age.group)))
   
   # Select only the interesting variables, rename some of them and change the types
   
   tic("Final selection")
   data <- data %>%
-    #rename(first_event = FirstEvent) %>%
     mutate(don_id = as.factor(don_id), 
            donor = donor, 
            Hb_deferral = as.logical(Hb_deferral),
            previous_Hb_def = as.logical(previous_Hb_def),
            consecutive_deferrals = as.integer(consecutive_deferrals),
            nb_donat_progesa = as.integer(nb_donat_progesa),
-           nb_donat_outside = as.integer(nb_donat_outside)
-    ) %>%
-      select(don_id, donor, Hb, dateonly, previous_Hb_def, days_to_previous_fb, donat_phleb, gender, age,
-             Hb_deferral, nb_donat_progesa, nb_donat_outside,
-             first_event, previous_Hb, year, warm_season, Hb_first, hour, consecutive_deferrals, recent_donations,
-             recent_deferrals) %>%
-    #mutate(days_to_previous = days_to_previous_fb) %>%
+           nb_donat_outside = as.integer(nb_donat_outside)) %>%
+    select(don_id, donor, Hb, dateonly, previous_Hb_def, days_to_previous_fb, donat_phleb, gender, age,
+           Hb_deferral, nb_donat_progesa, nb_donat_outside,
+           first_event, previous_Hb, year, warm_season, Hb_first, hour, consecutive_deferrals, recent_donations,
+           recent_deferrals) %>%
     arrange(donor)
   toc()
   
