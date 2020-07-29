@@ -259,7 +259,7 @@ if (is.null(donor_variables)) {
 #vars2 <- c("Intercept","Age","days_to_previous_fb","Previous_Hb_deferral","Year","Warm_season","Hb_first","Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals","Hour")
 #vars2.icp <- c("Intercept","Age","days_to_previous_fb","Previous_Hb_deferral","Year","Warm_season","Previous_Hb","Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals","Hour", "Hb_first", "Age_first", "Year_first", "warm_season_first")
   
-error_rows <- c()  # This is used to construct the error table in the end
+error_rows <- list()  # This is used to construct the error table in the end
                    # It has columns Model, MAE, RMSE
 maes <- c()
 rmses <- c()
@@ -464,8 +464,8 @@ plot(sens.ci, type="shape", col="lightblue")
 # pROC_obj2 <- create_roc(1-test_labels, -scores)
 # plot(pROC_obj2)
 
-error_rows[[length(error_rows)+1]] <- c(Model="Male, linear mixed model", MAE=val1.m$mae, RMSE=val1.m$rmse, 
-                                        MAE2=val1.m$mae2, RMSE2=val1.m$rmse2, AUC=AUC, AUPR=AUPR)
+error_rows[[length(error_rows)+1]] <- list(Model="Male, linear mixed model", MAE=val1.m$mae, RMSE=val1.m$rmse, 
+                                           MAE2=val1.m$mae2, RMSE2=val1.m$rmse2, AUC=AUC, AUPR=AUPR)
 
 
 # Remove unnescessary values to save memory
@@ -531,7 +531,7 @@ AUC <- pROC_obj$auc
 sens.ci <- pROC::ci.se(pROC_obj)
 plot(sens.ci, type="shape", col="lightblue")
 
-error_rows[[length(error_rows)+1]] <- c(Model="Female, linear mixed model", MAE=val1.f$mae, RMSE=val1.f$rmse, 
+error_rows[[length(error_rows)+1]] <- list(Model="Female, linear mixed model", MAE=val1.f$mae, RMSE=val1.f$rmse, 
                                         MAE2=val1.f$mae2, RMSE2=val1.f$rmse2, AUC=AUC, AUPR=AUPR)
 
 if (knit == TRUE) {rm(stan.lists.female.nofix, val1.f, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
@@ -593,7 +593,7 @@ AUC <- pROC_obj$auc
 sens.ci <- pROC::ci.se(pROC_obj)
 plot(sens.ci, type="shape", col="lightblue")
 
-error_rows[[length(error_rows)+1]] <- c(Model="Male, dynamic linear mixed model", MAE=val1.m.icp$mae, RMSE=val1.m.icp$rmse, 
+error_rows[[length(error_rows)+1]] <- list(Model="Male, dynamic linear mixed model", MAE=val1.m.icp$mae, RMSE=val1.m.icp$rmse, 
                                         MAE2=val1.m.icp$mae2, RMSE2=val1.m.icp$rmse2, AUC=AUC, AUPR=AUPR)
 
 
@@ -654,7 +654,7 @@ AUC <- pROC_obj$auc
 sens.ci <- pROC::ci.se(pROC_obj)
 plot(sens.ci, type="shape", col="lightblue")
 
-error_rows[[length(error_rows)+1]] <- c(Model="Female, dynamic linear mixed model", MAE=val1.f.icp$mae, RMSE=val1.f.icp$rmse, 
+error_rows[[length(error_rows)+1]] <- list(Model="Female, dynamic linear mixed model", MAE=val1.f.icp$mae, RMSE=val1.f.icp$rmse, 
                                         MAE2=val1.f.icp$mae2, RMSE2=val1.f.icp$rmse2, AUC=AUC, AUPR=AUPR)
 
 
@@ -669,9 +669,16 @@ error_rows[[length(error_rows)+1]] <- c(Model="Female, dynamic linear mixed mode
 
 ```{r Errors}
 
-df <- do.call(rbind, error_rows)
-  
-errors <- as_tibble(df)
+#str(error_rows)
+#df <- do.call(rbind, error_rows)
+for (i in seq_along(error_rows)) {
+  if (i == 1) {
+    errors <- as_tibble(error_rows[[1]])
+  } else {
+    errors <- rbind(errors, error_rows[[1]])
+  }
+}  
+#errors <- as_tibble(df)
 errors <- errors %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
                             "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
 if (!is.null(params$errors_table_file)) {
