@@ -659,8 +659,8 @@ qr_decomposition <- function(df) {
 }
 
 plot_confusion_matrix <- function(table, title = NULL) {
-  observed <- factor(c("accepted", "accepted", "deferred", "deferred"))
-  predicted <- factor(c("accepted", "deferred", "accepted", "deferred"))
+  observed <- factor(c("Accepted", "Accepted", "Deferred", "Deferred"))
+  predicted <- factor(c("Accepted", "Deferred", "Accepted", "Deferred"))
   Y <- as.numeric(table)
   df <- data.frame(predicted, observed, Y)
 
@@ -670,7 +670,7 @@ plot_confusion_matrix <- function(table, title = NULL) {
               ) +
     scale_fill_gradient(low = "white", high = "blue") +
     theme_bw() + theme(legend.position = "none") +
-    labs(x = "observed", y = "predicted")
+    labs(x = "Observed", y = "Predicted")
   if (!is.null(title)) {
     conf.plot <- conf.plot + ggtitle(title)
   }

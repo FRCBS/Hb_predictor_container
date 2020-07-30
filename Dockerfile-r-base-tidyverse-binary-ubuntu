@@ -1,5 +1,5 @@
 # You can use, for example, the following command to build the intermediate image:
-# docker build -f Dockerfile-r-base-tidyverse -t toivoja/r-base-tidyverse .
+# docker build -f Dockerfile-r-base-tidyverse-binary-ubuntu -t toivoja/r-base-tidyverse .
 
 # Base image https://hub.docker.com/u/rocker/
 #FROM rocker/r-base:latest
@@ -47,7 +47,9 @@ r-cran-ggmcmc \
 r-cran-ggthemes \
 r-cran-proc \
 r-cran-slider \
-r-cran-sn
+r-cran-sn \
+r-cran-cowplot \
+r-cran-gridextra
 #r-cran-cutpointr
 
 RUN apt-get -y --no-install-recommends install time

@@ -6,7 +6,7 @@ params:
   #input_file: "~/preprocessed_data_6243aede7.rdata"
   hlen: NULL
   hlen_exactly: FALSE
-  sample_fraction: 1.0
+  sample_fraction: 0.005
   method: "both"
   gender: "both"
   id: NULL
@@ -70,6 +70,44 @@ where $a_i \sim N(0,\sigma_a^2)$ and $z$ are exogenous variables that could be a
 The goal of this document is to get a feeling which model seems to work best for our data. This can be used to decide which models should be run on the whole dataset. We can see does the slope variable in models 2 and 3 improve the predictions and if the ICP-fix is suitable for the analyses.
 
 -->
+
+```{r, echo=FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+```{r, echo = FALSE}
+
+# Variables that are in use
+
+descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
+                                "year", "warm_season", "consecutive_deferrals", "recent_donations",
+                                "recent_deferrals", "hour", 
+                                "previous_Hb", "Hb_first", "Hb_deferral"), 
+                   Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous Hb deferral", 
+                              "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
+                              "Recent deferrals", "Hour", 
+                              "Previous Hb", "First Hb", "Hb deferral"),
+                   Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
+                            "numeric (int)", "boolean", "numeric (int)", "numeric (int)", "numeric (int)", "numeric",
+                            "numeric", "numeric", "boolean"),
+                   Explanation = c("Donor identifier",
+                                   "Amount of Hemoglobin",
+                                   "Time (in days) between Hb measurement and previous full blood donation event",
+                                   "Age of donor",
+                                   "Indicates whether the donor was deferred from blood donation due to low hemoglobin at previous donation event",
+                                   "Year of donation",
+                                   "True if donation was given in April-September",
+                                   "Amount of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
+                                   "Amount of donations in the last two years",
+                                   "Amount of deferrals due to low hemoglobin in the last two years",
+                                   "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
+                                   "Hb value at previous measurement (ICP-model)",
+                                   "Hb value at first donation of this donor (Non ICP-model)",
+                                   "Deferred based on low hemoglogin")
+                   )
+
+
+```
 
 <!-- <h2> Initialization </h2> -->
 ```{r Setup, setup = TRUE, echo=FALSE, message=FALSE}
@@ -166,6 +204,7 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If instead of f
 if (!is.null(params$findonor_and_snip_file) && (length(params$findonor_and_snip_file) > 0)) {
   #donor_variables <- c("smoking", "bmi", "RNF43_mutant", "prs")
   donor_variables <- c("smoking", "height", "weight", "RNF43_mutant", "prs")
+  pretty_donor_variables <- c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score")
   findonor_and_snip_and_prs <- load_single(params$findonor_and_snip_file)
   data <- inner_join(data, findonor_and_snip_and_prs, by="donor")
 } else {
@@ -173,40 +212,47 @@ if (!is.null(params$findonor_and_snip_file) && (length(params$findonor_and_snip_
 }
 
 
-pars1 <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]")
-
-pars1.icp <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]", "beta[8]","beta[9]","beta[10]",
-               "ups[1]", "ups[2]", "ups[3]", "ups[4]")
+#pars1 <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]")
+pars1 <- sprintf("beta[%i]", 1:10)
+pars1.icp <- c(pars1,
+               sprintf("ups[%i]", 1:4))
 if (!is.null(donor_variables)) {
   #donor_pars <- c("phi[1]", "phi[2]", "phi[3]", "phi[4]")
-  donor_pars <- map_chr(seq_along(donor_variables), function(i) { return(sprintf("phi[%i]", i)) })
+  #donor_pars <- map_chr(seq_along(donor_variables), function(i) { return(sprintf("phi[%i]", i)) })
+  donor_pars <- sprintf("phi[%i]", 1:length(donor_variables))
   pars1 <- c(pars1, donor_pars)
   pars1.icp <- c(pars1.icp, donor_pars)
 }
 
-old.vars1 <- c("days_to_previous_fb","Age","Previous_Hb_deferral","Year","Warm_season",
-           "Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals","Hour", "Hb_first")
-old.vars1.icp <- c("days_to_previous_fb","Age","Previous_Hb_deferral","Year","Warm_season",
-               "Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals", "Hour","Previous_Hb", 
-               "Age_first", "Year_first", "warm_season_first", "hour_first")
+# old.vars1 <- c("days_to_previous_fb","Age","Previous_Hb_deferral","Year","Warm_season",
+#            "Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals","Hour", "Hb_first")
+#old.vars1 <- setdiff(descript$Variable, c("donor", "Hb", "previous_Hb", "Hb_deferral"))
+old.vars1 <- descript %>% filter(!Variable %in% c("donor", "Hb", "previous_Hb", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
+# old.vars1.icp <- c(c("days_to_previous_fb","Age","Previous_Hb_deferral","Year","Warm_season",
+#                      "Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals", "Hour","Previous_Hb") ,
+#                    c("Age_first", "Year_first", "warm_season_first", "hour_first"))
+#old.vars1.icp <- setdiff(descript$Variable, c("donor", "Hb", "Hb_first", "Hb_deferral"))
+old.vars1.icp <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
+old.vars1.icp <- c(old.vars1.icp,                    
+                   c("First age", "First year", "First warm season", "First hour"))
 if (!is.null(donor_variables)) {
-  vars1 <- c(old.vars1, donor_variables)
-  vars1.icp <- c(old.vars1.icp, donor_variables)
+  vars1 <- c(old.vars1, pretty_donor_variables)
+  vars1.icp <- c(old.vars1.icp, pretty_donor_variables)
 } else {
   vars1 <- old.vars1
   vars1.icp <- old.vars1.icp
 }
 
 # Make sure the columns in data are in the same order as in the vars and pars lists
+variables_in_order <- setdiff(descript$Variable, "donor")
 if (!is.null(donor_variables)) {
-  data <- data %>% select("Hb", "days_to_previous_fb","age","previous_Hb_def","year","warm_season",
-               "consecutive_deferrals","recent_donations","recent_deferrals", "hour","previous_Hb", 
-               "Hb_first", "smoking", "height", "weight", "RNF43_mutant", "prs", everything())
+  # data <- data %>% select("Hb", "days_to_previous_fb","age","previous_Hb_def","year","warm_season",
+  #              "consecutive_deferrals","recent_donations","recent_deferrals", "hour","previous_Hb", 
+  #              "Hb_first",
+  data <- data %>% select(all_of(variables_in_order),
+                          all_of(donor_variables), everything())
 } else {
-  data <- data %>% select("Hb", "days_to_previous_fb","age","previous_Hb_def","year","warm_season",
-               "consecutive_deferrals","recent_donations","recent_deferrals", "hour","previous_Hb", 
-               "Hb_first", everything())
-  
+  data <- data %>% select(all_of(variables_in_order), everything())
 }
 
 if (create_datasets_bool) {
@@ -248,52 +294,17 @@ if (is.null(donor_variables)) {
   stanf1.icp <- "stan/container_heckman_consts.stan"
 }
 
-#stanf2     <- "stan/mem_2_qr.stan"
-#stanf2.icp <- "stan/mem_2_qr_icp.stan"
 
-
-
-#pars2 <- c("alpha","beta", "beta_2[1]", "beta_2[2]", "beta_2[3]","beta_2[4]","beta_2[5]","beta_2[6]","beta_2[7]","beta_2[8]","beta_2[9]")
-#pars2.icp <- c("alpha","beta", "beta_2[1]", "beta_2[2]", "beta_2[3]","beta_2[4]","beta_2[5]","beta_2[6]","beta_2[7]","beta_2[8]","beta_2[9]","zeeta_1", "ups[1]","ups[2]","ups[3]")
-
-#vars2 <- c("Intercept","Age","days_to_previous_fb","Previous_Hb_deferral","Year","Warm_season","Hb_first","Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals","Hour")
-#vars2.icp <- c("Intercept","Age","days_to_previous_fb","Previous_Hb_deferral","Year","Warm_season","Previous_Hb","Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals","Hour", "Hb_first", "Age_first", "Year_first", "warm_season_first")
-  
 error_rows <- list()  # This is used to construct the error table in the end
                    # It has columns Model, MAE, RMSE
-maes <- c()
-rmses <- c()
+
 ```
 
 
 
 ## Data description
 
-```{r, echo = FALSE}
 
-# Variables that are in use
-
-descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_deferral", 
-                                "previous_Hb (ICP-model)", "year", "warm_season", "Hb_first (Non ICP-model)", "consecutive_deferrals", "recent_donations",
-                                "recent_deferrals", "Hour"), 
-                   Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
-                            "numeric", "numeric (int)", "boolean", "numeric", "numeric (int)", "numeric (int)", "numeric (int)", "numeric"),
-                   Explanation = c("Donor identifier",
-                                   "Amount of Hemoglobin",
-                                   "Time (in days) between Hb measurement and previous full blood donation event",
-                                   "Age of donor",
-                                   "Indicates whether the donor was deffered from blood donation due to low hemoglobin at previous donation event",
-                                   "Hb value at previous measurement",
-                                   "Year of donation",
-                                   "True if donation was given in April-September",
-                                   "Hb value at first donation of this donor",
-                                   "Amount of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
-                                   "Amount of donations in the last two years",
-                                   "Amount of deferrals due to low hemoglobin in the last two years",
-                                   "Time of day when donation was given as hours (e.g. 13:45 = 13.75)"))
-
-
-```
 
 ### Variables used in prediction
 
@@ -315,8 +326,9 @@ data.male <- data.male %>%
          !is.na(previous_Hb), first_event == FALSE,
          donat_phleb == 'K' | donat_phleb == '*' | donat_phleb == 'T',
          !is.na(previous_Hb_def)) %>%
-  select(Hb, donor, days_to_previous_fb, age, previous_Hb_def, year, warm_season, Hb_first, consecutive_deferrals,
-         recent_donations, recent_deferrals, previous_Hb, Hb_deferral, hour) %>%
+  select(all_of(descript$Variable)) %>%
+#  select(donor, Hb, days_to_previous_fb, age, previous_Hb_def, year, warm_season, consecutive_deferrals,
+#         recent_donations, recent_deferrals, hour, previous_Hb, Hb_first, Hb_deferral) %>%
   mutate(Hb_deferral = as.integer(Hb_deferral),
          warm_season = as.integer(warm_season),
          previous_Hb_def = as.integer(previous_Hb_def))
@@ -324,6 +336,7 @@ data.male <- data.male %>%
 pmale <- data.male %>%
           keep(is.numeric) %>%
           gather() %>%
+          mutate(key = factor(key, levels=descript$Variable))  %>% # Don't sort alphabetically
           ggplot(aes(value)) +
             facet_wrap(~ key, scales = "free") +
             geom_histogram(fill = "blue")
@@ -356,8 +369,9 @@ data.female <- data.female %>%
          !is.na(previous_Hb), first_event == FALSE,
          donat_phleb == 'K' | donat_phleb == '*' | donat_phleb == 'T',
          !is.na(previous_Hb_def)) %>%
-  select(Hb, donor, days_to_previous_fb, age, previous_Hb_def, year, warm_season, Hb_first, consecutive_deferrals,
-         recent_donations, recent_deferrals, previous_Hb, Hb_deferral, hour) %>%
+  select(all_of(descript$Variable)) %>%
+  #select(donor, Hb, days_to_previous_fb, age, previous_Hb_def, year, warm_season, consecutive_deferrals,
+  #       recent_donations, recent_deferrals, hour, previous_Hb, Hb_first, Hb_deferral) %>%
   mutate(Hb_deferral = as.integer(Hb_deferral),
          warm_season = as.integer(warm_season),
          previous_Hb_def = as.integer(previous_Hb_def))
@@ -365,6 +379,7 @@ data.female <- data.female %>%
 pfemale <- data.female %>%
           keep(is.numeric) %>%
           gather() %>%
+          mutate(key = factor(key, levels=descript$Variable))  %>% # Don't sort alphabetically
           ggplot(aes(value)) +
             facet_wrap(~ key, scales = "free") +
             geom_histogram(fill = "orange")
@@ -417,59 +432,32 @@ if (skip_train == TRUE) {
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_male_", fit_id, ".RData", sep = ''))
 }
-cat("2\n")
+
 rhats <- bayesplot::rhat(fit)
 max(rhats)
-cat("3\n")
 
 original_Hb <- denormalize_vector(stan.preprocessed.male.nofix$y_test, stan.preprocessed.male.nofix$par_means["Hb"], stan.preprocessed.male.nofix$par_sds["Hb"]) 
-
-test_labels <- ifelse(original_Hb >= params$Hb_cutoff_male, 0, 1)
-val1.m <- validate_fit(fit, 
-                       original_Hb, test_labels, 
-                       pars1, vars1, male = TRUE, metric = "mean", cat.plot = FALSE, 
-                       Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
-
-cat("4\n")
-val1.m$posterior.plot
-#val1.m$cat.plot
-#val1.m$loo.plot
-val1.m$conf.matrix
-val1.m$comp_plot
-#val1.m$sd_plot
-
-cm <- plot_confusion_matrix(val1.m$conf.matrix$table, "Confusion matrix")
-cm
-
-# cm2 <- plot_confusion_matrix(val1.m$optimal.conf.matrix$table, "Optimal confusion matrix")
-# cm2
-
 scores <- get_scores(fit, params$Hb_cutoff_male, stan.preprocessed.male.nofix$par_means[["Hb"]], stan.preprocessed.male.nofix$par_sds[["Hb"]])
+test_labels <- ifelse(original_Hb < params$Hb_cutoff_male, 1, 0)
 
-pr <- create_precision_recall(test_labels, scores)
-AUPR <- pr$auc.davis.goadrich
-plot(pr, main=sprintf("Precision-Recall (AUC=%.3f)", AUPR), auc.main=FALSE,
-     color=FALSE, rand.plot=TRUE)
+val1.m <- validate_fit(fit, 
+                       original_Hb, test_labels, params$Hb_cutoff_male, scores=scores,
+                       pars1, vars1, metric = "mean", cat.plot = FALSE)
+#val1.m
 
-# pr2 <- create_precision_recall(1-test_labels, -scores)
-# AUPR2 <- pr2$auc.davis.goadrich
-# plot(pr2, main=sprintf("Precision-Recall rev (AUC=%.3f)", AUPR2), auc.main=FALSE,
-#      color=FALSE, rand.plot=TRUE)
+val1.m$posterior.plot
+val1.m$scatter_plot
+val1.m$conf.matrix.plot
+val1.m$roc_plot
+val1.m$pr_plot
 
-pROC_obj <- create_roc(test_labels, scores)
-AUC <- pROC_obj$auc
-sens.ci <- pROC::ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
-
-# pROC_obj2 <- create_roc(1-test_labels, -scores)
-# plot(pROC_obj2)
 
 error_rows[[length(error_rows)+1]] <- list(Model="Male, linear mixed model", MAE=val1.m$mae, RMSE=val1.m$rmse, 
-                                           MAE2=val1.m$mae2, RMSE2=val1.m$rmse2, AUC=AUC, AUPR=AUPR)
+                                           MAE2=val1.m$mae2, RMSE2=val1.m$rmse2, AUC=val1.m$roc_auc, AUPR=val1.m$pr_auc)
 
 
 # Remove unnescessary values to save memory
-if (knit == TRUE) {rm(stan.lists.male.nofix, val1.m, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
+if (knit == TRUE) {rm(stan.lists.male.nofix, val1.m, fit); invisible(gc(reset = TRUE))}
 
 ```
 
@@ -499,40 +487,21 @@ max(rhats)
 
 
 original_Hb <- denormalize_vector(stan.preprocessed.female.nofix$y_test, stan.preprocessed.female.nofix$par_means["Hb"], stan.preprocessed.female.nofix$par_sds["Hb"]) 
+scores <- get_scores(fit, params$Hb_cutoff_female, stan.preprocessed.female.nofix$par_means[["Hb"]], stan.preprocessed.female.nofix$par_sds[["Hb"]])
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_female, 0, 1)
+
 val1.f <- validate_fit(fit,  
-                       original_Hb, test_labels, 
-                       pars1, vars1, male = FALSE, metric = "mean", cat.plot = FALSE, 
-                       Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
+                       original_Hb, test_labels, params$Hb_cutoff_female, scores,
+                       pars1, vars1, metric = "mean", cat.plot = FALSE)
 
 val1.f$posterior.plot
-
-#val1.f$cat.plot
-#val1.f$loo.plot
-val1.f$conf.matrix
-
-val1.f$comp_plot
-#val1.f$sd_plot
-
-# print(val1.f$conf.matrix$table)
-
-cm <- plot_confusion_matrix(val1.f$conf.matrix$table, "Confusion matrix")
-cm
-
-scores <- get_scores(fit, params$Hb_cutoff_female, stan.preprocessed.female.nofix$par_means[["Hb"]], stan.preprocessed.female.nofix$par_sds[["Hb"]])
-
-pr <- create_precision_recall(test_labels, scores)
-AUPR <- pr$auc.davis.goadrich
-plot(pr, main=sprintf("Precision-Recall (AUC=%.3f)", AUPR), auc.main=FALSE,
-     color=FALSE, rand.plot=TRUE)
-
-pROC_obj <- create_roc(test_labels, scores)
-AUC <- pROC_obj$auc
-sens.ci <- pROC::ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
+val1.f$scatter_plot
+val1.f$conf.matrix.plot
+val1.f$roc_plot
+val1.f$pr_plot
 
 error_rows[[length(error_rows)+1]] <- list(Model="Female, linear mixed model", MAE=val1.f$mae, RMSE=val1.f$rmse, 
-                                        MAE2=val1.f$mae2, RMSE2=val1.f$rmse2, AUC=AUC, AUPR=AUPR)
+                                        MAE2=val1.f$mae2, RMSE2=val1.f$rmse2, AUC=val1.f$roc_auc, AUPR=val1.f$pr_auc)
 
 if (knit == TRUE) {rm(stan.lists.female.nofix, val1.f, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
 
@@ -565,36 +534,21 @@ max(rhats)
 
 
 original_Hb <- denormalize_vector(stan.preprocessed.male.icpfix$y_test, stan.preprocessed.male.icpfix$par_means["Hb"], stan.preprocessed.male.icpfix$par_sds["Hb"]) 
+scores <- get_scores(fit, params$Hb_cutoff_male, stan.preprocessed.male.icpfix$par_means[["Hb"]], stan.preprocessed.male.icpfix$par_sds[["Hb"]])
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_male, 0, 1)
+
 val1.m.icp <- validate_fit(fit, 
-                           original_Hb, test_labels, 
-                           pars1.icp, vars1.icp, male = TRUE, metric = "mean", cat.plot = FALSE,
-                           Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
+                           original_Hb, test_labels, params$Hb_cutoff_male, scores,
+                           pars1.icp, vars1.icp, metric = "mean", cat.plot = FALSE)
 
 val1.m.icp$posterior.plot
-#val1.m.icp$cat.plot
-#val1.m.icp$loo.plot
-val1.m.icp$conf.matrix
-val1.m.icp$comp_plot
-#val1.m.icp$sd_plot
-
-cm <- plot_confusion_matrix(val1.m.icp$conf.matrix$table, "Confusion matrix")
-cm
-
-scores <- get_scores(fit, params$Hb_cutoff_male, stan.preprocessed.male.icpfix$par_means[["Hb"]], stan.preprocessed.male.icpfix$par_sds[["Hb"]])
-
-pr <- create_precision_recall(test_labels, scores)
-AUPR <- pr$auc.davis.goadrich
-plot(pr, main=sprintf("Precision-Recall (AUC=%.3f)", AUPR), auc.main=FALSE,
-     color=FALSE, rand.plot=TRUE)
-
-pROC_obj <- create_roc(test_labels, scores)
-AUC <- pROC_obj$auc
-sens.ci <- pROC::ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
+val1.m.icp$scatter_plot
+val1.m.icp$conf.matrix.plot
+val1.m.icp$roc_plot
+val1.m.icp$pr_plot
 
 error_rows[[length(error_rows)+1]] <- list(Model="Male, dynamic linear mixed model", MAE=val1.m.icp$mae, RMSE=val1.m.icp$rmse, 
-                                        MAE2=val1.m.icp$mae2, RMSE2=val1.m.icp$rmse2, AUC=AUC, AUPR=AUPR)
+                                        MAE2=val1.m.icp$mae2, RMSE2=val1.m.icp$rmse2, AUC=val1.m.icp$roc_auc, AUPR=val1.m.icp$pr_auc)
 
 
 if (knit == TRUE) {rm(stan.lists.male.icpfix, val1.m.icp, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
@@ -626,36 +580,21 @@ max(rhats)
 
 
 original_Hb <- denormalize_vector(stan.preprocessed.female.icpfix$y_test, stan.preprocessed.female.icpfix$par_means["Hb"], stan.preprocessed.female.icpfix$par_sds["Hb"]) 
+scores <- get_scores(fit, params$Hb_cutoff_female, stan.preprocessed.female.icpfix$par_means[["Hb"]], stan.preprocessed.female.icpfix$par_sds[["Hb"]])
 test_labels <- ifelse(original_Hb >= params$Hb_cutoff_female, 0, 1)
+
 val1.f.icp <- validate_fit(fit, 
-                           original_Hb, test_labels, 
-                           pars1.icp, vars1.icp, male = FALSE, metric = "mean", cat.plot = FALSE,
-                           Hb_cutoff_male=params$Hb_cutoff_male, Hb_cutoff_female=params$Hb_cutoff_female)
+                           original_Hb, test_labels, params$Hb_cutoff_female, scores,
+                           pars1.icp, vars1.icp, metric = "mean", cat.plot = FALSE)
 
 val1.f.icp$posterior.plot
-#val1.f.icp$cat.plot
-#val1.f.icp$loo.plot
-val1.f.icp$conf.matrix
-val1.f.icp$comp_plot
-#val1.f.icp$sd_plot
-
-cm <- plot_confusion_matrix(val1.f.icp$conf.matrix$table, "Confusion matrix")
-cm
-
-scores <- get_scores(fit, params$Hb_cutoff_female, stan.preprocessed.female.icpfix$par_means[["Hb"]], stan.preprocessed.female.icpfix$par_sds[["Hb"]])
-
-pr <- create_precision_recall(test_labels, scores)
-AUPR <- pr$auc.davis.goadrich
-plot(pr, main=sprintf("Precision-Recall (AUC=%.3f)", AUPR), auc.main=FALSE,
-     color=FALSE, rand.plot=TRUE)
-
-pROC_obj <- create_roc(test_labels, scores)
-AUC <- pROC_obj$auc
-sens.ci <- pROC::ci.se(pROC_obj)
-plot(sens.ci, type="shape", col="lightblue")
+val1.f.icp$scatter_plot
+val1.f.icp$conf.matrix.plot
+val1.f.icp$roc_plot
+val1.f.icp$pr_plot
 
 error_rows[[length(error_rows)+1]] <- list(Model="Female, dynamic linear mixed model", MAE=val1.f.icp$mae, RMSE=val1.f.icp$rmse, 
-                                        MAE2=val1.f.icp$mae2, RMSE2=val1.f.icp$rmse2, AUC=AUC, AUPR=AUPR)
+                                        MAE2=val1.f.icp$mae2, RMSE2=val1.f.icp$rmse2, AUC=val1.f.icp$roc_auc, AUPR=val1.f.icp$pr_auc)
 
 
 #if (knit == TRUE) {rm(smallf.sl.icp.1, val1.f.icp, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
