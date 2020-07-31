@@ -1,5 +1,5 @@
 # Create the application image using the following command:
-# docker build -f Dockerfile-plumber -t toivoja/hb-predictor-plumber .
+# docker build -f Dockerfile -t toivoja/hb-predictor .
 
 FROM toivoja/r-base-tidyverse:latest
 

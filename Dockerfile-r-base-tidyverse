@@ -28,7 +28,7 @@ texlive-fonts-recommended \
 texlive-latex-extra \
 lmodern
 
-RUN apt-get -y --no-install-recommends install \
+RUN apt-get update -qq && apt-get -y --no-install-recommends install \
 r-cran-bh \
 r-cran-rstan \
 r-cran-tidyverse \
@@ -39,7 +39,9 @@ r-cran-plumber \
 r-cran-brms \
 r-cran-e1071 \
 r-cran-rocr \
-r-cran-furrr \
+r-cran-furrr
+
+RUN apt-get update -qq && apt-get -y --no-install-recommends install \
 r-cran-tictoc \
 r-cran-caret \
 r-cran-entropy \
@@ -49,7 +51,8 @@ r-cran-proc \
 r-cran-slider \
 r-cran-sn \
 r-cran-cowplot \
-r-cran-gridextra
+r-cran-gridextra \
+r-cran-bayestestr
 #r-cran-cutpointr
 
 RUN apt-get -y --no-install-recommends install time
