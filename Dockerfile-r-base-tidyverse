@@ -1,8 +1,10 @@
 # You can use, for example, the following command to build the intermediate image:
-# docker build -f Dockerfile-r-base-tidyverse -t toivoja/r-base-tidyverse .
+# docker build -f Dockerfile-r-base-tidyverse-binary-ubuntu -t toivoja/r-base-tidyverse .
 
 # Base image https://hub.docker.com/u/rocker/
-FROM rocker/r-base:latest
+#FROM rocker/r-base:latest
+#FROM rocker/r-base:3.6.3
+FROM rocker/r-ubuntu:18.04
 
 ## install debian packages needed for tidyverse
 #RUN add-apt-repository -y "ppa:marutter/rrutter3.5"
@@ -26,34 +28,36 @@ texlive-fonts-recommended \
 texlive-latex-extra \
 lmodern
 
-# apt-get -y --no-install-recommends install \
-# r-cran-bh \
-# r-cran-rstan \
-# r-cran-tidyverse \
-# r-cran-magrittr \
-# r-cran-knitr \
-# r-cran-rook \
-# r-cran-plumber \
-# r-cran-brms \
-# r-cran-e1071 \
-# r-cran-rocr \
-# r-cran-furrr \
-# r-cran-tictoc \
-# r-cran-caret \
-# r-cran-entropy \
-# r-cran-ggmcmc \
-# r-cran-ggthemes \
-# r-cran-proc \
-# r-cran-slider \
-# r-cran-sn \
-# r-cran-cutpointr
+RUN apt-get -y --no-install-recommends install \
+r-cran-bh \
+r-cran-rstan \
+r-cran-tidyverse \
+r-cran-magrittr \
+r-cran-knitr \
+r-cran-rook \
+r-cran-plumber \
+r-cran-brms \
+r-cran-e1071 \
+r-cran-rocr \
+r-cran-furrr \
+r-cran-tictoc \
+r-cran-caret \
+r-cran-entropy \
+r-cran-ggmcmc \
+r-cran-ggthemes \
+r-cran-proc \
+r-cran-slider \
+r-cran-sn \
+r-cran-cowplot \
+r-cran-gridextra
+#r-cran-cutpointr
 
-
+RUN apt-get -y --no-install-recommends install time
 
 ## copy files
 COPY src/docker-create-r-toolchain.R /docker-create-r-toolchain.R
-COPY src/docker-install-packages.R /docker-install-packages.R
+COPY src/docker-install-packages2.R /docker-install-packages2.R
 
 ## install R-packages
 RUN Rscript /docker-create-r-toolchain.R   # this is for rstan
-RUN Rscript /docker-install-packages.R
+RUN Rscript /docker-install-packages2.R

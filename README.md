@@ -1,7 +1,7 @@
 # Hb_predictor_container
 
 Hemoglobin predictor wrapped in a Docker container. Download
-the docker image with command `docker pull toivoja/hb-predictor-plumber`.
+the docker image with command `docker pull toivoja/hb-predictor`.
 
 ## Running the container
 
@@ -9,7 +9,7 @@ the docker image with command `docker pull toivoja/hb-predictor-plumber`.
 
 You can run the final image using
 
-```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor-plumber```  
+```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor```  
 
 Then go to the following address in the browser:
 
@@ -19,7 +19,7 @@ Kill the server (and the server) by pressing control-c.
 
 ### Running from command line
 
-docker container run -i -v /whicheverfolderinputisin:/input toivoja/hb-predictor-plumber src/hb-predictor.sh date=2020-07-15 gender=female sample_fraction=0.002 method=icp-fix hlen=1 input_file=/input/inputfilename.rdata
+docker container run -i -v /whicheverfolderinputisin:/input toivoja/hb-predictor src/hb-predictor.sh date=2020-07-15 gender=female sample_fraction=0.002 method=icp-fix hlen=1 input_file=/input/inputfilename.rdata
 
 Options:
 
@@ -49,7 +49,7 @@ This second phase takes about 40 minutes on my machine.
 The third docker image adds our web application built with the Plumber library.
 Use command
 
-```docker build -f Dockerfile-plumber -t toivoja/hb-predictor-plumber .```
+```docker build -f Dockerfile -t toivoja/hb-predictor .```
 
 to build it. This phase is very quick (currently 3 minutes 14 seconds), which makes it easy to test changes to the script.
 You can list the docker images on this machine using the command
@@ -62,11 +62,11 @@ The docker images are normally stored somewhere on the file system
 or on docker hub in an unspecified form.
 You can however export a docker image into a single tar file with
 
-```docker save toivoja/hb-predictor-plumber > hb-predictor-plumber.tar```
+```docker save toivoja/hb-predictor > hb-predictor.tar```
    
 Importing an image from a tar file is done by
 
-```docker load -i hb-predictor-plumber.tar```
+```docker load -i hb-predictor.tar```
 
 ## References
 
