@@ -11,7 +11,7 @@ RUN mkdir -p /src
 RUN mkdir -p /src/stan
 RUN mkdir -p /output
 RUN mkdir -p /static
-RUN mkdir -p /data/rdata /data/rdump /data/stan_fits
+RUN mkdir -p /data/rdata /data/rdump /data/stan_fits /data/raw_results
 
 ## copy files
 COPY /src/stan/container.stan /src/stan/container.stan

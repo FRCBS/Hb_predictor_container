@@ -154,6 +154,7 @@ knit = TRUE
 datadir = "../data/rdata/"
 dumpdir = "../data/rdump/"
 stanfitpath = "../data/stan_fits/"
+rawresultdir = "../data/raw_results/"
 
 if (is.null(params$id)) {
   id <- paste(params$date, params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
@@ -455,6 +456,7 @@ val1.m$pr_plot
 error_rows[[length(error_rows)+1]] <- list(Model="Male, linear mixed model", MAE=val1.m$mae, RMSE=val1.m$rmse, 
                                            MAE2=val1.m$mae2, RMSE2=val1.m$rmse2, AUC=val1.m$roc_auc, AUPR=val1.m$pr_auc)
 
+save(val1.m, file = paste(rawresultdir, "raw_result_male_", fit_id, ".rdata", sep = ''))
 
 # Remove unnescessary values to save memory
 if (knit == TRUE) {rm(stan.lists.male.nofix, val1.m, fit); invisible(gc(reset = TRUE))}
@@ -503,6 +505,8 @@ val1.f$pr_plot
 error_rows[[length(error_rows)+1]] <- list(Model="Female, linear mixed model", MAE=val1.f$mae, RMSE=val1.f$rmse, 
                                         MAE2=val1.f$mae2, RMSE2=val1.f$rmse2, AUC=val1.f$roc_auc, AUPR=val1.f$pr_auc)
 
+save(val1.f, file = paste(rawresultdir, "raw_result_female_", fit_id, ".rdata", sep = ''))
+
 if (knit == TRUE) {rm(stan.lists.female.nofix, val1.f, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
 
 ```
@@ -550,6 +554,7 @@ val1.m.icp$pr_plot
 error_rows[[length(error_rows)+1]] <- list(Model="Male, dynamic linear mixed model", MAE=val1.m.icp$mae, RMSE=val1.m.icp$rmse, 
                                         MAE2=val1.m.icp$mae2, RMSE2=val1.m.icp$rmse2, AUC=val1.m.icp$roc_auc, AUPR=val1.m.icp$pr_auc)
 
+save(val1.m.icp, file = paste(rawresultdir, "raw_result_male_icp_", fit_id, ".rdata", sep = ''))
 
 if (knit == TRUE) {rm(stan.lists.male.icpfix, val1.m.icp, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
 
@@ -596,6 +601,7 @@ val1.f.icp$pr_plot
 error_rows[[length(error_rows)+1]] <- list(Model="Female, dynamic linear mixed model", MAE=val1.f.icp$mae, RMSE=val1.f.icp$rmse, 
                                         MAE2=val1.f.icp$mae2, RMSE2=val1.f.icp$rmse2, AUC=val1.f.icp$roc_auc, AUPR=val1.f.icp$pr_auc)
 
+save(val1.f.icp, file = paste(rawresultdir, "raw_result_female_icp", fit_id, ".rdata", sep = ''))
 
 #if (knit == TRUE) {rm(smallf.sl.icp.1, val1.f.icp, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
 
@@ -620,8 +626,10 @@ for (i in seq_along(error_rows)) {
 #errors <- as_tibble(df)
 errors <- errors %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
                             "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
+
+write_csv(error, paste(rawresultdir, "errors_", fit_id, ".csv", sep = ''))
 if (!is.null(params$errors_table_file)) {
-  write_csv(errors, params$errors_table_file)
+  write_csv(errors, params$errors_table_file)   # Pass the table to the web app as well
 }
 
 ```

@@ -3,8 +3,33 @@
 Hemoglobin predictor wrapped in a Docker container. Download
 the docker image with command `docker pull toivoja/hb-predictor-plumber`.
 
+## Running the container
 
-# Creating the docker image from source
+### Running from browser
+
+You can run the final image using
+
+```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor-plumber```  
+
+Then go to the following address in the browser:
+
+http://localhost:8080/hb-predictor
+
+Kill the server (and the server) by pressing control-c.
+
+### Running from command line
+
+docker container run -i -v /whicheverfolderinputisin:/input toivoja/hb-predictor-plumber src/hb-predictor.sh date=2020-07-15 gender=female sample_fraction=0.002 method=icp-fix hlen=1 input_file=/input/inputfilename.rdata
+
+Options:
+
+- gender is either 'male', 'female', or 'both'
+- method is either 'no-fix', 'icp-fix', or 'both'
+- The input file can be specified with input_file option
+
+The results will be stored to file `results.tar.gz`.
+
+## Creating the docker image from source
 
 You can also build the docker image from source code yourself.
 One can compose a new docker image from several docker images building on top
@@ -30,31 +55,8 @@ to build it. This phase is very quick (currently 3 minutes 14 seconds), which ma
 You can list the docker images on this machine using the command
 docker images
 
-# Running the container
 
-## Running from browser
-
-You can run the final image using
-
-```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor-plumber```  
-
-Then go to the following address in the browser:
-
-http://localhost:8080/hb-predictor
-
-Kill the server (and the server) by pressing control-c.
-
-## Running from command line
-
-docker container run -i -v /whicheverfolderinputisin:/input toivoja/hb-predictor-plumber src/hb-predictor.sh date=2020-07-15 gender=female sample_fraction=0.002 method=icp-fix hlen=1 input_file=/input/inputfilename.rdata
-
-Options:
-
-- gender is either 'male', 'female', or 'both'
-- method is either 'no-fix', 'icp-fix', or 'both'
-- The input file can be specified with input_file option
-
-The results will be stored to file `results.tar.gz`.
+## Exporting or importing a container to or from a file
 
 The docker images are normally stored somewhere on the file system
 or on docker hub in an unspecified form.
@@ -66,7 +68,7 @@ Importing an image from a tar file is done by
 
 ```docker load -i hb-predictor-plumber.tar```
 
-# References
+## References
 
 The following page contains examples on building R script based docker
 applications:

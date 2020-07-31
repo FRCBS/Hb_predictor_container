@@ -195,15 +195,25 @@ create_forest_plot <- function(posterior, variables) {
 # Returns the combined plot object.
 # If filename if given, then the combined plot is saved to that file.
 # BUG: The plot may look good when saved to a file, but possibly not when the plot object is shown on screen.
-create_performance_plots <- function(df, filename=NULL) {
+create_performance_plots <- function(df, 
+                                     filename=NULL,
+                                     width = 180  # width of the combined figure in millimetres
+                                     ) {
   roc <- create_roc_new(df$deferral, df$scores)
   pr <- create_precision_recall_new(df$deferral, df$scores)
   cm <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
-  #performances <- gridExtra::grid.arrange(cm, roc$roc_plot, pr$pr_plot, nrow = 1, respect=TRUE)   # Combine the plots
-  performances <- cowplot::plot_grid(cm, roc$roc_plot, pr$pr_plot, labels = c('A', 'B', 'C'), label_size = 12, nrow=1)
-  if (!is.null(filename)) {
-    cowplot::save_plot(filename, performances, ncol = 3, base_asp = 1.0)
-    #ggsave(filename=filename, performances, width = 180, units="mm", dpi=600, scale=1.5)
+  use_cowplot <- FALSE
+  
+  if (use_cowplot) {
+    performances <- cowplot::plot_grid(cm, roc$roc_plot, pr$pr_plot, labels = c('A', 'B', 'C'), label_size = 12, nrow=1, scale=0.7)
+    if (!is.null(filename)) {
+      cowplot::save_plot(filename, performances, ncol = 1, base_asp = 3.0, base_width = width / 25.4, base_height = NULL)
+    }
+  } else {
+    performances <- gridExtra::grid.arrange(cm, roc$roc_plot, pr$pr_plot, nrow = 1, respect=TRUE)   # Combine the plots
+    if (!is.null(filename)) {
+      ggsave(filename=filename, performances, width = width, units="mm", dpi=600, scale=1.0)
+    }
   }
   performances
 }
@@ -257,9 +267,10 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
   
   # Observed vs standard deviation scatter plot
   #sd_df <- tibble(sds = sds, observed = original_Hb, deferral = as.factor(orig_labels))
-  sd_plot <- ggplot(df, aes(x = observed, y=sds, color = deferral)) + geom_point() +
-    labs(x = "Observed", y = "SDs", colour = "Status") +
-    scale_colour_discrete(labels=c("Accepted", "Deferred"))
+  sd_plot <- ggplot(df, aes(x = observed, y=sds, color = factor(as.integer(deferral)))) + 
+        geom_point() +
+        labs(x = "Observed", y = "SDs", colour = "Status") +
+        scale_colour_discrete(labels=c("Accepted", "Deferred"))
 
   roc <- create_roc_new(df$deferral, df$scores)
   pr <- create_precision_recall_new(df$deferral, df$scores)
@@ -298,6 +309,8 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
               optimal.conf.matrix.plot = optimal.conf.matrix.plot,
               pred_labels = pred_labels,
               Hb_predictions = Hb_predictions,
+              stan_variable_names = params,
+              pretty_variable_names = pnames,
               mae = mae,
               rmse = rmse,
               mae2 = mae2,
