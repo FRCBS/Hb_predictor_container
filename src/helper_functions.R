@@ -156,6 +156,9 @@ split_set <- function(df, train_frac) {
 
 # Subtract one from the hlen values due to discarding first event at this point.
 # Parameter 'exactly' specifies that time series are required to be exactly of length 'hlen'.
+# If hlen < 0, then include donors who have donated at most |hlen| times.
+# Otherwise, include donors who have donated at least hlen times.
+# If exactly==TRUE, then include donors that have donated exactly hlen times.
 filter_based_on_number_of_donations <- function(df, hlen, exactly=FALSE) {
   if (!is.null(hlen)) {
     leq <- FALSE
@@ -163,7 +166,7 @@ filter_based_on_number_of_donations <- function(df, hlen, exactly=FALSE) {
       leq <- TRUE
       hlen <- abs(hlen)
     }
-    hlen <- hlen - 1
+    #hlen <- hlen - 1  # This is now done in stan_preprocess_new function only, before calling this function
     if (exactly) {
       df <- df %>%
         group_by(donor) %>%
@@ -177,7 +180,7 @@ filter_based_on_number_of_donations <- function(df, hlen, exactly=FALSE) {
     } else {
       df <- df %>%
         group_by(donor) %>%
-        filter(n() > hlen) %>%
+        filter(n() >= hlen) %>%
         ungroup()
     }
   }
@@ -1003,6 +1006,7 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
       ungroup()
   }
   message(sprintf("Number of donors is %i", ndonor(df)))
+  hlen <- ifelse(hlen > 0, hlen - 1, hlen + 1)      # Because we dropped the first event
   df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
   message(sprintf("Number of donors is %i", ndonor(df)))
   # Change donor into integer
@@ -1348,14 +1352,14 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
   #  droplevels()
   
   if (test_data) {
-  test_set <- df %>% 
-    group_by(donor) %>%
-    slice(n()) %>% 
-    ungroup()
-  train_set <- df %>%
-    group_by(donor) %>%
-    slice(-n()) %>%
-    ungroup()
+    test_set <- df %>% 
+      group_by(donor) %>%
+      slice(n()) %>% 
+      ungroup()
+    train_set <- df %>%
+      group_by(donor) %>%
+      slice(-n()) %>%
+      ungroup()
   } else {
     train_set <- df
   }
@@ -1378,15 +1382,15 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
     select(-donor)
   
   if (test_data) {
-  test_donors <- test_set %>% 
-    pull(donor)
-  test_set <- test_set %>% 
-    select(-donor)
-  
-  y_test <- test_set %>% 
-    pull(Hb_index)
-  x_test <- test_set %>% 
-    select(-Hb_index)
+    test_donors <- test_set %>% 
+      pull(donor)
+    test_set <- test_set %>% 
+      select(-donor)
+    
+    y_test <- test_set %>% 
+      pull(Hb_index)
+    x_test <- test_set %>% 
+      select(-Hb_index)
   }
   y_train <- train_set %>% 
     pull(Hb_index)
