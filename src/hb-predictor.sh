@@ -54,7 +54,7 @@ if [[ $ret == 0 ]] ; then
     prefix=$(readlink -f output)   # prefix=/home/toivoja/FRCBS/interval_prediction/output/
     # Remove the prefix from image links
     sed -i 's!'$prefix'/!!g' output/$outputbase.md
-    tar -czvf results.tar.gz data/rdata/*$id.RData data/stan_fits/*$id.RData output/results-$id*
+    tar -czvf results.tar.gz data/rdata/*$id.RData data/stan_fits/*$id.RData output/results-$id* data/raw_results/error_$id.csv data/raw_results/raw_result_*_$id.rdata
     echo Computation finished
 else
     echo Error >&2

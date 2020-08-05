@@ -601,7 +601,7 @@ val1.f.icp$pr_plot
 error_rows[[length(error_rows)+1]] <- list(Model="Female, dynamic linear mixed model", MAE=val1.f.icp$mae, RMSE=val1.f.icp$rmse, 
                                         MAE2=val1.f.icp$mae2, RMSE2=val1.f.icp$rmse2, AUC=val1.f.icp$roc_auc, AUPR=val1.f.icp$pr_auc)
 
-save(val1.f.icp, file = paste(rawresultdir, "raw_result_female_icp", fit_id, ".rdata", sep = ''))
+save(val1.f.icp, file = paste(rawresultdir, "raw_result_female_icp_", fit_id, ".rdata", sep = ''))
 
 #if (knit == TRUE) {rm(smallf.sl.icp.1, val1.f.icp, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
 
@@ -620,14 +620,14 @@ for (i in seq_along(error_rows)) {
   if (i == 1) {
     errors <- as_tibble(error_rows[[1]])
   } else {
-    errors <- rbind(errors, error_rows[[1]])
+    errors <- rbind(errors, error_rows[[i]])
   }
 }  
 #errors <- as_tibble(df)
 errors <- errors %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
                             "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
 
-write_csv(error, paste(rawresultdir, "errors_", fit_id, ".csv", sep = ''))
+write_csv(errors, paste(rawresultdir, "errors_", fit_id, ".csv", sep = ''))
 if (!is.null(params$errors_table_file)) {
   write_csv(errors, params$errors_table_file)   # Pass the table to the web app as well
 }

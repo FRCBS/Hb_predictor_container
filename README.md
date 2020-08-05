@@ -19,7 +19,7 @@ Kill the server (and the server) by pressing control-c.
 
 ### Running from command line
 
-docker container run -i -v /whicheverfolderinputisin:/input toivoja/hb-predictor src/hb-predictor.sh date=2020-07-15 gender=female sample_fraction=0.002 method=icp-fix hlen=1 input_file=/input/inputfilename.rdata
+docker container run -i --rm -v /whicheverfolderinputisin:/input toivoja/hb-predictor src/hb-predictor.sh date=2020-07-15 gender=female sample_fraction=0.002 method=icp-fix hlen=1 input_file=/input/inputfilename.rdata
 
 Options:
 
