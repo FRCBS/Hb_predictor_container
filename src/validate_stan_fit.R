@@ -5,6 +5,9 @@ library(ModelMetrics)
 library(bayesplot)
 library(ggmcmc)
 library(cutpointr)
+library(pROC)
+
+source("helper_functions.R")
 
 # Convert Hb from g / L to mmol / L
 to_mmol_per_litre <- function(Hb) {
@@ -189,9 +192,9 @@ create_forest_plot <- function(posterior, variables) {
 
 # Creates Confusion matrix, ROC, and Precision-recall plots, and puts them side-by-side.
 # Input should be a tibble (or data.frame) that contains the following columns:
-# - deferral, boolean or integer (FALSE==0==accepted, TRUE==1==deferred)
+# - deferral, boolean or integer (FALSE==0==accepted, TRUE==1==deferred), true labels
 # - predicted_labels, same definition as for above
-# - score, double, higher score means that deferral is more likely
+# - scores, double, higher score means that deferral is more likely
 # Returns the combined plot object.
 # If filename if given, then the combined plot is saved to that file.
 # BUG: The plot may look good when saved to a file, but possibly not when the plot object is shown on screen.
@@ -221,14 +224,15 @@ create_performance_plots <- function(df,
 validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, params, pnames = NULL, metric = "mean", 
                          cat.plot = TRUE,
                          use_optimal_cutoff=FALSE) {
-  message("here1")
+  #message("here1")
   # Posterior effect sizes
   #x <- as.matrix(fit, pars = params)
-  message("here2")
-  message(paste0(params, collapse=""))
+  #message("here2")
+  #message(paste0(params, collapse=""))
   #posterior.plot <- create_forest_plot_old(x, pnames)
-  posterior.plot <- create_forest_plot(as_tibble(rstan::extract(fit, params)), pnames)
-  message("here3")
+  samples <- as_tibble(rstan::extract(fit, params))
+  posterior.plot <- create_forest_plot(samples, pnames)
+  #message("here3")
   # Caterpillar plot
   if (cat.plot) {
       transformed <- ggmcmc::ggs(fit, inc_warmup = T)
@@ -240,7 +244,7 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
   else {
       cat.plot <- NULL
   }
-  message("here4")
+  #message("here4")
   #ll <- extract_log_lik(fit)
   #loo1 <- loo(ll, save_psis = TRUE)
 
@@ -266,12 +270,16 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
   scatter_plot <- create_scatter_plot(df, Hb_cutoff)
   
   # Observed vs standard deviation scatter plot
-  #sd_df <- tibble(sds = sds, observed = original_Hb, deferral = as.factor(orig_labels))
-  sd_plot <- ggplot(df, aes(x = observed, y=sds, color = factor(as.integer(deferral)))) + 
-        geom_point() +
-        labs(x = "Observed", y = "SDs", colour = "Status") +
-        scale_colour_discrete(labels=c("Accepted", "Deferred"))
-
+  if (FALSE) {
+    #sd_df <- tibble(sds = sds, observed = original_Hb, deferral = as.factor(orig_labels))
+    sd_plot <- ggplot(df, aes(x = observed, y=sds, color = factor(as.integer(deferral)))) + 
+      geom_point() +
+      labs(x = "Observed", y = "SDs", colour = "Status") +
+      scale_colour_discrete(labels=c("Accepted", "Deferred"))
+  } else {
+    sd_plot <- NULL
+  }
+  
   roc <- create_roc_new(df$deferral, df$scores)
   pr <- create_precision_recall_new(df$deferral, df$scores)
   
@@ -317,7 +325,8 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
               rmse2 = rmse2,
               scatter_plot = scatter_plot,
               comp_df = df,
-              sd_plot = sd_plot), 
+              sd_plot = sd_plot,
+              samples = samples), 
            roc, 
            pr))
 }

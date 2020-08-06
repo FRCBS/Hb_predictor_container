@@ -435,7 +435,7 @@ if (skip_train == TRUE) {
 }
 
 rhats <- bayesplot::rhat(fit)
-max(rhats)
+message(sprintf("Maximum rhat is %f for male non-icp\n", max(rhats)))
 
 original_Hb <- denormalize_vector(stan.preprocessed.male.nofix$y_test, stan.preprocessed.male.nofix$par_means["Hb"], stan.preprocessed.male.nofix$par_sds["Hb"]) 
 scores <- get_scores(fit, params$Hb_cutoff_male, stan.preprocessed.male.nofix$par_means[["Hb"]], stan.preprocessed.male.nofix$par_sds[["Hb"]])
@@ -485,7 +485,8 @@ if (skip_train == TRUE) {
 }
 
 rhats <- rhat(fit)
-max(rhats)
+message(sprintf("Maximum rhat is %f for female non-icp\n", max(rhats)))
+
 
 
 original_Hb <- denormalize_vector(stan.preprocessed.female.nofix$y_test, stan.preprocessed.female.nofix$par_means["Hb"], stan.preprocessed.female.nofix$par_sds["Hb"]) 
@@ -534,7 +535,8 @@ if (skip_train == TRUE) {
 }
 
 rhats <- rhat(fit)
-max(rhats)
+message(sprintf("Maximum rhat is %f for male icp\n", max(rhats)))
+
 
 
 original_Hb <- denormalize_vector(stan.preprocessed.male.icpfix$y_test, stan.preprocessed.male.icpfix$par_means["Hb"], stan.preprocessed.male.icpfix$par_sds["Hb"]) 
@@ -581,7 +583,8 @@ if (skip_train == TRUE) {
 }
 
 rhats <- rhat(fit)
-max(rhats)
+message(sprintf("Maximum rhat is %f for female icp\n", max(rhats)))
+
 
 
 original_Hb <- denormalize_vector(stan.preprocessed.female.icpfix$y_test, stan.preprocessed.female.icpfix$par_means["Hb"], stan.preprocessed.female.icpfix$par_sds["Hb"]) 
@@ -603,7 +606,7 @@ error_rows[[length(error_rows)+1]] <- list(Model="Female, dynamic linear mixed m
 
 save(val1.f.icp, file = paste(rawresultdir, "raw_result_female_icp_", fit_id, ".rdata", sep = ''))
 
-#if (knit == TRUE) {rm(smallf.sl.icp.1, val1.f.icp, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
+if (knit == TRUE) {rm(stan.lists.female.icpfix, val1.f.icp, fit); invisible(gc(reset = TRUE))}
 
 ```
 

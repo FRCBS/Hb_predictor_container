@@ -14,7 +14,7 @@ function myjoin () {
     # IFS=$OLDIFS
     result=""
     for param ; do
-	if [[ $param =~ ^input_file= ]] ; then
+	if [[ $param =~ ^input_file= || $param =~ ^findonor_and_snip_file= ]] ; then
 	    continue;
 	fi
 	if [[ -z $result ]] ; then
@@ -54,7 +54,7 @@ if [[ $ret == 0 ]] ; then
     prefix=$(readlink -f output)   # prefix=/home/toivoja/FRCBS/interval_prediction/output/
     # Remove the prefix from image links
     sed -i 's!'$prefix'/!!g' output/$outputbase.md
-    tar -czvf results.tar.gz data/rdata/*$id.RData data/stan_fits/*$id.RData output/results-$id* data/raw_results/error_$id.csv data/raw_results/raw_result_*_$id.rdata
+    tar -czvf results.tar.gz data/rdata/*$id.RData output/results-$id* data/raw_results/errors_$id.csv data/raw_results/raw_result_*_$id.rdata # data/stan_fits/*$id.RData
     echo Computation finished
 else
     echo Error >&2
