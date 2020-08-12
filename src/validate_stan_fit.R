@@ -77,8 +77,9 @@ create_roc_new <- function(labels, scores) {
                         #show.thres=FALSE
   )
   AUC <- roc$auc
-  title <- "Receiver operating characteric"
-  #title <- sprintf("Receiver operating characteric (AUC=%.3f)", AUC)
+  #title <- "Receiver operating characteristic"
+  title <- "ROC"
+  #title <- sprintf("Receiver operating characteristicc (AUC=%.3f)", AUC)
   roc_plot <- ggroc(roc, legacy.axes=TRUE) +
     geom_abline(aes(intercept=0, slope=1), color="lightgray", alpha=0.5) +
     annotate(geom="text", label=sprintf("AUC: %.3f", AUC), x=0.5, y=0.125) +
@@ -104,7 +105,7 @@ create_precision_recall_new <- function(labels, scores) {
   title <- "Precision-recall"
   pr_plot <- ggplot(data.frame(pr$curve),aes(x=X1,y=X2)) +
     geom_line() +
-    annotate(geom="text", label=sprintf("AUC: %.3f", AUPR), x=0.5, y=0.125) +
+    annotate(geom="text", label=sprintf("AUC: %.3f", AUPR), x=0.5, y=0.875) +
     scale_y_continuous(limits=c(0.0, 1.0)) +
     labs(x="Recall",y="Precision", title=title)
   return(list(pr_plot=pr_plot, pr=pr, pr_auc=AUPR))
@@ -201,14 +202,20 @@ create_forest_plot <- function(posterior, variables) {
 create_performance_plots <- function(df, 
                                      filename=NULL,
                                      width = 180  # width of the combined figure in millimetres
-                                     ) {
+                                                                       ) {
+  # If the below base_size change is made, then the text "Receiver operating characteristic" fits in the title
+  # of figure of width 60 mm. But it won't change confusion matrix, since that explicitly sets theme_bw.
+  #theme_set(  # Set a current theme
+  #  theme_gray(base_size = 7.5)
+  #)
+
   roc <- create_roc_new(df$deferral, df$scores)
   pr <- create_precision_recall_new(df$deferral, df$scores)
   cm <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
-  use_cowplot <- FALSE
+  use_cowplot <- TRUE
   
   if (use_cowplot) {
-    performances <- cowplot::plot_grid(cm, roc$roc_plot, pr$pr_plot, labels = c('A', 'B', 'C'), label_size = 12, nrow=1, scale=0.7)
+    performances <- cowplot::plot_grid(cm, roc$roc_plot, pr$pr_plot, labels = c('A', 'B', 'C'), label_size = 12, nrow=1, scale=1.0)
     if (!is.null(filename)) {
       cowplot::save_plot(filename, performances, ncol = 1, base_asp = 3.0, base_width = width / 25.4, base_height = NULL)
     }
@@ -224,15 +231,12 @@ create_performance_plots <- function(df,
 validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, params, pnames = NULL, metric = "mean", 
                          cat.plot = TRUE,
                          use_optimal_cutoff=FALSE) {
-  #message("here1")
   # Posterior effect sizes
   #x <- as.matrix(fit, pars = params)
-  #message("here2")
-  #message(paste0(params, collapse=""))
   #posterior.plot <- create_forest_plot_old(x, pnames)
   samples <- as_tibble(rstan::extract(fit, params))
   posterior.plot <- create_forest_plot(samples, pnames)
-  #message("here3")
+
   # Caterpillar plot
   if (cat.plot) {
       transformed <- ggmcmc::ggs(fit, inc_warmup = T)
@@ -244,7 +248,7 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
   else {
       cat.plot <- NULL
   }
-  #message("here4")
+  
   #ll <- extract_log_lik(fit)
   #loo1 <- loo(ll, save_psis = TRUE)
 
@@ -253,7 +257,7 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
   # Observed vs predicted scatter plot
   pars <- rstan::extract(fit, pars = c("y_pred"))
   y_pred <- pars$y_pred  # The rows are iterations and columns correspond to donors
-  message("here5")
+  
   if (metric == "mean") {
     y_pred <- colMeans(y_pred)
   } else if (metric == "quantile") {
@@ -265,7 +269,8 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
   pred_labels <- ifelse(Hb_predictions < Hb_cutoff, 1, 0)
 
   
-  df <- tibble(predicted = Hb_predictions, sds=sds, observed = original_Hb, predicted_labels=pred_labels, deferral = orig_labels, scores=scores)
+  df <- tibble(predicted = Hb_predictions, sds=sds, observed = original_Hb, 
+               predicted_labels=pred_labels, deferral = orig_labels, scores=scores)
   
   scatter_plot <- create_scatter_plot(df, Hb_cutoff)
   
@@ -300,11 +305,11 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
   }
     
   # Errors
-  mae  <- mae(original_Hb, Hb_predictions)
-  rmse <- rmse(original_Hb, Hb_predictions)
+  mae  <- mae(df$observed, df$predicted)
+  rmse <- rmse(df$observed, df$predicted)
 
-  original_Hb2 <- to_mmol_per_litre(original_Hb)
-  Hb_predictions2 <- to_mmol_per_litre(Hb_predictions)
+  original_Hb2 <- to_mmol_per_litre(df$observed)
+  Hb_predictions2 <- to_mmol_per_litre(df$predicted)
   mae2  <- mae(original_Hb2, Hb_predictions2)
   rmse2 <- rmse(original_Hb2, Hb_predictions2)
   

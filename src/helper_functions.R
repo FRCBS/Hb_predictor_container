@@ -671,7 +671,7 @@ plot_confusion_matrix <- function(table, title = NULL) {
     geom_tile(aes(fill = Y), colour = "white") +
     geom_text(aes(label = sprintf("%1.0f", Y)), vjust = 1, size = 7
               ) +
-    scale_fill_gradient(low = "white", high = "blue") +
+    scale_fill_gradient(low = "white", high = "gray") +
     theme_bw() + theme(legend.position = "none") +
     labs(x = "Observed", y = "Predicted")
   if (!is.null(title)) {
@@ -1006,7 +1006,9 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
       ungroup()
   }
   message(sprintf("Number of donors is %i", ndonor(df)))
-  hlen <- ifelse(hlen > 0, hlen - 1, hlen + 1)      # Because we dropped the first event
+  if (!is.null(hlen) && hlen != 0) {
+    hlen <- ifelse(hlen > 0, hlen - 1, hlen + 1)      # Because we dropped the first event
+  }
   df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
   message(sprintf("Number of donors is %i", ndonor(df)))
   # Change donor into integer
@@ -1326,7 +1328,7 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
       ungroup()
   }
   message(sprintf("Number of icp-donors is %i", ndonor(df)))
-  # Subtract one from the hlen values due to discarding first event at this point
+  
   df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
   message(sprintf("Number of icp-donors is %i", ndonor(df)))
   # Change donor into integer

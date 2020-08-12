@@ -49,7 +49,7 @@ document.onreadystatechange = function() {
   }
   
   function handleResponse() {
-    console.log("In handleResponse");
+    console.log("In handleResponse, readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
     if (httpRequest.readyState == 4 && httpRequest.status == 200) {
       //  httpRequest.overrideMimeType("application/json");
       //document.getElementsByClassName("lds-spinner")[0].setAttribute("hidden", "hidden");
@@ -73,11 +73,11 @@ document.onreadystatechange = function() {
       
       document.getElementById("results-container").removeAttribute("hidden");  
     } else if (httpRequest.readyState == 4 && httpRequest.status != 200) {
-      console.log("Server error!");
+      console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
       document.getElementsByClassName("lds-spinner")[0].style.display = "none";
       clearInterval(interval_id);  // stop the timer
       el = document.getElementById("error_messages");
-      el.innerHTML = "<p>Server error!</p>  ";
+      el.innerHTML = "<p>Server error!  readyState: " + httpRequest.readyState + " status: " + httpRequest.status + "</p>  ";
     }
   }
   

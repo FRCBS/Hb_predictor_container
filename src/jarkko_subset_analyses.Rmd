@@ -6,7 +6,7 @@ params:
   #input_file: "~/preprocessed_data_6243aede7.rdata"
   hlen: NULL
   hlen_exactly: FALSE
-  sample_fraction: 0.005
+  sample_fraction: 1.0
   method: "both"
   gender: "both"
   id: NULL
@@ -132,6 +132,11 @@ knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE)
 #options(warn = 1)
 
+message("Parameters are:")
+for (name in names(params)) {
+  message(sprintf("%s = ", name), params[[name]])
+}
+
 # These are used to select which computations to perform,
 # base on params$gender and params$method
 compute_male   <- params$gender %in% c("male", "both")
@@ -177,6 +182,12 @@ data <- data %>%
   mutate(days_to_previous_fb = as.double(days_to_previous_fb),
          donor = as.character(donor))   # For some reason this cannot be a factor
 
+#variables_to_log <- c("days_to_previous_fb",
+#                                "consecutive_deferrals", "recent_donations",
+#                                "recent_deferrals")
+
+#data <- data %>%
+#  mutate_at(variables_to_log, function(x) log(x+1))
 
 sample_fraction <- params$sample_fraction
 

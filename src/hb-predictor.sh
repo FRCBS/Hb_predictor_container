@@ -60,4 +60,4 @@ else
     echo Error >&2
 fi
 
-tail -f /dev/null
+#tail -f /dev/null
