@@ -185,7 +185,7 @@ create_forest_plot <- function(posterior, variables) {
     geom_vline(aes(xintercept=0), color="lightgray") +
     geom_pointrange(aes(y=factor(result$names, levels=result$names), x=result$mean, xmin=result$low, xmax=result$high), 
                     color="blue", fill="green", position=position_dodge2(width=1, padding=0.9)) +
-    labs(title="Effects sizes of variables on Hb prediction (95% CI)",
+    labs(title="Effects sizes of variables on Hb prediction",
          x="Regression coefficient", y="") +
     theme_classic()
   return(list(plot=plot, cis=cis))

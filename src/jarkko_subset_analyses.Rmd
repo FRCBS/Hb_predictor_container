@@ -19,6 +19,8 @@ params:
   errors_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
+  cores: 4
+  iterations: 2000
   skip_train: FALSE
   create_datasets_bool: TRUE
 #  findonor_and_snip_file: "../data/findonor_and_snip_and_prs.rdata"
@@ -149,7 +151,9 @@ compute_male_icpfix <- compute_male && compute_icpfix
 compute_female_icpfix <- compute_female && compute_icpfix 
 
 set.seed(123)
-options(mc.cores = 4)
+if (!is.null(params$cores)) {
+  options(mc.cores = params$cores)
+}
 
 # Set variables to save time knitting the document
 skip_train = params$skip_train
@@ -441,6 +445,7 @@ if (skip_train == TRUE) {
   fit <- stan(file = stanf1, 
             data = stan.lists.male.nofix,
             save_warmup = TRUE,
+            iter = params$iterations,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_male_", fit_id, ".RData", sep = ''))
 }
@@ -491,6 +496,7 @@ if (skip_train == TRUE) {
   fit <- stan(file = stanf1, 
             data = stan.lists.female.nofix,
             save_warmup = TRUE,
+            iter = params$iterations,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_female_", fit_id, ".RData", sep = ''))
 }
@@ -519,7 +525,7 @@ error_rows[[length(error_rows)+1]] <- list(Model="Female, linear mixed model", M
 
 save(val1.f, file = paste(rawresultdir, "raw_result_female_", fit_id, ".rdata", sep = ''))
 
-if (knit == TRUE) {rm(stan.lists.female.nofix, val1.f, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
+if (knit == TRUE) {rm(stan.lists.female.nofix, val1.f, fit); invisible(gc(reset = TRUE))}
 
 ```
 
@@ -541,6 +547,7 @@ if (skip_train == TRUE) {
   fit <- stan(file = stanf1.icp, 
             data = stan.lists.male.icpfix,
             save_warmup = TRUE,
+            iter = params$iterations,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_male_icp_", fit_id, ".RData", sep = ''))
 }
@@ -569,7 +576,7 @@ error_rows[[length(error_rows)+1]] <- list(Model="Male, dynamic linear mixed mod
 
 save(val1.m.icp, file = paste(rawresultdir, "raw_result_male_icp_", fit_id, ".rdata", sep = ''))
 
-if (knit == TRUE) {rm(stan.lists.male.icpfix, val1.m.icp, cm, pROC_obj, sens.ci, fit); invisible(gc(reset = TRUE))}
+if (knit == TRUE) {rm(stan.lists.male.icpfix, val1.m.icp, fit); invisible(gc(reset = TRUE))}
 
 ```
 
@@ -589,6 +596,7 @@ if (skip_train == TRUE) {
   fit <- stan(file = stanf1.icp, 
             data = stan.lists.female.icpfix,
             save_warmup = TRUE,
+            iter = params$iterations,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_female_icp_", fit_id, ".RData", sep = ''))
 }
