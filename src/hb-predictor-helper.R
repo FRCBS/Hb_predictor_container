@@ -38,6 +38,9 @@ if ("sample_fraction" %in% names(myparams)) {
 if ("hlen" %in% names(myparams)) {
     myparams$hlen <- as.numeric(myparams$hlen)
 }
+if ("iterations" %in% names(myparams)) {
+    myparams$iterations <- as.numeric(myparams$iterations)
+}
 
 
 print(myparams)

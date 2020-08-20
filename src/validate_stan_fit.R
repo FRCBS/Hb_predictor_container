@@ -146,6 +146,7 @@ create_scatter_plot <- function(df, threshold) {
     geom_smooth(mapping=aes(x = observed, y=predicted), colour="black", show.legend = FALSE) +
     geom_vline(xintercept = threshold, linetype = "dashed") +
     geom_hline(yintercept = threshold, linetype = "dashed") +
+    theme(legend.position = "bottom") +
     ggtitle("Observed vs predicted Hb-values")
   return(scatter_plot)
 }
@@ -191,7 +192,7 @@ create_forest_plot <- function(posterior, variables) {
   return(list(plot=plot, cis=cis))
 }
 
-# Creates Confusion matrix, ROC, and Precision-recall plots, and puts them side-by-side.
+# Creates ROC, and Precision-recall plots, and puts them side-by-side.
 # Input should be a tibble (or data.frame) that contains the following columns:
 # - deferral, boolean or integer (FALSE==0==accepted, TRUE==1==deferred), true labels
 # - predicted_labels, same definition as for above
@@ -211,21 +212,53 @@ create_performance_plots <- function(df,
 
   roc <- create_roc_new(df$deferral, df$scores)
   pr <- create_precision_recall_new(df$deferral, df$scores)
-  cm <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
+  #cm <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
   use_cowplot <- TRUE
   
   if (use_cowplot) {
-    performances <- cowplot::plot_grid(cm, roc$roc_plot, pr$pr_plot, labels = c('A', 'B', 'C'), label_size = 12, nrow=1, scale=1.0)
+    performances <- cowplot::plot_grid(roc$roc_plot, pr$pr_plot, labels = c('A', 'B'), label_size = 12, nrow=1, scale=1.0)
     if (!is.null(filename)) {
-      cowplot::save_plot(filename, performances, ncol = 1, base_asp = 3.0, base_width = width / 25.4, base_height = NULL)
+      cowplot::save_plot(filename, performances, ncol = 1, base_asp = 2.0, base_width = width / 25.4, base_height = NULL)
     }
   } else {
-    performances <- gridExtra::grid.arrange(cm, roc$roc_plot, pr$pr_plot, nrow = 1, respect=TRUE)   # Combine the plots
+    performances <- gridExtra::grid.arrange(roc$roc_plot, pr$pr_plot, nrow = 1, respect=TRUE)   # Combine the plots
     if (!is.null(filename)) {
       ggsave(filename=filename, performances, width = width, units="mm", dpi=600, scale=1.0)
     }
   }
   performances
+}
+
+# Creates scatter and confusion plots, and puts them side-by-side.
+# Input should be a tibble (or data.frame) that contains the following columns:
+# - deferral, boolean or integer (FALSE==0==accepted, TRUE==1==deferred), true labels
+# - predicted_labels, same definition as for above
+# - scores, double, higher score means that deferral is more likely
+# Returns the combined plot object.
+# If filename if given, then the combined plot is saved to that file.
+# BUG: The plot may look good when saved to a file, but possibly not when the plot object is shown on screen.
+create_scatter_confusion_plots <- function(df, Hb_cutoff,
+                                     filename=NULL,
+                                     width = 180  # width of the combined figure in millimetres
+) {
+
+  scatter_plot <- create_scatter_plot(df, Hb_cutoff) + coord_fixed() + theme(plot.margin = unit(c(5.5, 5.5, 0, 0), "pt"))
+  cm <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
+  use_cowplot <- TRUE
+  
+  if (use_cowplot) {
+    scatter_confusion <- cowplot::plot_grid(scatter_plot, cm, labels = c('A', 'B'), label_size = 12, nrow=1, scale=1.0, axis="tb", align="h")
+    if (!is.null(filename)) {
+      #cowplot::save_plot(filename, scatter_confusion, ncol = 1, base_asp = 2.0, base_width = width / 25.4, base_height = NULL)
+      cowplot::save_plot(filename, scatter_confusion, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
+    }
+  } else {
+    scatter_confusion <- gridExtra::grid.arrange(scatter_plot, cm, nrow = 1, respect=TRUE)   # Combine the plots
+    if (!is.null(filename)) {
+      ggsave(filename=filename, scatter_confusion, width = width, units="mm", dpi=600, scale=1.0)
+    }
+  }
+  scatter_confusion
 }
 
 validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, params, pnames = NULL, metric = "mean", 
