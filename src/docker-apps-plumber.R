@@ -52,6 +52,12 @@ function(req, fileUpload){
     donations_o = post$donations_fileUpload
     donors_o = post$donors_fileUpload
     
+    if ("donor_specific_fileUpload" %in% names(post)) {
+      donor_specific_filename <- post$donor_specific_fileUpload$tempfile
+    } else {
+      donor_specific_filename <- NULL
+    }
+    
     #l=list()
     time_start <- now()
     
@@ -73,12 +79,15 @@ function(req, fileUpload){
     myparams$create_datasets_bool <- TRUE
 #    myparams$skip_train <- TRUE
 #    myparams$create_datasets_bool <- FALSE
+    
+    # Do the preprocessing
     fulldata_preprocessed <- preprocess(donations_o$tempfile, donors_o$tempfile,
                                         myparams$Hb_cutoff_male, myparams$Hb_cutoff_female)
     s3 <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     #data_filename <- "/tmp/temp.rdata"
     data_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
     save(fulldata_preprocessed, file=data_filename)
+
     myparams$input_file <- data_filename
     if ("sample_fraction" %in% names(post)) {
       myparams$sample_fraction <- as.numeric(post$sample_fraction)
@@ -86,34 +95,63 @@ function(req, fileUpload){
     if ("hlen" %in% names(post)) {
       myparams$hlen <- as.integer(post$hlen)
     }
-    if ("method" %in% names(post)) {
-      myparams$method <- post$method
-    }
+    # if ("method" %in% names(post)) {
+    #   myparams$method <- post$method
+    # }
     
+    if (!is.null(donor_specific_filename)) {
+      myparams$donor_specific_file <- donor_specific_filename
+    }
     myparams_string <- paste( map_chr(names(myparams), function (name) sprintf("<li>%s=%s</li>", name, myparams[name])), 
                              collapse="\n")
     myparams_string <- sprintf("<p>Parameters are:</p>\n <ul>%s\n</ul>\n", myparams_string)
     
     error_dfs <- list()
-    for (gender in c("male", "female")) {
-    #for (gender in c("male")) {
+    
+    # Run linear models
+    methods <- intersect(c("no-fix", "icp-fix"), names(post))
+    
+    if (length(methods) > 0) {
+      myparams$method <- ifelse (length(methods) == 2, "both", methods[[1]])
+      for (gender in c("male", "female")) {
+        myparams["gender"] <- gender
+        filename <- sprintf("/tmp/errors-%s.csv", gender)
+        myparams["errors_table_file"] <- filename
+        rmarkdown::render(
+                          'jarkko_subset_analyses.Rmd',
+                          output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
+                          #output_file=sprintf('results-%s', gender),   # One for each output format: html and pdf 
+                          output_format=c('html_document', 'pdf_document'),
+                          #output_format=c('html_document'),
+                          clean=FALSE,
+                          output_dir='../output',
+                          params = myparams)
+        error_dfs[[gender]] <- read_csv(filename)
+      }
+      }
+    
+    # Run random forest etc
+    methods <- intersect(c("decision-tree", "random-forest"), names(post))
+    if (length(methods) > 0) {
+      myparams$method <- ifelse (length(methods) == 2, "both", methods[[1]])
+      gender <- "both"
       myparams["gender"] <- gender
-      filename <- sprintf("/tmp/errors-%s.csv", gender)
+      filename <- sprintf("/tmp/errors-%s.csv", "ml")
       myparams["errors_table_file"] <- filename
-      rmarkdown::render(#'jarkko_new_rmd.Rmd',
-                        'jarkko_subset_analyses.Rmd',
-                        output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
-                        #output_file=sprintf('results-%s', gender),   # One for each output format: html and pdf 
-                        output_format=c('html_document', 'pdf_document'),
-                        #output_format=c('html_document'),
-                        clean=FALSE,
-                        output_dir='../output',
-                        params = myparams)
-      error_dfs[[gender]] <- read_csv(filename)
+      rmarkdown::render(
+        'template.Rmd',
+        output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
+        output_format=c('html_document', 'pdf_document'),
+        clean=FALSE,
+        output_dir='../output',
+        params = myparams)
+      error_dfs[["ml"]] <- read_csv(filename)
     }
     unlink(data_filename)
-  
-    errors_both <- rbind(error_dfs[["male"]], error_dfs[["female"]])
+    if (!is.null(donor_specific_filename))
+      unlink(donor_specific_filename)
+    #errors_both <- bind_rows(error_dfs[["male"]], error_dfs[["female"]], errors_dfs[["ml"]])
+    errors_both <- bind_rows(error_dfs)
     #errors_both <- rbind(error_dfs[["male"]])
     errors_string <- kable(errors_both, format="html", digits=3, 
                            caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE), and area under ROC curve (AUC).",
@@ -171,6 +209,7 @@ function(req){
         <table id="input_table">
         <tr><td>Upload donations file:</td> <td><input type=file name="donations_fileUpload"></td> </tr>
         <tr><td>Upload donors file:</td>    <td><input type=file name="donors_fileUpload"></td> </tr>
+        <tr><td>Upload donor specific file:</td>    <td><input type=file name="donor_specific_fileUpload"></td> </tr>
         <tr><td>Hb cutoff (male)</td>       <td><input name="Hb_cutoff_male" value="135" maxlength="5" size="5"><span id="male_unit">g/L</span></td> </tr>
         <tr><td>Hb cutoff (female)</td>     <td><input name="Hb_cutoff_female" value="125" maxlength="5" size="5"><span id="female_unit">g/L</span></td> </tr>
         <tr><td>Minimum donations</td>      <td><input name="hlen" value="1" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
@@ -181,16 +220,20 @@ function(req){
         <fieldset>
           <legend>Which prediction model to use?</legend>
           <label for="no-fix">
-            <input type="radio" value="no-fix", id="no-fix" name="method"/>
+            <input type="checkbox" value="on", id="no-fix" name="no-fix" checked/>
             Linear mixed model
           </label>
           <label for="icp-fix">
-            <input type="radio" value="icp-fix", id="icp-fix" name="method"/>
+            <input type="checkbox" value="on", id="icp-fix" name="icp-fix" checked/>
             Dynamic linear mixed model
           </label>
-          <label for="both">
-            <input type="radio" value="both", id="both" name="method" checked/>
-            Both
+          <label for="decision-tree">
+            <input type="checkbox" value="on", id="decision-tree" name="decision-tree" checked/>
+            Decision tree
+          </label>
+          <label for="random-forest">
+            <input type="checkbox" value="on", id="random-forest" name="random-forest" checked/>
+            Random forest
           </label>
         </fieldset>
     
@@ -226,6 +269,7 @@ function(req){
         <tr> <th>Gender</th> <th>html</th> <th>pdf</th> </tr>
         <tr> <td>Male</td> <td><a href="output/results-male.html" target="_blank" >html</a></td> <td><a href="output/results-male.pdf" target="_blank" >pdf</a></td> </tr>
         <tr> <td>Female</td> <td><a href="output/results-female.html" target="_blank" >html</a></td> <td><a href="output/results-female.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr> <td>Other</td> <td><a href="output/results-both.html" target="_blank" >html</a></td> <td><a href="output/results-both.pdf" target="_blank" >pdf</a></td> </tr>
         </table>
       </div>
       

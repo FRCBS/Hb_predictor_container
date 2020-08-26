@@ -30,10 +30,11 @@ COPY /src/ppc.R /src/ppc.R
 COPY /src/new_preprocess.R /src/new_preprocess.R
 COPY /src/helper_functions.R /src/helper_functions.R
 COPY /src/validate_stan_fit.R /src/validate_stan_fit.R
-COPY /src/jarkko_subset_analyses.Rmd /src/jarkko_subset_analyses.Rmd
 COPY /src/jarkko_create_datasets.R /src/jarkko_create_datasets.R
 COPY /src/hb-predictor.sh /src/hb-predictor.sh
 COPY /src/hb-predictor-helper.R /src/hb-predictor-helper.R
+COPY /src/jarkko_subset_analyses.Rmd /src/jarkko_subset_analyses.Rmd
+COPY /src/template.Rmd /src/template.Rmd
 
 
 ## run the script

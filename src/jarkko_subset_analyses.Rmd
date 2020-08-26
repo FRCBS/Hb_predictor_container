@@ -23,8 +23,8 @@ params:
   iterations: 2000
   skip_train: FALSE
   create_datasets_bool: TRUE
-#  findonor_and_snip_file: "../data/findonor_and_snip_and_prs.rdata"
-  findonor_and_snip_file: NULL
+#  donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
+  donor_specific_file: NULL
 ---
 
   
@@ -108,6 +108,20 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
                                    "Deferred based on low hemoglogin")
                    )
 
+donor_descript <- tibble(
+  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs"),
+  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score"),
+  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric"),
+  Explanation = c("Does the person smoke", "Height of the donor", "Weight of the donor", 
+                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin")
+)
+  
+to_pretty <- function(df, description) {
+  old_names <- colnames(df)
+  new_names <- description %>% filter(Variable %in% all_of(old_names)) %>% pull(Pretty)
+  colnames(df) <- new_names
+  df
+}
 
 ```
 
@@ -217,54 +231,43 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If instead of f
   message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
 }
 
-if (!is.null(params$findonor_and_snip_file) && (length(params$findonor_and_snip_file) > 0)) {
+if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
   #donor_variables <- c("smoking", "bmi", "RNF43_mutant", "prs")
-  donor_variables <- c("smoking", "height", "weight", "RNF43_mutant", "prs")
-  pretty_donor_variables <- c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score")
-  findonor_and_snip_and_prs <- load_single(params$findonor_and_snip_file)
+  #donor_variables <- c("smoking", "height", "weight", "RNF43_mutant", "prs")
+  #pretty_donor_variables <- c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score")
+  donor_variables <- donor_descript$Variable
+  pretty_donor_variables <- donor_descript$Pretty
+  
+  findonor_and_snip_and_prs <- load_single(params$donor_specific_file)
   data <- inner_join(data, findonor_and_snip_and_prs, by="donor")
 } else {
   donor_variables = NULL
 }
 
-
-#pars1 <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]")
+# Stan parameter names
 pars1 <- sprintf("beta[%i]", 1:10)
 pars1.icp <- c(pars1,
                sprintf("ups[%i]", 1:4))
 if (!is.null(donor_variables)) {
-  #donor_pars <- c("phi[1]", "phi[2]", "phi[3]", "phi[4]")
-  #donor_pars <- map_chr(seq_along(donor_variables), function(i) { return(sprintf("phi[%i]", i)) })
   donor_pars <- sprintf("phi[%i]", 1:length(donor_variables))
   pars1 <- c(pars1, donor_pars)
   pars1.icp <- c(pars1.icp, donor_pars)
 }
 
-# old.vars1 <- c("days_to_previous_fb","Age","Previous_Hb_deferral","Year","Warm_season",
-#            "Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals","Hour", "Hb_first")
-#old.vars1 <- setdiff(descript$Variable, c("donor", "Hb", "previous_Hb", "Hb_deferral"))
-old.vars1 <- descript %>% filter(!Variable %in% c("donor", "Hb", "previous_Hb", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
-# old.vars1.icp <- c(c("days_to_previous_fb","Age","Previous_Hb_deferral","Year","Warm_season",
-#                      "Consecutive_Hb_deferrals","Recent_donations","Recent_Hb_deferrals", "Hour","Previous_Hb") ,
-#                    c("Age_first", "Year_first", "warm_season_first", "hour_first"))
-#old.vars1.icp <- setdiff(descript$Variable, c("donor", "Hb", "Hb_first", "Hb_deferral"))
-old.vars1.icp <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
-old.vars1.icp <- c(old.vars1.icp,                    
+# Pretty names for parameters
+vars1 <- descript %>% filter(!Variable %in% c("donor", "Hb", "previous_Hb", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
+
+vars1.icp <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
+vars1.icp <- c(vars1.icp,                    
                    c("First age", "First year", "First warm season", "First hour"))
 if (!is.null(donor_variables)) {
-  vars1 <- c(old.vars1, pretty_donor_variables)
-  vars1.icp <- c(old.vars1.icp, pretty_donor_variables)
-} else {
-  vars1 <- old.vars1
-  vars1.icp <- old.vars1.icp
+  vars1     <- c(vars1, pretty_donor_variables)
+  vars1.icp <- c(vars1.icp, pretty_donor_variables)
 }
 
 # Make sure the columns in data are in the same order as in the vars and pars lists
 variables_in_order <- setdiff(descript$Variable, "donor")
 if (!is.null(donor_variables)) {
-  # data <- data %>% select("Hb", "days_to_previous_fb","age","previous_Hb_def","year","warm_season",
-  #              "consecutive_deferrals","recent_donations","recent_deferrals", "hour","previous_Hb", 
-  #              "Hb_first",
   data <- data %>% select(all_of(variables_in_order),
                           all_of(donor_variables), everything())
 } else {
@@ -326,6 +329,7 @@ error_rows <- list()  # This is used to construct the error table in the end
 
 ```{r, echo=FALSE}
 kable(descript)
+kable(donor_descript)
 ```
 
 
@@ -337,38 +341,41 @@ kable(descript)
 #Plot distributions for male donors
 
 
-data.male <- data.male %>%
-  filter(!is.na(Hb_first), !is.na(days_to_previous_fb),
-         !is.na(previous_Hb), first_event == FALSE,
-         donat_phleb == 'K' | donat_phleb == '*' | donat_phleb == 'T',
-         !is.na(previous_Hb_def)) %>%
+data.male2 <- data.male %>%
+  filter(first_event == FALSE) %>%
+#         !is.na(Hb_first), !is.na(days_to_previous_fb),
+#         !is.na(previous_Hb), 
+#         donat_phleb == 'K' | donat_phleb == '*' | donat_phleb == 'T',
+#         !is.na(previous_Hb_def)) %>%
   select(all_of(descript$Variable)) %>%
-#  select(donor, Hb, days_to_previous_fb, age, previous_Hb_def, year, warm_season, consecutive_deferrals,
-#         recent_donations, recent_deferrals, hour, previous_Hb, Hb_first, Hb_deferral) %>%
   mutate(Hb_deferral = as.integer(Hb_deferral),
          warm_season = as.integer(warm_season),
          previous_Hb_def = as.integer(previous_Hb_def))
 
-pmale <- data.male %>%
-          keep(is.numeric) %>%
-          gather() %>%
-          mutate(key = factor(key, levels=descript$Variable))  %>% # Don't sort alphabetically
-          ggplot(aes(value)) +
-            facet_wrap(~ key, scales = "free") +
-            geom_histogram(fill = "blue")
+pmale <- data.male2 %>%
+  keep(is.numeric) %>%
+  to_pretty(descript) %>%
+  gather() %>%
+  mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram(fill = "blue")
 pmale
 
-if (!is.null(params$findonor_and_snip_file)) {
+if (!is.null(params$donor_specific_file)) {
   male_donor_specific <- findonor_and_snip_and_prs %>%
-    semi_join(data.male, by="donor") %>%
-    mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant))
-  male_donor_specific %>%
+    semi_join(data.male2, by="donor") %>%
+    mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
     keep(is.numeric) %>%
+    to_pretty(donor_descript) 
+  male_donor_specific %>%
     gather() %>%
+    mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
     ggplot(aes(value)) +
     facet_wrap(~ key, scales = "free") +
     geom_histogram(fill = "blue")
 }
+rm(data.male2, pmale);
 ```
 
 
@@ -380,45 +387,48 @@ if (!is.null(params$findonor_and_snip_file)) {
 ```{r Summary plots for females, echo = FALSE, eval=compute_female}
 #Plot distributions for female donors
 
-data.female <- data.female %>%
-  filter(!is.na(Hb_first), !is.na(days_to_previous_fb),
-         !is.na(previous_Hb), first_event == FALSE,
-         donat_phleb == 'K' | donat_phleb == '*' | donat_phleb == 'T',
-         !is.na(previous_Hb_def)) %>%
+data.female2 <- data.female %>%
+  filter(first_event == FALSE) %>%
+#         !is.na(Hb_first), !is.na(days_to_previous_fb),
+#         !is.na(previous_Hb), 
+#         donat_phleb == 'K' | donat_phleb == '*' | donat_phleb == 'T',
+#         !is.na(previous_Hb_def)) %>%
   select(all_of(descript$Variable)) %>%
-  #select(donor, Hb, days_to_previous_fb, age, previous_Hb_def, year, warm_season, consecutive_deferrals,
-  #       recent_donations, recent_deferrals, hour, previous_Hb, Hb_first, Hb_deferral) %>%
   mutate(Hb_deferral = as.integer(Hb_deferral),
          warm_season = as.integer(warm_season),
          previous_Hb_def = as.integer(previous_Hb_def))
 
-pfemale <- data.female %>%
+pfemale <- data.female2 %>%
           keep(is.numeric) %>%
+          to_pretty(descript) %>%
           gather() %>%
-          mutate(key = factor(key, levels=descript$Variable))  %>% # Don't sort alphabetically
+          mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
           ggplot(aes(value)) +
             facet_wrap(~ key, scales = "free") +
             geom_histogram(fill = "orange")
 
 pfemale
 
-if (!is.null(params$findonor_and_snip_file)) {
+if (!is.null(params$donor_specific_file)) {
   female_donor_specific <- findonor_and_snip_and_prs %>%
-    semi_join(data.female, by="donor") %>%
+    semi_join(data.female2, by="donor") %>%
     mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant))
   female_donor_specific %>%
     keep(is.numeric) %>%
+    to_pretty(donor_descript) %>%
     gather() %>%
+    mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
     ggplot(aes(value)) +
     facet_wrap(~ key, scales = "free") +
     geom_histogram(fill = "orange")
 }
+rm(data.female2, pfemale);
 ```
 
 
 ```{r clean up memory, echo = FALSE}
 rm(data); invisible(gc())
-rm(data.male, data.female, pmale, pfemale); invisible(gc(reset = TRUE))
+rm(data.male, data.female); invisible(gc(reset = TRUE))
 ```
 
 
