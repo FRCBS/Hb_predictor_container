@@ -31,30 +31,30 @@ get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
   return(predicted_probabilities) 
 }
 
-create_roc <- function(labels, scores) {
-  
-
-
-  pROC_obj <- pROC::roc(response = labels,
-                        predictor = scores,
-                        #smoothed = TRUE,
-                        auc = TRUE,
-                        legacy.axes = TRUE,   # x-axis is False positive rate instead of specificity
-                        xlab = "False Positive Rate", ylab = "True Positive Rate",
-                        #percent = TRUE,
-                        # arguments for ci
-                        #ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-                        # arguments for plot
-                        plot=TRUE, 
-                        main="Receiver operating characteric",
-                        #auc.polygon=TRUE, 
-                        max.auc.polygon=TRUE, 
-                        #grid=TRUE,
-                        print.auc=TRUE 
-                        #show.thres=FALSE
-                        )
-  return(pROC_obj)
-}
+# create_roc <- function(labels, scores) {
+#   
+# 
+# 
+#   pROC_obj <- pROC::roc(response = labels,
+#                         predictor = scores,
+#                         #smoothed = TRUE,
+#                         auc = TRUE,
+#                         legacy.axes = TRUE,   # x-axis is False positive rate instead of specificity
+#                         xlab = "False Positive Rate", ylab = "True Positive Rate",
+#                         #percent = TRUE,
+#                         # arguments for ci
+#                         #ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+#                         # arguments for plot
+#                         plot=TRUE, 
+#                         main="Receiver operating characteric",
+#                         #auc.polygon=TRUE, 
+#                         max.auc.polygon=TRUE, 
+#                         #grid=TRUE,
+#                         print.auc=TRUE 
+#                         #show.thres=FALSE
+#                         )
+#   return(pROC_obj)
+# }
 
 create_roc_new <- function(labels, scores) {
   
@@ -90,25 +90,36 @@ create_roc_new <- function(labels, scores) {
 
 
 
-create_precision_recall <- function(labels, scores) {
-  # create_precision_recall <- function(fit, labels, cutoff, norm_mean, norm_sd) {
-  #   scores <- get_scores(fit, cutoff, norm_mean, norm_sd)
-  pr <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
-
-  return(pr)
-}
+# create_precision_recall <- function(labels, scores) {
+#   # create_precision_recall <- function(fit, labels, cutoff, norm_mean, norm_sd) {
+#   #   scores <- get_scores(fit, cutoff, norm_mean, norm_sd)
+#   pr <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
+# 
+#   return(pr)
+# }
 
 create_precision_recall_new <- function(labels, scores) {
-  pr <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
-  AUPR <- pr$auc.davis.goadrich
+  n <- length(labels)
+  #baseline <- names(which.max(table(labels)))   # 0 or 1, which ever is more common
+  #baseline_score <- ifelse(baseline==1, 1.0, 0.0)
+  #baseline_scores <- c(1.0 - baseline_score, rep(baseline_score, n-1))
+  random_scores <- runif(n, 0, 1)
+  pr_model     <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
+  #pr_baseline <- PRROC::pr.curve(scores.class0=baseline_scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
+  pr_random   <- PRROC::pr.curve(scores.class0=random_scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
+  df <- bind_rows(model=tibble(data.frame(pr_model$curve)), 
+                  #baseline=tibble(data.frame(pr_baseline$curve)), 
+                  random=tibble(data.frame(pr_random$curve)), .id="Classifier")
+  AUPR <- pr_model$auc.davis.goadrich
   #title <- sprintf("Precision-recall (AUC=%.3f)", AUPR) 
   title <- "Precision-recall"
-  pr_plot <- ggplot(data.frame(pr$curve),aes(x=X1,y=X2)) +
+# pr_plot <- ggplot(data.frame(pr$curve),aes(x=X1,y=X2)) +
+  pr_plot <- ggplot(df, aes(x=X1,y=X2, color=Classifier)) +
     geom_line() +
     annotate(geom="text", label=sprintf("AUC: %.3f", AUPR), x=0.5, y=0.875) +
     scale_y_continuous(limits=c(0.0, 1.0)) +
     labs(x="Recall",y="Precision", title=title)
-  return(list(pr_plot=pr_plot, pr=pr, pr_auc=AUPR))
+  return(list(pr_plot=pr_plot, pr=df, pr_auc=AUPR))
 }
 
 generate_my_breaks <- function(step) {
