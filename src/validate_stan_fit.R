@@ -99,22 +99,26 @@ create_roc_new <- function(labels, scores) {
 # }
 
 create_precision_recall_new <- function(labels, scores) {
-  n <- length(labels)
+  #n <- length(labels)
   #baseline <- names(which.max(table(labels)))   # 0 or 1, which ever is more common
   #baseline_score <- ifelse(baseline==1, 1.0, 0.0)
   #baseline_scores <- c(1.0 - baseline_score, rep(baseline_score, n-1))
-  random_scores <- runif(n, 0, 1)
+  #random_scores <- runif(n, 0, 1)
   pr_model     <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
+  df <- data.frame(pr_model$curve)
   #pr_baseline <- PRROC::pr.curve(scores.class0=baseline_scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
-  pr_random   <- PRROC::pr.curve(scores.class0=random_scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
-  df <- bind_rows(model=tibble(data.frame(pr_model$curve)), 
+  #pr_random   <- PRROC::pr.curve(scores.class0=random_scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
+  #df <- bind_rows(model=tibble(data.frame(pr_model$curve)), 
                   #baseline=tibble(data.frame(pr_baseline$curve)), 
-                  random=tibble(data.frame(pr_random$curve)), .id="Classifier")
+  #                random=tibble(data.frame(pr_random$curve)), .id="Classifier")
   AUPR <- pr_model$auc.davis.goadrich
   #title <- sprintf("Precision-recall (AUC=%.3f)", AUPR) 
   title <- "Precision-recall"
 # pr_plot <- ggplot(data.frame(pr$curve),aes(x=X1,y=X2)) +
-  pr_plot <- ggplot(df, aes(x=X1,y=X2, color=Classifier)) +
+  m <- mean(labels)
+  pr_plot <- ggplot(df, aes(x=X1,y=X2)) +
+    geom_hline(aes(yintercept=m), color="lightgray", alpha=0.5) +   # theoretical PR curve of random classifier
+    annotate(geom="text", label=sprintf("y=%.3f", m), x=0.25, y=m, color="gray", vjust=-1) +
     geom_line() +
     annotate(geom="text", label=sprintf("AUC: %.3f", AUPR), x=0.5, y=0.875) +
     scale_y_continuous(limits=c(0.0, 1.0)) +
