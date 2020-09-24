@@ -1,0 +1,2048 @@
+---
+title: "Final models"
+author: "Yrjö Koski"
+date: "5/4/2020"
+output: md_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# All important imports
+library(tidyverse, quietly = T)
+library(knitr)
+library(rstan)
+library(caret)
+library(tictoc)
+library(entropy)
+library(brms)
+library(ggmcmc)
+library(ggthemes)
+library(ggridges)
+library(ROCR)
+library(pROC)
+library(furrr)
+library(sn)
+library(tidybayes)
+library(ModelMetrics)
+library(lattice)
+library(MLmetrics)
+library(data.table)
+library(bayesplot)
+library(cutpointr)
+library(DescTools)
+
+library(lme4)
+
+# These scripts need to be loaded 
+source("helper_functions.R")
+#source("new_preprocess.R")
+source("validate_stan_fit.R")
+
+# Date or ID to identify created files and models
+# 2605 was used for the final analyses
+#date <- "2605"
+date <- "2108"    # JT, new run to get score for ROC and PR
+#date <- "2408"    # Tested whether changing the random seed for splitting data into folds helps with the convergence problems. It didn't!
+
+# Some booleans which are partly obsolete. The best way to use this rmd is to set up directories correctly 
+# and run it chunck by chunck
+run_models <- FALSE
+knit <- FALSE
+preprocess <- FALSE
+cleanup <- TRUE
+
+# Set up these directories!!!
+# These are critical for the script to work
+# More comments on the directory structure below paths:
+basepath <- "~/FRCBS/interval_prediction/"
+datapath <- paste0(basepath, "data/")
+fitpath <- paste0(datapath, "model_fits/")
+
+# simple.model <- paste0(basepath, "src/stan/", "mem_qr_1_noa_train.stan")
+# simple.model.consts <- paste0(basepath, "src/stan/", "mem_qr_1_noa_consts.stan")
+# icp.model <- paste0(basepath, "src/stan/", "mem_qr_1_heckman.stan")
+# icp.model.consts <- paste0(basepath, "src/stan/", "mem_qr_1_heckman_consts.stan")
+simple.model <- paste0(basepath, "src/stan/", "oos.stan")
+simple.model.consts <- paste0(basepath, "src/stan/", "oos_consts.stan")
+icp.model <- paste0(basepath, "src/stan/", "oos_heckman.stan")
+icp.model.consts <- paste0(basepath, "src/stan/", "oos_heckman_consts.stan")
+
+# basepath which has subdirectories for data, src (source files) and src/stan for stan codes
+# data directory should hive subdirectories: 
+# "enriched_files" "model_fits" "rdumps"
+# Also separate location for analysis-files since three of the models are fit with CmdStan
+
+# Parameter names for different models
+# icp, simple, fd_icp and fd_icp with consts
+#params.icp <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]","ups[1]","ups[2]","ups[3]","ups[4]")
+params.icp <- c(sprintf("beta[%i]", 1:10), sprintf("ups[%i]", 1:4))
+
+#params.simple <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]")
+params.simple <- sprintf("beta[%i]", 1:10)
+
+#fd.params.icp <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]","beta[11]","beta[12]","beta[13]","beta[14]","beta[15]","beta[16]","beta[17]","beta[18]","beta[19]","beta[20]","beta[21]","ups[1]","ups[2]","ups[3]","ups[4]")
+fd.params.icp <- c(sprintf("beta[%i]", 1:21), sprintf("ups[%i]", 1:4))
+
+#fd.params.icp.consts <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]","beta[11]","beta[12]","beta[13]","beta[14]","beta[15]","beta[16]","beta[17]","beta[18]","beta[19]","beta[20]","beta[21]","phi[1]","phi[2]","phi[3]","phi[4]","phi[5]","phi[6]", "ups[1]","ups[2]","ups[3]","ups[4]")
+fd.params.icp.consts <- c(sprintf("beta[%i]", 1:21), sprintf("phi[%i]", 1:7), sprintf("ups[%i]", 1:4))
+
+```
+
+
+# Final models
+
+The idea of this document is to gather information of the project as a whole and to show the most important results that we have gotten. This will be a less-detailed and a more code-heavy version of the overleaf-document. These will be written side-by-side and most important results should be present in both of the documents.
+
+This will contain the following sections:
+
+1. Data and preprocessing
+2. Models
+3. Results
+4. Discussion
+
+# Data and preprocessing
+
+Our data set consists of two parts: Progesa and FinDonor data. The progesa data set contains information from all donation events for Finnish blood donors from 2000 to 2020. It has basic information about the donor and about the donation such as donation date and time, age of donor and Hemoglobin value at donation. We've also manipulated the data to include variables such as recent_donation which tell about the donor's donation history. More detailed description in the subsection. FinDonor data set has much more detailed information about the donation events. However, the FinDonor data set is much smaller than progesa data set and has limited usage for that reason. It includes a lot of other variables such as ferritin and blood counts.
+
+Load the data sets:
+
+```{r Load and preprocess data, echo = FALSE}
+#load(paste0(datapath, "full_data_preprocessed-2020-05-08.rdata"))
+load(paste0(datapath, "full_data_preprocessed-2020-05-25.rdata"))
+
+print("Initial columns in the progesa data set")
+print(colnames(fulldata_preprocessed))
+
+# Load FinDonor dataset
+load(paste0(datapath, "r02.fd.bd.all.rdata"))
+findonor <- output
+load(paste0(datapath, "r02ds.donorData.rdata"))
+donordata <- output
+
+# Sanity check that all donors in donordata are also in FinDonor
+table(donordata$donor %in% findonor$donor)
+
+
+update_firsts <- function(df) {
+  df <- df %>% 
+    group_by(donor) %>% 
+    mutate(first_event = ifelse(dateonly == min(dateonly), TRUE, FALSE)) %>% 
+    ungroup()
+  return(df)
+}
+
+```
+
+Preprocess Progesa Data
+
+```{r}
+#ulldata_preprocessed <- mutate(fulldata_preprocessed, days_to_previous_log = log(days_to_previous_fb))
+
+# Open Jarkko's splits
+load(paste0(datapath, "full_data_preprocessed-2020-05-08-train.rdata"))
+load(paste0(datapath,"full_data_preprocessed-2020-05-08-test.rdata"))
+
+print(summary(train))
+
+# Let's make necessary adjustments
+# - Remove all other events than 'K' or '*'
+
+
+# Remove donors that are missing first event or are missing Hb measurement at first event:
+# Donors with first_event:
+fe.dons.train <- train %>% 
+  filter(first_event == TRUE & !is.na(Hb)) %>%
+  pull(donor)
+fe.dons.test <- test %>% 
+  filter(first_event == TRUE & !is.na(Hb)) %>%
+  pull(donor)
+# Filter
+train <- train %>% filter(donor %in% fe.dons.train)
+test <- test %>% filter(donor %in% fe.dons.test)
+
+# Now all donors should have a first Hb
+table(is.na(train$Hb_first[train$first_event == TRUE]))
+table(is.na(test$Hb_first[test$first_event == TRUE]))
+
+# Let's update all Hb_first values (there might be some mistakes)
+train <- train %>% group_by(donor) %>% 
+  mutate(Hb_first = Hb[first_event == TRUE]) %>% 
+  ungroup()
+
+test <- test %>% group_by(donor) %>% 
+  mutate(Hb_first = Hb[first_event == TRUE]) %>% 
+  ungroup()
+
+# Filter events that have donat_phleb != 'K' or '*' and make sure that days_to_previous is a double  
+train <- train %>% 
+    filter(!is.na(Hb_first), !is.na(Hb),
+         donat_phleb == 'K' | donat_phleb == '*') %>% 
+  mutate(days_to_previous_fb = as.double(days_to_previous_fb)) %>% 
+  droplevels()
+
+test <- test %>% 
+    filter(!is.na(Hb_first), !is.na(Hb),
+         donat_phleb == 'K' | donat_phleb == '*') %>% 
+  mutate(days_to_previous_fb = as.double(days_to_previous_fb)) %>% 
+  droplevels()
+
+# Select variables needed for preprocessing and the rest of analyses
+
+train <- train %>%
+  select(donor, Hb, previous_Hb_def, days_to_previous_fb, dateonly,
+         gender, age, previous_Hb, year, warm_season, Hb_first, hour,
+         consecutive_deferrals, recent_donations, recent_deferrals, first_event,
+         days_to_previous_fb, Hb_deferral, donat_phleb)
+
+test <- test %>%
+  select(donor, Hb, previous_Hb_def, days_to_previous_fb, dateonly,
+         gender, age, previous_Hb, year, warm_season, Hb_first, hour,
+         consecutive_deferrals, recent_donations, recent_deferrals, first_event,
+         days_to_previous_fb, Hb_deferral, donat_phleb)
+
+# Check column types and make adjustments
+str(train)
+# Previous_Hb_def to numeric
+# Hb_deferral to numeric
+# Add NAs to previous_Hb where previous_Hb == 0 and first_event == TRUE
+# warm_season to numeric
+
+train <- train %>% mutate(previous_Hb_def = as.numeric(previous_Hb_def),
+                 Hb_deferral = as.numeric(Hb_deferral),
+                 previous_Hb = ifelse(previous_Hb == 0 & first_event == TRUE, NA, previous_Hb),
+                 warm_season = as.numeric(warm_season))
+test <- test %>% mutate(previous_Hb_def = as.numeric(previous_Hb_def),
+                 Hb_deferral = as.numeric(Hb_deferral),
+                 previous_Hb = ifelse(previous_Hb == 0 & first_event == TRUE, NA, previous_Hb),
+                 warm_season = as.numeric(warm_season))
+
+train.male <- train %>% filter(gender == "Men") %>% select(-gender)
+train.female <- train %>% filter(gender == "Women") %>% select(-gender)
+
+test.male <- test %>% filter(gender == "Men") %>% select(-gender)
+test.female <- test %>% filter(gender == "Women") %>% select(-gender)
+
+# Let's enrich the deferrals in the data.
+# First let's save train.male, train.female, test.male and test.female
+# Then process all of these with fraction 50%
+# Load the enriched data sets and run analyses
+enpath <- paste0(datapath, "enriched_files/")
+if (preprocess) {
+save(train.male, file = paste0(enpath,"male_train.rdata"))
+save(train.female, file = paste0(enpath,"female_train.rdata"))
+save(test.male, file = paste0(enpath, "male_test.rdata"))
+save(test.female, file = paste0(enpath,"female_test.rdata"))
+
+system(paste0("Rscript", " ", basepath,"enrich_deferrals.R", " ", enpath,"male_train.rdata"," ","0.5", " ",
+              enpath, "male_train_enriched.rdata"))
+system(paste0("Rscript", " ", basepath,"enrich_deferrals.R", " ", enpath,"female_train.rdata"," ","0.5", " ",
+              enpath, "female_train_enriched.rdata"))
+system(paste0("Rscript", " ", basepath,"enrich_deferrals.R", " ", enpath,"male_test.rdata"," ","0.5", " ",
+              enpath, "male_test_enriched.rdata"))
+system(paste0("Rscript", " ", basepath,"enrich_deferrals.R", " ", enpath,"female_test.rdata"," ","0.5", " ",
+              enpath, "female_test_enriched.rdata"))
+}
+
+train.male.enriched   <- load_single(paste0(enpath,"male_train_enriched.rdata"))
+train.female.enriched <- load_single(paste0(enpath,"female_train_enriched.rdata"))
+test.male.enriched    <- load_single(paste0(enpath,"male_test_enriched.rdata"))
+test.female.enriched  <- load_single(paste0(enpath,"female_test_enriched.rdata"))
+
+
+train.male.icp <- stan_preprocess_icp_new(train.male %>% select(-Hb_first), hlen = 10)
+train.female.icp <- stan_preprocess_icp_new(train.female %>% select(-Hb_first), hlen = 10)
+
+```
+
+
+
+```{r Preprocess FinDonor data, echo = FALSE}
+# Preprocess FinDonor data
+
+
+if (preprocess) {
+  fulldata_preprocessed$Hb_deferral <- as.factor(as.integer(fulldata_preprocessed$Hb_deferral))
+  fulldata_preprocessed$previous_Hb_def <- as.factor(as.integer(fulldata_preprocessed$previous_Hb_def))
+  fulldata_preprocessed$days_to_previous_fb <- as.double(fulldata_preprocessed$days_to_previous_fb)
+  fulldata_preprocessed <- fulldata_preprocessed %>% mutate(donor = as.character(donor))
+  
+  # dons with first_Hb
+# 
+#   first_Hb_donors <- fulldata_preprocessed %>% 
+#     filter(first_event == TRUE & !is.na(Hb)) %>%
+#     pull(donor)
+#   fulldata_preprocessed <- fulldata_preprocessed %>%
+#     filter(donor %in% first_Hb_donors) %>% 
+#     group_by(donor) %>% 
+#     mutate(Hb_first = Hb[first_event == TRUE]) %>% 
+#     ungroup()
+  ##
+  fulldata_preprocessed <- fulldata_preprocessed %>% 
+    #filter(!is.na(Hb_first), !is.na(days_to_previous_fb),
+    #     !is.na(previous_Hb), !is.na(Hb),
+    #     donat_phleb == 'K' | donat_phleb == '*',
+    #     !is.na(previous_Hb_def), first_event == FALSE) %>% 
+    filter(donat_phleb == 'K' | donat_phleb == '*') %>% 
+  mutate(days_to_previous_fb = as.double(days_to_previous_fb)) %>% 
+  droplevels()
+  
+  dons.with.bmi <- unique(donordata$donor)
+
+  # Remove donors without BMI-measurement from FinDonor dataset (only 4 donors and events)
+  findonor <- findonor %>% 
+    filter(donor %in% dons.with.bmi)
+
+  # Select interesting variables for each donor
+  # This can be BMI, smoking information etc. For now let's use height and weight instead of BMI
+  additional.variables <- c("height", "weight", "QR54", "QR58", "QR40", "QR31", "iron_supp", "iron_comp_c")
+  helper.variables <- c("donat_phleb", "dateonly", "previous_Hb", "gender", "first_event")
+  #findonor <- findonor %>% mutate(donor = as.factor(donor))
+  donor.variables <- donordata %>% select(donor, additional.variables)
+
+  # Add donor variables to findonor data    
+  findonor <- donor.variables %>% 
+    inner_join(findonor, by ="donor")
+  
+  # Combine the two datasets
+  combined.data <- fulldata_preprocessed %>% 
+    mutate(date = dateonly) %>% 
+    inner_join(findonor, by = c("donor","date","Hb", "gender", "age", "Hb_deferral")) %>% 
+    select(-date)
+  
+  # Dealing with duplicate variables which have different initial factor levels
+  combined.data <- combined.data %>% 
+    select(-donat_phleb.y) %>% 
+    rename(donat_phleb = donat_phleb.x)
+  
+  # Get the donations following last FinDonor donations for testing purposes for FinDonor donors from progesa dataset
+  test.events <- fulldata_preprocessed %>% 
+    inner_join(findonor %>% 
+                group_by(donor) %>% 
+                summarise(last_donation = max(as.Date(date))) %>% 
+                ungroup(),
+               by = "donor") %>% 
+    filter(dateonly > last_donation) %>% 
+    group_by(donor) %>% 
+    filter(dateonly == min(dateonly)) %>% 
+    ungroup() %>% 
+    dplyr::select(-last_donation)
+  
+  head(test.events)
+  
+  combined.data <- combined.data %>% full_join(test.events)
+  combined.data <- combined.data %>% 
+    group_by(donor) %>% 
+    arrange(as.Date(dateonly)) %>%
+    ungroup()
+  
+  # Similar preprocessing as in stan_preprocess_le
+  
+  # We want to keep donors with more than two donations:
+  combined.data <- combined.data %>% 
+    droplevels() %>% 
+    group_by(donor) %>% 
+    filter(n() > 2) %>% 
+    ungroup()
+  
+  # Filter bad events
+  #combined.data <- combined.data %>%
+  #  filter(!is.na(Hb_first), !is.na(days_to_previous_fb),
+  #         !is.na(Hb), !is.na(previous_Hb),
+  #         donat_phleb == 'K' | donat_phleb == '*',# | donat_phleb == 'T',
+  #         !is.na(previous_Hb_def))
+      
+  # Select relevant variables:
+  # Same ones as in the previous models:
+  old.variables <- c("Hb", "donor", "days_to_previous_fb", "previous_Hb_def", "age", "year", "warm_season", "Hb_first", "hour", 
+                     "consecutive_deferrals", "recent_donations", "recent_deferrals")
+  # Newly available biomarkers:
+  new.variables <- c("Eryt", "HKR", "Leuk", "Trom", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "TransferrinR")
+  
+  combined.data <- combined.data %>% 
+    #drop_na(c(old.variables, new.variables)) %>% 
+    select(c(old.variables, helper.variables, new.variables, additional.variables))
+  
+  # Update first_event variable
+  #combined.data <- update_firsts(combined.data)
+
+  # Separate models for male and female donors
+  #findonor.data.male <- combined.data %>% filter(gender == "Men")
+  #findonor.data.female <- combined.data %>% filter(gender == "Women")
+}
+
+# Choose all the variables that we are going to use in the analysis
+
+print("Columns used for analysis in progesa data:")
+print(colnames(fulldata_preprocessed))
+```
+
+
+```{r Load and preprocess data, echo = FALSE}
+# Now this data has the variables we need for the analysis
+
+if (preprocess) {
+  fulldata_preprocessed$previous_Hb_def <- as.integer(as.character(fulldata_preprocessed$previous_Hb_def))
+  
+  # Set previous_Hb_def and days_to_previous_log as 0 for first events
+  # remove events with missing first_Hb
+  fulldata_preprocessed <- fulldata_preprocessed %>% 
+    mutate(previous_Hb_def = ifelse(first_event == TRUE & is.na(previous_Hb_def), 0, previous_Hb_def)) %>% 
+    #mutate(days_to_previous_log = ifelse(first_event == TRUE & is.na(days_to_previous_log), 0, days_to_previous_log)) %>% 
+    mutate(warm_season = as.integer(warm_season)) %>% 
+    drop_na() %>% 
+    select(-first_event)
+  
+  fulldata_male <- fulldata_preprocessed %>% 
+    filter(gender == "Men")
+      
+  fulldata_female <- fulldata_preprocessed %>% 
+    filter(gender == "Women")
+  
+  set.seed(123)
+  male_splits <- split_set(fulldata_male, train_frac = 0.5)
+  female_splits <- split_set(fulldata_female, train_frac = 0.5)
+  save(male_splits, file = paste0(datapath, "male_splits_1305.rdata"))
+  save(female_splits, file = paste0(datapath, "female_splits_1305.rdata"))
+}
+```
+
+
+## Progesa data set
+
+
+Description of the data set. These variables will be used with "simple" model and deltamodel.
+
+```{r Create progesa table, echo = FALSE}
+
+old.variables <- c("Hb", "donor", "previous_Hb_def", "days_to_previous_fb", "age", "year", "warm_season",
+                   "Hb_first", "hour", "consecutive_deferrals", "recent_donations", "recent_deferrals")
+old.variables.delta <- c("Hb", "donor", "previous_Hb_def", "days_to_previous_fb", "age", "year", "warm_season",
+                         "previous_Hb", "hour", "consecutive_deferrals", "recent_donations", "recent_deferrals")
+
+descript <- tibble(Variable = c("donor", "Hb", "previous_Hb_deferral", "days_to_previous_fb", "gender", "age", "previous_Hb",
+                                "year", "warm_season", "Hb_first (Non ICP-model)", "hour", "consecutive_deferrals", "recent_donations",
+                                "recent_deferrals"), 
+                   Type = c("Factor", "numeric", "boolean", "numeric", "factor", "numeric (int)", "numeric", "numeric (int)", "boolean",
+                            "numeric", "numeric", "numeric (int)", "numeric (int)", "numeric (int)"),
+                   Explanation = c("Donor identifier",
+                                   "Amount of Hemoglobin",
+                                   "Indicates whether the donor was deffered from blood donation due to low hemoglobin at previous donation event",
+                                   "Time (in days) between Hb measurement and previous full blood donation event",
+                                   "Sex of donor, used to group donors",
+                                   "Age of donor",
+                                   "Hb value at previous measurement",
+                                   "Year of donation",
+                                   "True if donation was given in April-September",
+                                   "Hb value at first donation of this donor",
+                                   "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
+                                   "Amount of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
+                                   "Amount of donations in the last two years",
+                                   "Amount of deferrals due to low hemoglobin in the last two years"))
+
+```
+
+```{r Print progesa table}
+kable(descript)
+```
+
+Create data sets for the final analysis for CmdStan:
+
+```{r}
+if (preprocess) {
+  load(paste0(datapath, "male_splits_1305.rdata"))
+  load(paste0(datapath, "female_splits_1305.rdata"))
+  
+  # We'll create two data sets corresponding to different models:
+  # 1. Simple model (No previous Hb)
+  # 2. Deltamodel
+  
+  # Male donors
+  
+  train_male_simple <- male_splits$train %>% select(old.variables)
+  
+  sl.male.simple <- stan_preprocess_new(train_male_simple)
+  Qr <- qr_decomposition(sl.male.simple$x_train)
+  N <- nrow(Qr$Q_star)
+  K <- ncol(Qr$Q_star)
+  Ndon <- length(unique(sl.male.simple$train_donors))
+  Q_star <- Qr$Q_star
+  R_star <- Qr$R_star
+  R_star_inv <- Qr$R_star_inv
+  Hb <- sl.male.simple$y_train
+  donor <- sl.male.simple$train_donors
+  
+  stan_rdump(list = c("N", "K", "Ndon", "Q_star", "R_star", "R_star_inv", "Hb", "donor"),
+             file = paste0(datapath, "progesa_simple_final_male_1805.R"))
+  
+  rm(train_male_simple, sl.male.simple); gc()
+  
+  train_male_delta <- male_splits$train %>% select(old.variables.delta)
+  
+  sl.male.delta <- stan_preprocess_deltamodel(train_male_delta)
+  Qr <- qr_decomposition(sl.male.delta$x_train)
+  N <- nrow(Qr$Q_star)
+  K <- ncol(Qr$Q_star)
+  Ndon <- length(unique(sl.male.delta$train_donors))
+  Q <- Qr$Q_star
+  R <- Qr$R_star
+  R_inv <- Qr$R_star_inv
+  Hb <- sl.male.delta$y_train
+  Hb_lag <- sl.male.delta$Hb_lag
+  donor <- sl.male.delta$train_donors
+  first_events <- sl.male.delta$first_events
+  #Ndon_test <- length(unique(sl.male.delta$test_donors))
+  #test_donors <- sl.male.delta$test_donors
+  #x_test <- sl.male.delta$x_test
+  #Hb_lag_test <-sl.male.delta$Hb_lag_test
+  
+  stan_rdump(list = c("N", "K", "Ndon", "Q", "R", "R_inv", "Hb", "Hb_lag", "donor",
+                      "first_events"), #"Ndon_test", "test_donors", "x_test", "Hb_lag_test"),
+             file = paste0(datapath, "progesa_delta_final_male_1805.R"))
+  
+  rm(train_male_delta, sl.male.delta); gc()
+
+  # Female donors
+  
+  train_female_simple <- female_splits$train %>% select(old.variables)
+  
+  sl.female.simple <- stan_preprocess_new(train_female_simple)
+  Qr <- qr_decomposition(sl.female.simple$x_train)
+  N <- nrow(Qr$Q_star)
+  K <- ncol(Qr$Q_star)
+  Ndon <- length(unique(sl.female.simple$train_donors))
+  Q_star <- Qr$Q_star
+  R_star <- Qr$R_star
+  R_star_inv <- Qr$R_star_inv
+  Hb <- sl.female.simple$y_train
+  donor <- sl.female.simple$train_donors
+  
+  stan_rdump(list = c("N", "K", "Ndon", "Q_star", "R_star", "R_star_inv", "Hb", "donor"),
+             file = paste0(datapath, "progesa_simple_final_female_1805.R"))
+  
+  rm(train_female_simple, sl.female.simple); gc()
+  
+  train_female_delta <- female_splits$train %>% select(old.variables.delta)
+  
+  sl.female.delta <- stan_preprocess_deltamodel(train_female_delta)
+  Qr <- qr_decomposition(sl.female.delta$x_train)
+  N <- nrow(Qr$Q_star)
+  K <- ncol(Qr$Q_star)
+  Ndon <- length(unique(sl.female.delta$train_donors))
+  Q <- Qr$Q_star
+  R <- Qr$R_star
+  R_inv <- Qr$R_star_inv
+  Hb <- sl.female.delta$y_train
+  Hb_lag <- sl.female.delta$Hb_lag
+  donor <- sl.female.delta$train_donors
+  first_events <- sl.female.delta$first_events
+  #Ndon_test <- length(unique(sl.female.delta$test_donors))
+  #test_donors <- sl.female.delta$test_donors
+  #x_test <- sl.female.delta$x_test
+  #Hb_lag_test <-sl.female.delta$Hb_lag_test
+  
+  stan_rdump(list = c("N", "K", "Ndon", "Q", "R", "R_inv", "Hb", "Hb_lag", "donor",
+                      "first_events"),#, "Ndon_test", "test_donors", "x_test", "Hb_lag_test"),
+             file = paste0(datapath, "progesa_delta_final_female_1805.R"))
+  
+  rm(train_female_delta, sl.male.delta); gc()
+}
+```
+
+
+
+## FinDonor data set
+
+These are the additional variables from FinDonor data set. These will be used together with variables from Progesa data, never separately.
+
+```{r Create FinDonor table, echo = FALSE}
+
+descript.fd <- tibble(Variable = c("Eryt", "HKR", "Leuk", "Trom", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "TransferrinR"),
+                      Pretty = c("Erythrocyte", "HKR", "Leukocyte", "Trombocyte", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "Transferrin receptor"),
+                      Type = c("Numeric", "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",
+                                "Numeric"),
+                      Description = c("Amount of erythrocytes, red blood cells [E12/l]",
+                                      "Hematocrit (HTC) the volume percentage of RBCs in whole blood [%]",
+                                      "Leukocytes, white blood cell counts [E9/l] (thousand cells per microliter)",
+                                      "Thrombocytes/platelets [E9/l]",
+                                      "Mean corpuscular hemoglobin, average mass of hemoglobin per red blood cell. Diminished in hypochromic anemias. [pg]",
+                                      "Mean corpuscular hemoglobin concentration, average mass of hemoglobin in a litre of RBCs. [g/l]",
+                                      "Mean Corpuscular Volume, the average volume of RBCs. [fl]",
+                                      "Red blood cell distribution width, is a measure of the range of variation of RBC volume. [%]",
+                                      "C-reactive protein, measure of inflammation. Its circulating concentrations rise in response to inflammation. [mg/l]",
+                                      "An intracellular protein that stores iron and releases it in controlled fashion. Acts as a buffer against iron deficiency and iron overload. Plasma ferritin is an indirect marker of the total iron strorage. [µg/l]",
+                                      "Transferrin receptor (TfR) is a carrier protein for transferrin. [mg/l]"))
+descript.fd.consts <- tibble(Variable=c("height", "weight", "smoking_status", "physical_condition", "meat_amount", "sleep_quality", "iron_supplement"),
+                             Pretty=c("Height", "Weight", "Smoking status", "Physical condition", "Meat amount", "Sleep quality", "Iron supplement"),
+                             Type=c("Numeric", "Numeric", "Boolean", "Numeric (int)", "Numeric (int)", "Numeric (int)", "Numeric (int)"),
+                             Description=c("Height", "Weight", "Smoking status: no=0, sometimes or daily = 1", 
+                                           "Physical condition: very bad=0, bad=1, satisfactory=2, rather good=3, good=4, excellent=5",
+                                           "How often meat: less than one weekly=1, 1-3 per week=2, 4-6 per week=3, daily=4, several daily=5", 
+                                           "How often do you feel like you've slept enough: never=0, rarely = 1, mostly=2, always or almost = 3",
+                                           "How many iron table were eaten"))
+                                     
+#dummy1 <- c("Days to previous full blood donation", "Previous Hb deferred", "Age", "Year", "Warm season", "Hour", "Consecutive deferrals", "Recent donations", "Recent deferrals", "Previous Hb")  
+#dummy2 <- c("First age", "First year", "First warm season", "First hour")
+
+to_pretty <- function(df, description) {
+  old_names <- colnames(df)
+  new_names <- description %>% filter(Variable %in% all_of(old_names)) %>% pull(Pretty)
+  colnames(df) <- new_names
+  df
+}
+
+```
+
+```{r Print FinDonor table}
+kable(descript.fd)
+kable(descript.fd.consts)
+```
+
+
+Interesting variables that could be used from the donor data (N=2580). 
+
+Smoking:
+
+* QR54 smoking: no, sometimes, daily (24 NA)
+* QR55 years smoked (if QR is not no): median 15 [7,30] (2283 NA)
+* QR56 previous smoking: yes / no
+* QR57 previous smoking: numerical
+
+
+#Mikko: I propose using QR54 smoking: no, sometimes, daily  just as a logical yes / no.
+
+
+
+Physical condition
+
+* QR58 physical condition: very bad, bad, satisfactory, rather_good, good, excellent (25 NA)
+* QR60 Time spent daily on "everyday exercise" (hyötyliikunta): under 15 min, 15-30 min, 30-60 min, over 1 hour (37 NA)
+* QR61 Amount of exercise: never, less than monthly, 1 to 2 times a month, once a week, 2-4 times a week, more than 4 times a week (37 NA)
+
+Dietary choises:
+
+#Mikko: based on previous experience QR58 is good, just make it into a numerical variable.
+
+Dietary choises
+
+* QR40 how often meat
+* QR44 how often fruit
+* QR46 how often juice
+* QR45 how often vegetables
+* QR48 how often milk
+* QR49 how often coffee
+* QR50 how often tea
+* QR51 how often beer
+* QR52 how often wine
+* QR53 how often strong alcohol
+
+#Mikko: only * QR40 how often meat is useful and it can be made into a numerical variable
+
+
+Sleeping habits:
+
+* QR31 How often do you feel like you've slept enough: never, rarely, mostly, always or almost always
+* QR32 Do you feel tired during the day: always_or_almost, mostly, rarely, never
+
+#Mikko: * QR31 How often do you feel like you've slept enough: is good and again just make it into a numeric variable.
+
+
+How these should be used? Separate model for each group or one large model?  How to encode the categorical variables into the model?
+
+
+#Mikko: I think you need men and women separate models, but splitting post/premenopause looses too much power. Just add the couple of questions I mention above to the FinDonor model of lab values. And put the question: QR37	X16.1..Vastasitte.kylla..kuinka.monta.rautatablettia.soitte.	If yes, how many iron tablets did you take? in. Code NA's as "None" or level 1. Muriel paper's code as good examples on how to code these: https://github.com/FRCBS/iron_levels_of_blood_donors/blob/master/src/index.Rmd
+
+
+```{r}
+
+if (preprocess) {
+  colnames(combined.data)
+  # Clean the variable names
+  
+  # As a reminder: additional.variables <- c("height", "weight", "QR54", "QR58", "QR40", "QR31", "iron_supp", "iron_comp_c")
+  combined.data <- combined.data %>% 
+    setnames(old = additional.variables, new = c("height","weight", "smoking_status", "physical_condition", "meat_amount", "sleep_quality", "iron_supp", "iron_comp_c"))
+
+  # Mutate the new variables into the right type
+  # Update previous_Hb
+  combined.data <- combined.data %>% 
+    mutate(iron_supplement = ifelse(iron_supp == FALSE, 0, iron_comp_c)) %>%
+    group_by(donor) %>% 
+    mutate(previous_Hb = lag(Hb, default = NA)) %>% 
+    ungroup() %>% 
+    select(-iron_supp) %>%
+    select(-iron_comp_c) %>% 
+    mutate(smoking_status = ifelse(smoking_status == "no", 0, 1)) %>% 
+    mutate(physical_condition = case_when(physical_condition == "very_bad" ~ 0,
+                                          physical_condition == "rather_bad" ~ 1,
+                                          physical_condition == "satisfactory" ~ 2,
+                                          physical_condition == "rather_good" ~ 3,
+                                          physical_condition == "good" ~ 4,
+                                          physical_condition == "excellent" ~ 5)) %>% 
+    mutate(meat_amount = case_when(meat_amount == "never" ~ 0,
+                                   meat_amount == "less_than_once_weekly" ~ 1,
+                                   meat_amount == "1.3_week" ~ 2,
+                                   meat_amount == "4.6_week" ~ 3,
+                                   meat_amount == "daily" ~ 4,
+                                   meat_amount == "several_daily" ~ 5)) %>% 
+    mutate(sleep_quality = case_when(sleep_quality == "never" ~ 0,
+                                     sleep_quality == "rarely" ~ 1,
+                                     sleep_quality == "mostly" ~ 2,
+                                     sleep_quality == "always_or_almost" ~ 3))
+  colSums(is.na(combined.data))
+  new.additional <- c("height", "weight", "smoking_status", "physical_condition", "meat_amount", "sleep_quality", "iron_supplement")
+  
+  # Some NAs but not too much combined to the amount of events
+  combined.data <- combined.data %>% drop_na(new.additional, Hb)
+  combined.data <- combined.data %>% 
+    mutate(previous_Hb_def = as.integer(as.character(previous_Hb_def))) %>% 
+    mutate(warm_season = as.integer(warm_season)) %>% 
+    mutate(days_to_previous_fb = ifelse(first_event == TRUE, NA, days_to_previous_fb)) %>% 
+    mutate(previous_Hb = ifelse(first_event == TRUE, NA, previous_Hb)) %>% 
+    mutate(previous_Hb_def = ifelse(first_event == TRUE, NA, previous_Hb_def)) %>% 
+    mutate(first_event = as.integer(first_event))
+  
+  combined.data <- combined.data %>% 
+    group_by(donor) %>% 
+    filter(n() > 2)
+  
+  combined.data.male <- combined.data %>% filter(gender == "Men") %>% select(-gender)
+  combined.data.female <- combined.data %>% filter(gender == "Women") %>% select(-gender)
+}
+
+```
+
+```{r}
+data.male2 <- combined.data.male %>%
+#  filter(first_event == FALSE) %>%
+  select(all_of(descript.fd$Variable))# %>%
+#  mutate(Hb_deferral = as.integer(Hb_deferral),
+#         warm_season = as.integer(warm_season),
+#         previous_Hb_def = as.integer(previous_Hb_def))
+
+pmale <- data.male2 %>%
+  keep(is.numeric) %>%
+  to_pretty(descript.fd) %>%
+  gather() %>%
+  mutate(key = factor(key, levels=descript.fd$Pretty))  %>% # Don't sort alphabetically
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram(fill = "blue")
+pmale
+
+male_donor_specific <- combined.data.male %>%
+  select(all_of(descript.fd.consts$Variable)) %>%
+  distinct() %>%
+  #mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
+  keep(is.numeric) %>%
+  to_pretty(descript.fd.consts) 
+pmale2 <- male_donor_specific %>%
+  gather() %>%
+  mutate(key = factor(key, levels=descript.fd.consts$Pretty))  %>% # Don't sort alphabetically
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram(fill = "blue")
+pmale2
+rm(male_donor_specific, data.male2);
+
+```
+
+
+```{r}
+data.female2 <- combined.data.female %>%
+#  filter(first_event == FALSE) %>%
+  select(all_of(descript.fd$Variable))# %>%
+#  mutate(Hb_deferral = as.integer(Hb_deferral),
+#         warm_season = as.integer(warm_season),
+#         previous_Hb_def = as.integer(previous_Hb_def))
+
+pfemale <- data.female2 %>%
+  keep(is.numeric) %>%
+  to_pretty(descript.fd) %>%
+  gather() %>%
+  mutate(key = factor(key, levels=descript.fd$Pretty))  %>% # Don't sort alphabetically
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram(fill = "orange")
+pfemale
+
+female_donor_specific <- combined.data.female %>%
+  select(all_of(descript.fd.consts$Variable)) %>%
+  distinct() %>%
+  #mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
+  keep(is.numeric) %>%
+  to_pretty(descript.fd.consts) 
+pfemale2 <- female_donor_specific %>%
+  gather() %>%
+  mutate(key = factor(key, levels=descript.fd.consts$Pretty))  %>% # Don't sort alphabetically
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram(fill = "orange")
+pfemale2
+rm(female_donor_specific, data.female2);
+
+```
+
+
+
+
+## PRS data set
+
+# Models
+
+## Linear mixed effect model
+
+First Hb value is not modelled. The second and the following are estimated with the following formula:
+
+$y_{it} \sim N(\beta x_{it} + b_i, \sigma_\epsilon^2)$
+
+## Delta-model
+
+First Hb-value is modelled in a different way:
+
+$y_{i0} \sim N(u_i + \beta x_{i0}, \frac{\sigma_\epsilon^2}{(1-\delta) * (1 + \delta)})$
+
+Other values are modelled in this way:
+
+$y_{it} \sim N((1 - \delta) (u_i + \beta x_{it}) + \delta y_{it-1}, \sigma_\epsilon^2)$
+
+## Random slope models?
+
+## Dynamic predictions?
+
+Here we'll implement the dynamic prediction function. This means that we can do out-of-sample predictions in a dynamic fashion. Making out-of-sample predictions means that we're using different set of donors to validate model performance that was used to train the model. We'll use the trained parameters from the stan-fitted model but we'll estimate new random terms for new donors. We'll update the random term at each event since the random term is dependent on the whole donation history. In other words we use events at times t-1 to estimate random term at time t.
+
+```{r}
+# Take as input similar structures as stan-models do
+# Also take as input nescessary parameters, which are
+# - sigma_epsilon and beta for simple model
+# - upsilon, sigma_eeta, beta and sigma_epsilon for Heckman model
+
+
+predict_new <- function(model.list, n.samples = 1000) {
+  # Input as a list:
+  # x: events that we want to predict
+  # y: values that we're trying to predict
+  # Z: first time measurements of exogenous variables
+  # beta: variable coefficients
+  # sigmaeps: standard deviation of random error
+  # ups: coefficients for first-time exogenous variables
+  # sigma_eeta: standard deviation of first event random error
+  # sigma_b: standard deviation of donor-specific random effects
+  # theta: Slope term for first event donor-specific random effects
+  # donor: donor IDs for each measurement
+  df <- cbind(model.list$x, y = model.list$y, donor = model.list$donor)
+  new_donbs <- matrix(numeric(nrow(df) * 2), ncol = 2)
+  
+  model.list$sigma_b_mean <- mean(model.list$sigma_b)
+  model.list$sigma_epsilon_mean <- mean(model.list$sigma_epsilon)
+  model.list$beta_mean <- unname(colMeans(model.list$beta))
+  
+  if (model.list$type == "icp" | model.list$type == "icp-consts") {
+    model.list$theta_mean <- mean(model.list$theta)
+    model.list$sigma_eeta_mean <- mean(model.list$sigma_eeta)
+    model.list$ups_mean <- unname(colMeans(model.list$ups))
+  }
+  rowcount <- 1
+  for (d in unique(df$donor)) {
+    events <- df %>% filter(donor == d) %>% select(-donor)
+    n.events <- nrow(events)
+    vals <- calculate_donbs(df = events, model.list, donor = d, n.samples = n.samples)
+    new_donbs[rowcount:(rowcount + n.events - 1),] <- vals
+    rowcount <- rowcount + n.events
+  }
+  model.list$new_donbs <- new_donbs
+  if (model.list$type == "icp-consts" | model.list$type == "icp") {
+    pred.list <- new_predictions_icp(model.list)
+  } else if (model.list$type == "simple-consts" | model.list$type == "simple") {
+    pred.list <- new_predictions_simple(model.list)
+  }
+  return(list(new_donbs = new_donbs,
+              predictions = pred.list$predictions,
+              predicted_probabilities = pred.list$predicted_probabilities))
+}
+
+calculate_donbs <- function(df, model.list, donor, n.samples) {
+  ml <- model.list
+  N <- nrow(df)
+  new_donbs <- matrix(numeric(N*2), ncol = 2)
+  y <- df$y
+  df <- df %>% select(-y)
+  df <- as.matrix(df)
+  for(i in 1:N) {
+    # How many time points are we using to estimate don_b?
+    time_points <- i - 1
+    y_star <- numeric(time_points)
+    x_star <- numeric(time_points)
+    if (time_points == 0) {
+      new_donbs[i,] <- c(0,ml$sigma_b_mean)
+    } else if (ml$type == "icp-consts" || ml$type == "icp") {
+      x_star[1] <- ml$theta_mean / ml$sigma_eeta_mean
+      y_star[1] <- (y[1] - ml$ups_mean %*% ml$Z[donor,]) / ml$sigma_eeta_mean
+      if (time_points > 1) {
+        x_star[2:time_points] <- rep(1/ml$sigma_epsilon_mean, time_points - 1)
+        y_star[2:time_points] <- (y[2:time_points] - df[2:time_points,] %*% ml$beta_mean) / ml$sigma_epsilon_mean
+      }
+      dist_mean <- 1/(t(x_star) %*% x_star + ml$sigma_b_mean^(-2)) * (t(x_star) %*% y_star)
+      dist_sd <- 1/(t(x_star) %*% x_star + ml$sigma_b_mean^(-2))
+      new_donbs[i,] <- c(dist_mean, dist_sd)
+    } else if (ml$type == "simple-consts" || ml$type == "simple") {
+      x_star[1:time_points] <- rep(1/ml$sigma_epsilon_mean, time_points)
+      y_star[1:time_points] <- (y[1:time_points] - df[1:time_points,] %*% ml$beta_mean) / ml$sigma_epsilon_mean
+      dist_mean <- 1/(t(x_star) %*% x_star + ml$sigma_b_mean^(-2)) * (t(x_star) %*% y_star)
+      dist_sd <- 1/(t(x_star) %*% x_star + ml$sigma_b_mean^(-2))
+      new_donbs[i,] <- c(dist_mean, dist_sd)
+    }
+  }
+  return(new_donbs)
+}
+
+new_predictions_icp <- function(model.list, n.samples = 1000) {
+  ml <- model.list
+  N <- nrow(ml$x)
+  ml$x <- as.matrix(ml$x)
+  C <- ml$C
+  predictions <- c()
+  predicted_probabilities <- c()
+  tic(paste0("Predicting Hb-values for ", N, " donation events using Heckman adjusted LME-model."))
+  for (i in 1:N) {
+    donbs <- rnorm(n.samples, ml$new_donbs[i,1], ml$new_donbs[i,2])
+    if (i %in% ml$first_events) {
+      preds <- apply(ml$ups,2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$Z[ml$donor[i],] + 
+        sample(ml$theta, n.samples, replace = TRUE) * donbs + 
+        rnorm(n = n.samples, mean = 0, sd = sample(ml$sigma_eeta, size = n.samples, replace = TRUE))
+      if (!is.null(C)) {
+        preds <- preds + apply(ml$phi, 2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$C[ml$donor[i],]
+      }
+    } else {
+      preds <- apply(ml$beta, 2, function(x) sample(x, size = n.samples, replace =TRUE)) %*% ml$x[i,] + donbs +
+        rnorm(n = n.samples, mean = 0, sd = sample(ml$sigma_epsilon, size = n.samples, replace = TRUE))
+      if (!is.null(C)) {
+        preds <- preds + apply(ml$phi, 2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$C[ml$donor[i],]
+      }
+    }
+    predictions[i] <- mean(preds)
+    predicted_probabilities[i] <- length(which(preds < ml$threshold)) / n.samples 
+  }
+  toc()
+  return(list(predictions = predictions,
+              predicted_probabilities = predicted_probabilities))
+}
+
+new_predictions_simple <- function(model.list, n.samples = 1000) {
+  ml <- model.list
+  N <- nrow(ml$x)
+  ml$x <- as.matrix(ml$x)
+  C <- ml$C
+  predictions <- c()
+  predicted_probabilities <- c()
+  tic(paste0("Predicting Hb-values for ", N, " donation events using LME-model without lagged Hb."))
+  for (i in 1:N) {
+    donbs <- rnorm(n.samples, ml$new_donbs[i,1], ml$new_donbs[i,2])
+    preds <- apply(ml$beta, 2, function(x) sample(x, size = n.samples, replace =TRUE)) %*% ml$x[i,] + donbs +
+      rnorm(n = n.samples, mean = 0, sd = sample(ml$sigma_epsilon, size = n.samples, replace = TRUE))
+    if (!is.null(C)) {
+      preds <- preds + apply(ml$phi, 2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$C[ml$donor[i],]
+    }
+    predictions[i] <- mean(preds)
+    predicted_probabilities[i] <- length(which(preds < ml$threshold)) / n.samples 
+  }
+  toc()
+  return(list(predictions = predictions,
+              predicted_probabilities = predicted_probabilities))
+}
+
+
+# OLD
+predict_Hbs <- function(model.list, n.samples = 1000) {
+  # Different prediction methods for different models
+  # Models:
+  # "simple" = Most simple model with coefficients beta and random effects don_b
+  # "icp-fix" = Model with lagged Hb and first time observations. Not yet implemented
+  # "delta" = Model with lagged Hb, covariates and random effect
+  model <- model.list$model
+  predictions <- c()
+  predicted_probabilities <- c()
+  
+  if (is.null(model.list$donor)) {
+    # If donor identifiers are not provided we assume that there is one event for each donor in x_test
+    model.list$donor <- seq(1:nrow(model.list$x_test))
+  }
+  
+  if (model == "simple") {
+    # Model parameters:
+    # beta, donb, sigmaeps
+    # x_test for predictions and donor indentifier: donor
+    tic(paste0("Predicting Hb-values for ", nrow(model.list$x_test), " donation events using simple model."))
+    for (i in 1:nrow(model.list$x_test)) {
+      preds <- apply(model.list$beta, 2, function(x) sample(x, size = n.samples, replace =TRUE)) %*% model.list$x_test[i,] + 
+      sample(model.list$don_b[,model.list$donor[i]], size = n.samples, replace = TRUE) +
+      rnorm(n = n.samples, mean = 0, sd = sample(model.list$sigma_e, size = n.samples, replace = TRUE))
+      predictions[i] <- mean(preds)
+      predicted_probabilities[i] <- length(which(preds < model.list$threshold)) / n.samples 
+    }
+    toc()
+  } else if (model == "icp-fix") {
+    print("Model not yet implemented. Try again with proper model name.")
+    quit()
+  } else if (model == "delta") {
+    # Model parameters:
+    # beta, don_u, delta, sigma_e
+    # For prediction:
+    # x_test, Hb_lag and donor
+    tic(paste0("Predicting Hb-values for ", nrow(model.list$x_test), " donation events using delta-model."))
+    for (i in 1:nrow(model.list$x_test)) {
+      deltas <- sample(model.list$delta, size = n.samples, replace = TRUE) 
+      preds <- (apply(model.list$beta, 2, function(x) sample(x, size = n.samples, replace =TRUE)) %*% model.list$x_test[i,] + 
+      sample(model.list$don_u[,model.list$donor[i]], size = n.samples, replace = TRUE)) * (rep(1,n.samples) - deltas) + 
+      model.list$Hb_lag[i] * deltas +
+      rnorm(n = n.samples, mean = 0, sd = sample(model.list$sigma_e, size = n.samples, replace = TRUE))
+      predictions[i] <- mean(preds)
+      predicted_probabilities[i] <- length(which(preds < threshold)) / n.samples 
+    }
+    toc()
+  } else {
+    print("Model not found. Try again with proper model name.")
+    quit()
+  }
+  return(list(predictions = predictions, predicted_probabilities = predicted_probabilities))
+}
+
+get_params <- function(pars, fit) {
+  values <- rstan::extract(fit, pars)
+  return(as.data.frame(values))
+}
+
+
+```
+
+We'll take a subset of the test donors and pull the parameters from the model fit. Then we'll dynamically estimate the mean and variance of random term for donor i at time t. We use these random terms with corresponding observations x_it and predict the Hb-values y_it. 
+
+```{r}
+create_model_list <- function(fit, type, sl) {
+  # Create_model_list function can be used to create model_list object to 
+  # do out-of-sample predictions for new donors. This function takes as input:
+  # Stan-fit object, type parameter which describes which kind of model was fit and 
+  # stan-list object for _test_ set
+  model.list <- list()
+  model.list$beta <- get_params(pars = names(fit)[grepl("beta", names(fit))], fit = fit)
+  model.list$beta <- as.matrix(model.list$beta %>% select(-contains("tilde")))
+  model.list$x <- sl$x_train
+  model.list$y <- sl$y_train
+  model.list$donor <- sl$train_donors
+  model.list$type <- type
+  if (type == "icp" || type == "icp-consts") {
+    model.list$sigma_b <- unlist(get_params(pars = c("sigma_b"), fit = fit))
+    model.list$sigma_epsilon <- unlist(get_params(pars = c("sigma_eps"), fit = fit))
+    model.list$ups <- as.matrix(get_params(pars = names(fit)[grepl("ups", names(fit))], fit = fit))
+    model.list$sigma_eeta <- unlist(get_params(pars = c("sigma_eeta"), fit = fit))
+    model.list$theta <- unlist(get_params(pars = c("theta"), fit = fit))
+    model.list$Z <- as.matrix(sl$Z)
+    model.list$first_events <- sl$first_events
+  } else {
+      model.list$sigma_b <- unlist(get_params(pars = c("sigmab"), fit = fit))
+      model.list$sigma_epsilon <- unlist(get_params(pars = c("sigmaeps"), fit = fit))
+  }
+  if (type == "simple-consts" || type == "icp-consts") {
+    model.list$phi <- as.matrix(get_params(pars = c("phi"), fit = fit))
+    model.list$C <- as.matrix(sl$C)
+  }
+  return(model.list)
+}
+
+
+parameter_cis <- function(parameters, pnames = NULL, digits = 3) {
+  cis <- apply(parameters, MARGIN = 2, MeanCI, conf.level = 0.95)
+  #cis <- t(cis)[,c(2,1,3)]
+  cis <- t(cis)
+  if (!is.null(pnames)) rownames(cis) <- pnames
+  return(round(cis, digits = digits))
+}
+  
+model_results <- function(actual, predicted, probabilities, threshold, Hb_mean, Hb_sd, lims = NULL) {
+# This function will:
+# - Plot comparison
+# - Calculate errors
+#   . RMSE
+#   . MAE
+# - ROC-curve
+# - Cutpoint
+# - Confusion matrix with the cutpoint
+
+# *Inputs*:
+# Actual values, predicted values, threshold, Hb_mean and Hb_sd, also ROC-params
+  
+  result.df <- as.data.frame(cbind(actual = actual, predicted = predicted, fractions = probabilities))
+  result.norm <- result.df  %>% mutate(actual = denormalize_vector(actual, Hb_mean, Hb_sd)) %>% 
+    mutate(predicted = denormalize_vector(predicted, Hb_mean, Hb_sd))
+  
+  result.norm <- result.norm %>% mutate(deferral = as.factor(ifelse(actual < threshold, 1, 0)))
+  print(summary(result.norm))
+  xymin <- min(min(result.norm$predicted),min(result.norm$actual))
+  xymax <- max(max(result.norm$predicted),max(result.norm$actual))
+
+  comp_plot <- ggplot(result.norm, aes(x = actual, y=predicted, color = deferral)) +
+    geom_point() +
+    #xlim(xymin,xymax) + ylim(xymin,xymax) +
+    scale_x_continuous(breaks = generate_my_breaks(20), limits=c(xymin,xymax)) +
+    scale_y_continuous(breaks = generate_my_breaks(20), limits=c(xymin,xymax)) +
+    geom_abline(intercept = 0, slope = 1) +
+    labs(x = "observed", y = "predicted", colour = "status") +
+    geom_vline(xintercept = threshold, linetype = "dashed") + geom_hline(yintercept = threshold, linetype = "dashed") +
+    scale_colour_discrete(labels=c("accepted", "deferred"))
+
+  if (!is.null(lims)) {comp_plot <- comp_plot + xlim(lims) + ylim(lims)}
+  
+  par(pty="s")
+  roc_plot <- pROC::roc(data = result.norm, response = "deferral", predictor = "fractions", plot = TRUE, legacy.axes = TRUE, percent = TRUE,
+    xlab = "False Positive Percentage", ylab = "True Positive Percentage", ci = TRUE)
+  
+  # Find an optimal cutoff value
+  # Now using sum_sens_spec metric which means we're trying to maximize sensitivity + specificity values
+  # This will produce a lot of false positives, thiscould be better optimized by using another metric
+  cp <- cutpointr(result.norm, fractions, deferral, method = maximize_metric, metric = sum_sens_spec)
+
+  mae <- mae(result.norm$actual, result.norm$predicted)
+  rmse <- rmse(actual = result.norm$actual, predicted = result.norm$predicted)
+  
+  original_Hb2 <- to_mmol_per_litre(result.norm$actual)
+  Hb_predictions2 <- to_mmol_per_litre(result.norm$predicted)
+  mae2  <- mae(original_Hb2, Hb_predictions2)
+  rmse2 <- rmse(original_Hb2, Hb_predictions2)
+  
+  error.df <- as.data.frame(cbind(original = c(mae,rmse), scaled = c(mae2, rmse2)))
+  return(list(results = result.norm,
+              comp_plot = comp_plot,
+              roc_plot = roc_plot,
+              cutpoint = cp,
+              error.df = error.df))
+}
+  
+posterior_plot <- function(fit, params, variables, interval = TRUE) {
+  # Plot certain parameter from a stan fit
+  posterior <- as.array(fit, pars = params)
+  color_scheme_set("red")
+  if (interval) {
+    plot <- mcmc_intervals(posterior) + scale_y_discrete(labels = variables)
+  } else {
+    plot <- mcmc_areas(posterior) + scale_y_discrete(labels = variables)
+  }
+  return(plot)
+}
+```
+
+
+```{r}
+set.seed(123)
+
+rdons.test <- sample(unique(test.male.enriched$donor), 500)  
+smol.test <- test.male.enriched %>% filter(donor %in% rdons.test)
+smol.test.sl <- stan_preprocess_icp_new(smol.test, hlen = 10, test_data = FALSE)
+
+beta <- get_params(pars = params[grepl("beta", params)], fit = fit)
+ups <- get_params(pars = params[grepl("ups", params)], fit = fit)
+sigma_eeta <- get_params(pars = c("sigma_eeta"), fit = fit)
+sigma_b <- get_params(pars = c("sigma_b"), fit = fit)
+sigma_epsilon <- get_params(pars = c("sigma_eps"), fit = fit)
+theta <- get_params(pars = c("theta"), fit = fit)
+
+model.list.male <- list(model = "icp",
+                        x = smol.test.sl$x_train,
+                        y = smol.test.sl$y_train,
+                        Z = as.matrix(smol.test.sl$Z),
+                        donor = smol.test.sl$train_donors,
+                        beta = as.matrix(beta),
+                        ups = as.matrix(ups),
+                        sigma_eeta = unlist(sigma_eeta),
+                        sigma_epsilon = unlist(sigma_epsilon),
+                        sigma_b = unlist(sigma_b),
+                        theta = unlist(theta),
+                        first_events = smol.test.sl$first_events) 
+
+preds <- predict_new(model.list.male)
+```
+
+# Analyses
+
+We'll fit the models here
+
+## Progesa data
+
+### Simple model
+
+```{r Simple model male donors}
+if (run_analyses) {
+sl.train.male <- stan_preprocess_new(train.male.enriched %>% select(-previous_Hb), hlen = 10)
+
+Qr <- qr_decomposition(sl.train.male$x_train)
+stan.data.simple.male <- list(N = nrow(sl.train.male$x_train),
+                              K = ncol(sl.train.male$x_train),
+                              Ndon = length(unique(sl.train.male$train_donors)),
+                              Q_star = Qr$Q_star,
+                              R_star_inv = Qr$R_star_inv,
+                              Hb = sl.train.male$y_train,
+                              donor = sl.train.male$train_donors)
+
+tic("Fitting simple model for male donors with progesa data")
+fit.ms <- stan(simple.model,
+            model_name = "Simple_progesa_male",
+            data = stan.data.simple.male,
+            cores = 4)
+toc()
+save(fit.ms, file = paste0(fitpath,"progesa_simple_male_",date,".rdata"))
+
+if (cleanup) rm(sl.train.male, fit.ms, stan.data.simple.male); gc()
+}
+
+load(file = paste0(fitpath,"progesa_simple_male_",date,".rdata"))
+
+lp_fit <- log_posterior(fit.ms)
+posterior <- as.array(fit.ms, pars = params)
+color_scheme_set("darkgray")
+np_fit <- nuts_params(fit.ms)
+
+color_scheme_set("red")
+mcmc_nuts_energy(np_fit, binwidth = 10)
+
+old.vars <- colnames(sl.train.male$x_train)
+labels <- old.vars
+mcmc_intervals(posterior) + scale_y_discrete(labels = labels)
+
+
+
+sl.test.male <- stan_preprocess_new(test.male.enriched %>% select(-previous_Hb), hlen = 10)
+prediction.list <- create_model_list(fit = fit.ms, type = "simple", sl = sl.test.male)
+prediction.list$threshold <- normalize_vector(135, sl.test.male$par_means[["Hb"]], sl.test.male$par_sds[["Hb"]])
+
+preds <- predict_new(prediction.list)
+
+results.ms <- model_results(actual = sl.test.male$y_train, predicted = preds$predictions, probabilities = preds$predicted_probabilities, 
+              threshold = 135, Hb_mean = sl.test.male$par_means[["Hb"]], Hb_sd = sl.test.male$par_sds[["Hb"]], lims = c(100,200))
+
+posterior_plot(fit.ms, params = params.simple, colnames(sl.test.male$x_train))
+parameter_cis(prediction.list$beta, colnames(sl.test.male$x_train))
+results.ms$comp_plot
+```
+
+
+```{r Simple model female donors}
+if (run_analyses) {
+sl.train.female <- stan_preprocess_new(train.female.enriched %>% select(-previous_Hb), hlen = 10)
+
+# This model could not be fit inside Rstan so we'll fit it in CmdStan
+Qr <- qr_decomposition(sl.train.female$x_train)
+N = nrow(sl.train.female$x_train)
+K = ncol(sl.train.female$x_train)
+Ndon = length(unique(sl.train.female$train_donors))
+Q_star = Qr$Q_star
+R_star_inv = Qr$R_star_inv
+Hb = sl.train.female$y_train
+donor = sl.train.female$train_donors
+
+stan_rdump(list = c("N", "K", "Ndon", "Q_star", "R_star_inv", "Hb", "donor"),
+           file = paste0(datapath, "rdumps/", "progesa_simple_female_rdump_", date, ".R"))
+
+#tic("Fitting simple model for female donors with progesa data")
+#fit.fs <- stan(simple.model,
+#            model_name = "Simple_progesa_female",
+#            data = stan.data.simple.female,
+#            cores = 4)
+#toc()
+#save(fit.fs, file = paste0(fitpath,"progesa_simple_female_",date,".rdata"))
+
+if (cleanup) rm(sl.train.female); gc()
+}
+
+analysis.path <- paste0(basepath, "src/analyses/final_analyses_may/simple_female/")
+#fnames <- c("simplemodel_f1.csv","simplemodel_f2.csv","simplemodel_f3.csv","simplemodel_f4.csv")
+#for (i in 1:length(fnames)) {fnames[i] <- paste0(analysis.path, fnames[i])}
+#fit.fs <- read_stan_csv(fnames)
+#save(fit.fs, file=paste0(analysis.path,"stanfit_simple.f.rdata"))
+load(paste0(analysis.path,"stanfit_simple.f.rdata"))
+
+lp_fit <- log_posterior(fit.fs)
+posterior <- as.array(fit.fs, pars = params.simple)
+color_scheme_set("darkgray")
+np_fit <- nuts_params(fit.fs)
+
+color_scheme_set("red")
+mcmc_nuts_energy(np_fit, binwidth = 10)
+
+old.vars <- colnames(sl.train.female$x_train)
+labels <- c(old.vars, "first_age", "first_year", "first_season", "first_hour")
+mcmc_intervals(posterior) + scale_y_discrete(labels = labels)
+
+sl.test.female <- stan_preprocess_new(test.female.enriched %>% select(-previous_Hb), hlen = 10)
+prediction.list <- create_model_list(fit = fit.fs, type = "simple", sl = sl.test.female)
+prediction.list$threshold <- normalize_vector(125, sl.test.female$par_means[["Hb"]], sl.test.female$par_sds[["Hb"]])
+
+preds <- predict_new(prediction.list)
+
+plot(preds$predictions, sl.test.female$y_train)
+
+cis.simple.female <- parameter_cis(prediction.list$beta, pnames = colnames(sl.test.female$x_train))
+
+results.fs <- model_results(actual = sl.test.female$y_train, predicted = preds$predictions, probabilities = preds$predicted_probabilities, 
+              threshold = 125, Hb_mean = sl.test.female$par_means[["Hb"]], Hb_sd = sl.test.female$par_sds[["Hb"]], lims = c(80,190))
+
+posterior_plot(fit.fs, params = params.simple, colnames(sl.test.female$x_train))
+parameter_cis(prediction.list$beta, colnames(sl.test.female$x_train))
+results.fs$comp_plot
+
+```
+
+
+### icp-fix model
+
+```{r Heckman model male donors}
+if (run_analyses) {
+sl.train.male.icp <- stan_preprocess_icp_new(train.male.enriched %>% select(-Hb_first), hlen = 10)
+
+Qr <- qr_decomposition(sl.train.male.icp$x_train)
+N = nrow(sl.train.male.icp$x_train)
+K = ncol(sl.train.male.icp$x_train)
+L = ncol(sl.train.male.icp$Z)
+Ndon = length(unique(sl.train.male.icp$train_donors))
+Q_star = Qr$Q_star
+R_star_inv = Qr$R_star_inv
+Hb = sl.train.male.icp$y_train
+donor = sl.train.male.icp$train_donors
+Z = sl.train.male.icp$Z
+first_events = sl.train.male.icp$first_events
+
+stan_rdump(list = c("N", "K", "L", "Ndon", "Q_star", "R_star_inv", "Hb", "donor", "Z", "first_events"),
+           file = paste0(datapath, "rdumps/", "progesa_icp_male_rdump_", date, ".R"))
+
+# tic("Fitting Heckman model for female donors with progesa data")
+# fit.mh <- stan(icp.model,
+#             model_name = "Heckman_progesa_male",
+#             data = stan.data.icp.male,
+#             cores = 4)
+# toc()
+
+#save(fit.mh, file = paste0(fitpath,"progesa_heckman_male_",date,".rdata"))
+
+if (cleanup) rm(sl.train.male.icp); gc()
+}
+
+analysis.path <- paste0(basepath, "src/analyses/final_analyses_may/icp_male/")
+#fnames <- c("icpmodel_m1.csv","icpmodel_m2.csv","icpmodel_m3.csv","icpmodel_m4.csv")
+#for (i in 1:length(fnames)) {fnames[i] <- paste0(analysis.path, fnames[i])}
+#fit.mh <- read_stan_csv(fnames)
+#save(fit.mh, file=paste0(analysis.path,"stanfit_icp.m.rdata"))
+load(paste0(analysis.path,"stanfit_icp.m.rdata"))
+
+# lp_fit <- log_posterior(fit.mh)
+# posterior <- as.array(fit.mh, pars = params)
+# color_scheme_set("darkgray")
+# np_fit <- nuts_params(fit.mh)
+# 
+# color_scheme_set("red")
+# mcmc_nuts_energy(np_fit, binwidth = 10)
+# 
+# old.vars <- colnames(sl.train.male.icp$x_train)
+# labels <- c(old.vars, "first_age", "first_year", "first_season", "first_hour")
+# mcmc_intervals(posterior) + scale_y_discrete(labels = labels)
+
+sl.test.male.icp <- stan_preprocess_icp_new(test.male.enriched %>% select(-Hb_first), hlen = 10)
+
+prediction.list <- create_model_list(fit = fit.mh, type = "icp", sl = sl.test.male.icp)
+prediction.list$threshold <- normalize_vector(135, sl.test.male.icp$par_means[["Hb"]], sl.test.male.icp$par_sds[["Hb"]])
+
+preds <- predict_new(prediction.list)
+results.mh <- model_results(actual = sl.test.male.icp$y_train, predicted = preds$predictions, probabilities = preds$predicted_probabilities, 
+              threshold = 135, Hb_mean = sl.test.male.icp$par_means[["Hb"]], Hb_sd = sl.test.male.icp$par_sds[["Hb"]], lims = c(100,200))
+
+
+posterior_plot(fit.mh, params = params.icp, c(colnames(sl.test.male.icp$x_train), "first_age", "first_year", "first_season", "first_hour"))
+parameter_cis(prediction.list$beta, colnames(sl.test.male.icp$x_train))
+results.mh$comp_plot
+
+
+```
+
+```{r Heckman model female donors}
+if (run_analyses) {
+  sl.train.female.icp <- stan_preprocess_icp_new(train.female.enriched %>% select(-Hb_first), hlen = 10)
+  
+  Qr <- qr_decomposition(sl.train.female.icp$x_train)
+  N = nrow(sl.train.female.icp$x_train)
+  K = ncol(sl.train.female.icp$x_train)
+  L = ncol(sl.train.female.icp$Z)
+  Ndon = length(unique(sl.train.female.icp$train_donors))
+  Q_star = Qr$Q_star
+  R_star_inv = Qr$R_star_inv
+  Hb = sl.train.female.icp$y_train
+  donor = sl.train.female.icp$train_donorscd 
+  Z = sl.train.female.icp$Z
+  first_events = sl.train.female.icp$first_events
+  
+  stan_rdump(list = c("N", "K", "L", "Ndon", "Q_star", "R_star_inv", "Hb", "donor", "Z", "first_events"),
+             file = paste0(datapath, "rdumps/", "progesa_icp_female_rdump_", date, ".R"))
+  
+  
+  # tic("Fitting Heckman model for female donors with progesa data")
+  # fit.fh <- stan(icp.model,
+  #             model_name = "Heckman_progesa_female",
+  #             data = stan.data.icp.female,
+  #             cores = 4)
+  # toc()
+  # 
+  # save(fit.fh, file = paste0(fitpath,"progesa_heckman_female_",date,".rdata"))
+  
+  if (cleanup) rm(sl.train.female.icp); gc()
+}
+
+analysis.path <- paste0(basepath, "src/analyses/final_analyses_may/icp_female/")
+#fnames <- c("icpmodel_f1.csv","icpmodel_f2.csv","icpmodel_f3.csv","icpmodel_f4.csv")
+#for (i in 1:length(fnames)) {fnames[i] <- paste0(analysis.path, fnames[i])}
+#fit.fh <- read_stan_csv(fnames)
+#save(fit.fh, file=paste0(analysis.path,"stanfit_icp.f.rdata"))
+load(paste0(analysis.path,"stanfit_icp.f.rdata"))
+
+lp_fit <- log_posterior(fit.fh)
+posterior <- as.array(fit.fh, pars = params.icp)
+color_scheme_set("darkgray")
+np_fit <- nuts_params(fit.fh)
+
+color_scheme_set("red")
+mcmc_nuts_energy(np_fit, binwidth = 10)
+
+old.vars <- colnames(sl.train.female.icp$x_train)
+labels <- c(old.vars, "first_age", "first_year", "first_season", "first_hour")
+mcmc_intervals(posterior) + scale_y_discrete(labels = labels)
+
+sl.test.female.icp <- stan_preprocess_icp_new(test.female.enriched %>% select(-Hb_first), hlen = 10)
+
+prediction.list <- create_model_list(fit = fit.fh, type = "icp", sl = sl.test.female.icp)
+prediction.list$threshold <- normalize_vector(125, sl.test.female.icp$par_means[["Hb"]], sl.test.female.icp$par_sds[["Hb"]])
+
+preds <- predict_new(prediction.list)
+results.fh <- model_results(actual = sl.test.female.icp$y_train, predicted = preds$predictions, probabilities = preds$predicted_probabilities, 
+              threshold = 125, Hb_mean = sl.test.female.icp$par_means[["Hb"]], Hb_sd = sl.test.female.icp$par_sds[["Hb"]], lims = c(80,190))
+
+posterior_plot(fit.fh, params = params.icp, c(colnames(sl.test.female.icp$x_train), "first_age", "first_year", "first_season", "first_hour"))
+parameter_cis(prediction.list$beta, colnames(sl.test.female.icp$x_train))
+results.fh$comp_plot
+
+```
+
+
+## FinDonor data
+
+Dataset splitting:
+
+```{r}
+# Create 4 splits of the male and female donors
+set.seed(123)
+#set.seed(42345)
+n.tab <- count(combined.data.male, donor)   # Number of donations per donor
+fold.indices <- createFolds(n.tab$n, k = 4)
+folds.male <- list()
+iter <- 1
+for (f in fold.indices) {
+  folds.male[[paste0("fold",iter)]] <- combined.data.male %>% filter(donor %in% n.tab$donor[f])
+  iter <- iter + 1
+}
+
+n.tab <- count(combined.data.female, donor)
+fold.indices <- createFolds(n.tab$n, k = 4)
+folds.female <- list()
+iter <- 1
+for (f in fold.indices) {
+  folds.female[[paste0("fold",iter)]] <- combined.data.female %>% filter(donor %in% n.tab$donor[f])
+  iter <- iter + 1
+}
+
+```
+
+Kfold-fitting function:
+
+```{r}
+
+kfold_fit <- function(folds, model, model.params, 
+                      new.variables = c("Eryt", "HKR", "Leuk", "Trom", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "TransferrinR"), 
+                      additional.variables = c("height", "weight", "smoking_status", "physical_condition", "meat_amount", "sleep_quality", "iron_supplement")) {
+  model.type <- model.params$type
+  
+  K <- length(folds)
+  indices <- seq(1:K)
+  
+  results <- list()
+  for (k in 1:K) {
+    message(sprintf("\nRunning fold %i\n", k))
+    val <- folds[[k]]
+    train <- do.call("rbind", folds[indices[-k]])
+    train <- as.data.frame(train)
+    val <- as.data.frame(val)
+    if (model.params$type == "icp-consts") {
+      sl.train <- stan_preprocess_icp_new(train %>% select(-Hb_first), tolag = new.variables, donor_variables = additional.variables, test_data = FALSE)
+      sl.val <- stan_preprocess_icp_new(val %>% select(-Hb_first), tolag = new.variables, donor_variables = additional.variables, test_data = FALSE)
+      Qr <- qr_decomposition(sl.train$x_train)
+      
+      model.data <- list(N = nrow(Qr$Q_star),
+                         K = ncol(Qr$Q_star),
+                         L = ncol(sl.train$Z),
+                         M = ncol(sl.train$C),
+                         Ndon = length(unique(sl.train$train_donors)),
+                         Q_star = Qr$Q_star,
+                         R_star = Qr$R_star,
+                         R_star_inv = Qr$R_star_inv,
+                         Hb = sl.train$y_train,
+                         Z = sl.train$Z,
+                         C = sl.train$C,
+                         donor = sl.train$train_donors,
+                         first_events = sl.train$first_events)
+      
+    } else if (model.params$type == "icp") {
+      sl.train <- stan_preprocess_icp_new(train %>% select(-c("Hb_first", additional.variables)), tolag = new.variables, test_data = FALSE)
+      sl.val <- stan_preprocess_icp_new(val %>% select(-c("Hb_first", additional.variables)), tolag = new.variables, test_data = FALSE)
+      Qr <- qr_decomposition(sl.train$x_train)
+      
+      model.data <- list(N = nrow(Qr$Q_star),
+                         K = ncol(Qr$Q_star),
+                         L = ncol(sl.train$Z),
+                         Ndon = length(unique(sl.train$train_donors)),
+                         Q_star = Qr$Q_star,
+                         R_star = Qr$R_star,
+                         R_star_inv = Qr$R_star_inv,
+                         Hb = sl.train$y_train,
+                         donor = sl.train$train_donors,
+                         Z = sl.train$Z,
+                         first_events = sl.train$first_events)
+      
+    } else if (model.params$type == "simple-consts") {
+      sl.train <- stan_preprocess_new(train %>% select(-previous_Hb), tolag = new.variables, donor_variables = additional.variables, test_data = FALSE)
+      sl.val <- stan_preprocess_new(val %>% select(-previous_Hb), tolag = new.variables, donor_variables = additional.variables, test_data = FALSE)
+      Qr <- qr_decomposition(sl.train$x_train)
+      
+      model.data <- list(N = nrow(Qr$Q_star),
+                         K = ncol(Qr$Q_star),
+                         M = ncol(sl.train$C),
+                         Ndon = length(unique(sl.train$train_donors)),
+                         Q_star = Qr$Q_star,
+                         R_star = Qr$R_star,
+                         R_star_inv = Qr$R_star_inv,
+                         C = sl.train$C,
+                         Hb = sl.train$y_train,
+                         donor = sl.train$train_donors)
+      
+    } else if (model.params$type == "simple") {
+      train <- train %>% drop_na()
+      sl.train <- stan_preprocess_new(train %>% select(-c("previous_Hb", additional.variables)), tolag = new.variables, test_data = FALSE)
+      print("got here")
+      print(colnames(sl.train$x_train))
+      sl.val <- stan_preprocess_new(val %>% select(-c("previous_Hb", additional.variables)), tolag = new.variables, test_data = FALSE)
+      Qr <- qr_decomposition(sl.train$x_train)
+      model.data <- list(N = nrow(Qr$Q_star),
+                         K = ncol(Qr$Q_star),
+                         Ndon = length(unique(sl.train$train_donors)),
+                         Q_star = Qr$Q_star,
+                         R_star_inv = Qr$R_star_inv,
+                         Hb = sl.train$y_train,
+                         donor = sl.train$train_donors)
+    }
+    fit <- stan(file = model,
+                data = model.data,
+                iter = model.params$iter,
+                control = model.params$control,
+                cores = 4)
+    # Save fit to a desired directory
+    save(fit, file = paste0(model.params$directory, model.params$model.name, "_fold", k, "_", date, ".rdata"))
+    # Extract common parameters
+    pred.list <- create_model_list(fit, type = model.type, sl.val)
+    pred.list$type <- model.params$type
+    pred.list$threshold <- normalize_vector(model.params$threshold, sl.val$par_means[["Hb"]], sl.val$par_sds[["Hb"]])     # Added by Jarkko
+    assign("jarkko_predictions", pred.list, envir=globalenv())   # Remove this
+    predictions <- predict_new(pred.list)
+    #predictions$actual <- sl.val$y_train
+    result.list <- model_results(sl.val$y_train, predictions$predictions, probabilities = predictions$predicted_probabilities,
+                                 threshold = model.params$threshold, sl.val$par_means[["Hb"]], sl.val$par_sds[["Hb"]])
+    results[[k]] <- result.list
+  }
+  return(results)
+}
+
+#model.params needs: threshold, iter, type, model.name, directory control
+```
+
+Run simple models for Findonor data:
+(These did not work for me so there is no data to load)
+
+```{r}
+# Stan models:
+
+
+# Simple male
+params.sm <- list(threshold = 135,
+                  iter = 4000,
+                  type = "simple",
+                  model.name = "simple_model_male",
+                  directory = paste0(fitpath,"kfolds/simple_male/"),
+                  control = list())
+results.sm <- kfold_fit(folds.male, simple.model, params.sm)
+save(results.sm, file = paste0(fitpath,"sm_",date,".rdata"))
+
+# Simple female
+params.sf <- list(threshold = 125,
+                  iter = 4000,
+                  type = "simple",
+                  model.name = "simple_model_female",
+                  directory = paste0(fitpath,"kfolds/simple_female/"),
+                  control = list())
+results.sf <- kfold_fit(folds.female, simple.model, params.sf)
+save(results.sf, file = paste0(fitpath,"sf_",date,".rdata"))
+
+# Simple male consts
+params.smc <- list(threshold = 135,
+                  iter = 4000,
+                  type = "simple-consts",
+                  model.name = "simple_model_male_consts",
+                  directory = paste0(fitpath,"kfolds/simple_male_consts/"),
+                  control = list())
+results.smc <- kfold_fit(folds.male, simple.model.consts, params.smc)
+save(results.smc, file = paste0(fitpath,"smc_",date,".rdata"))
+
+# Simple female consts
+params.sfc <- list(threshold = 125,
+                  iter = 4000,
+                  type = "simple-consts",
+                  model.name = "simple_model_female_consts",
+                  directory = paste0(fitpath,"kfolds/simple_female_consts/"),
+                  control = list())
+results.sfc <- kfold_fit(folds.female, simple.model.consts, params.sfc)
+save(results.sfc, file = paste0(fitpath,"sfc_",date,".rdata"))
+
+```
+
+ICP-models (Heckman) for FinDonor data:
+
+```{r}
+# Males
+if (run_models) {
+  # params.hm <- list(threshold = 135,
+  #                   iter = 4000,
+  #                   type = "icp",
+  #                   model.name = "icp_model_male",
+  #                   directory = paste0(fitpath,"kfolds/icp_male/"),
+  #                   control = list())
+  # results.hm <- kfold_fit(folds.male, icp.model, params.hm)
+  # save(results.hm, file = paste0(fitpath,"hm_",date,".rdata"))
+  # 
+  message("\n\n\nRunning males\n\n\n")
+  # Icp male consts
+  params.hmc <- list(threshold = 135,
+                     iter = 6000,
+                     type = "icp-consts",
+                     model.name = "icp_model_male_consts",
+                     directory = paste0(fitpath,"kfolds/icp_male_consts/"),
+                     control = list(max_treedepth = 20))
+  results.hmc <- kfold_fit(folds.male, icp.model.consts, params.hmc)
+  save(results.hmc, file = paste0(fitpath,"hmc_",date,".rdata"))
+} else {
+  #load(file = paste0(fitpath,"hm_",date,".rdata"))
+  load(file = paste0(fitpath,"hmc_",date,".rdata"))
+}
+```
+
+```{r}
+# Females
+if (run_models) {
+  # 
+  # 
+  # # Icp female
+  # params.hf <- list(threshold = 125,
+  #                   iter = 4000,
+  #                   type = "icp",
+  #                   model.name = "icp_model_female",
+  #                   directory = paste0(fitpath,"kfolds/icp_female/"),
+  #                   control = list())
+  # results.hf <- kfold_fit(folds.female, icp.model, params.hf)
+  # save(results.hf, file = paste0(fitpath,"hf_",date,".rdata"))
+  
+  
+  message("\n\n\nRunning females\n\n\n")
+  # Icp female consts
+  params.hfc <- list(threshold = 125,
+                    iter = 20000,
+                    type = "icp-consts",
+                    model.name = "icp_model_female_consts",
+                    directory = paste0(fitpath,"kfolds/icp_female_consts/"),
+                    control = list(max_treedepth = 20, adapt_delta = 0.99))
+  results.hfc <- kfold_fit(folds.female, icp.model.consts, params.hfc)
+  save(results.hfc, file = paste0(fitpath,"hfc_",date,".rdata"))
+
+} else {
+  #load(file = paste0(fitpath,"hf_",date,".rdata"))
+  load(file = paste0(fitpath,"hfc_",date,".rdata"))
+}
+
+
+```
+
+# Some results for FinDonor analyses:
+
+```{r}
+
+
+# Function for plotting combined posterior
+combine_posterior <- function(fits, params, variables = NULL) {
+  posterior <- tibble()
+  for (f in fits) {
+    # All fits are called "fit" when they are saved
+    load(f)
+    values <- as_tibble(extract(fit, params))
+    posterior <- rbind(posterior, values)
+  }
+  
+  temp <- create_forest_plot(posterior, variables)
+  p.plot <- temp$plot
+  post.cis <- temp$cis
+  
+  return(list(posterior = posterior,
+              posterior_plot = p.plot,
+              cis = post.cis))
+}
+
+# Function for combined predictions and analyses
+combined_predictions <- function(res.list, threshold = NULL) {
+  K <- length(res.list)
+  preds <- tibble()
+  error.sums <- matrix(numeric(4), nrow = 2)
+  for (k in 1:K) {
+    preds <- rbind(preds, res.list[[k]]$results)
+    error.sums <- error.sums + res.list[[k]]$error.df
+  }
+  
+  
+  df <- preds %>%
+    select(predicted, observed=actual, deferral, scores=fractions)
+  #synthetic <- rnorm(nrow(preds))
+  #df$scores <- synthetic
+  df <- df %>%
+    mutate(predicted_labels = ifelse(predicted < threshold, 1L, 0L),
+           deferral = as.integer(as.character(deferral)))
+  print(head(df))
+  comp_plot <- create_scatter_plot(df, threshold)
+
+  
+  roc <- create_roc_new(df$deferral, df$score)
+  roc_plot <- roc$roc_plot
+  AUC <- roc$roc_auc
+  
+  
+  
+  
+  pr <- create_precision_recall_new(df$deferral, df$score)
+  pr_plot <- pr$pr_plot
+  
+  AUPR <- pr$pr_auc
+  
+  cm <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
+  
+  
+  return(list(predictions = preds,
+              comp_plot = comp_plot,
+              mean_errors = error.sums/K,
+              roc_plot = roc_plot,
+              roc_auc = AUC,
+              pr_plot = pr_plot,
+              pr_auc = AUPR,
+              cm = cm,
+              df = df))
+} 
+
+```
+
+```{r}
+fnames.hm <- sprintf("icp_model_male_fold%i_%s.rdata", 1:4, date)
+fnames.hf <- sprintf("icp_model_female_fold%i_%s.rdata", 1:4, date)
+fnames.hmc <- sprintf("icp_model_male_consts_fold%i_%s.rdata", 1:4, date)
+fnames.hfc <- sprintf("icp_model_female_consts_fold%i_%s.rdata", 2:4, date)
+
+hm.path <- "model_fits/kfolds/icp_male/"
+hf.path <- "model_fits/kfolds/icp_female/"
+hmc.path <- "model_fits/kfolds/icp_male_consts/"
+hfc.path <- "model_fits/kfolds/icp_female_consts/"
+
+for (i in 1:length(fnames.hm)) {fnames.hm[i] <- paste0(datapath, hm.path, fnames.hm[i])}
+for (i in 1:length(fnames.hf)) {fnames.hf[i] <- paste0(datapath, hf.path, fnames.hf[i])}
+for (i in 1:length(fnames.hmc)) {fnames.hmc[i] <- paste0(datapath, hmc.path, fnames.hmc[i])}
+for (i in 1:length(fnames.hfc)) {fnames.hfc[i] <- paste0(datapath, hfc.path, fnames.hfc[i])}
+
+#new.variables = c("Eryt", "HKR", "Leuk", "Trom", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "TransferrinR")
+#additional.variables = c("BMI","smoking_status", "physical_condition", "meat_amount", "sleep_quality", "iron_supplement")
+
+#test.sl <- stan_preprocess_icp_new(folds.male[[1]] %>% select(-Hb_first), tolag = new.variables, donor_variables = additional.variables, test_data = FALSE)
+#fd.icp.vars <- c(colnames(test.sl$x_train), paste(colnames(test.sl$Z), "first", sep="_"))
+#fd.icp.vars.consts <- c(fd.icp.vars, colnames(test.sl$C))
+load(paste(datapath, "variable_names.rdata", sep="/"))
+#c("days_to_previous_fb", "previous_Hb_def", "age", "year", "warm_season", "hour", "consecutive_deferrals", "recent_donations", "recent_deferrals", "previous_Hb", "Eryt", "HKR", "Leuk", "Trom", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "TransferrinR", "age_first", "year_first", "warm_season_first", "hour_first")
+fd.icp.vars <- c("Days to previous full blood donation", "Previous Hb deferred", "Age", "Year", "Warm season", "Hour", "Consecutive deferrals", "Recent donations", "Recent deferrals", "Previous Hb", "Erythrocyte", "HKR", "Leukocyte", "Trombocyte", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "Transferrin receptor", "First age", "First year", "First warm season", "First hour")
+#fd.icp.vars.consts <- c(fd.icp.vars, "BMI", "smoking_status", "physical_condition", "meat_amount", "sleep_quality", "iron_supplement")
+fd.icp.vars.consts <- c(fd.icp.vars, "Height", "Weight", "Smoking status", "Physical condition", "Meat amount", "Sleep quality", "Iron supplement")
+
+# From these you can find_posterior plot to visualize distributions.
+#post.hm <- combine_posterior(fnames.hm, params = fd.params.icp, variables = fd.icp.vars)
+#post.hf <- combine_posterior(fnames.hf, params = fd.params.icp, variables = fd.icp.vars)
+post.hmc <- combine_posterior(fnames.hmc, params = fd.params.icp.consts, variables = fd.icp.vars.consts)
+post.hfc <- combine_posterior(fnames.hfc, params = fd.params.icp.consts, variables = fd.icp.vars.consts)
+
+# Here are the combined results and combined plots
+#combined.hm <- combined_predictions(results.hm, threshold = 135)
+#combined.hf <- combined_predictions(results.hf, threshold = 125)
+combined.hmc <- combined_predictions(results.hmc, threshold = 135)
+combined.hfc <- combined_predictions(results.hfc, threshold = 125)
+#post.hm$posterior_plot
+#post.hmc$posterior_plot
+#combined.hm$comp_plot
+#combined.hm$cm
+#plot(combined.hm$roc)
+#combined.hm$pr_plot
+
+#ggsave(filename="~/performances-hm.pdf", combined.hm$performances, width = 180, units="mm", dpi=600, scale=1.5)
+```
+
+```{r}
+#ggsave(filename=paste0(datapath, "figures/posterior_effects_findonor_heckman_male.pdf"), plot=post.hm$posterior_plot)
+#ggsave(filename=paste0(datapath, "figures/posterior_effects_findonor_heckman_female.pdf"), plot=post.hf$posterior_plot)
+#ggsave(filename=paste0(datapath, "figures/posterior_effects_findonor_heckman_male_consts.pdf"), plot=post.hmc$posterior_plot)
+#ggsave(filename=paste0(datapath, "figures/posterior_effects_findonor_heckman_female_consts.pdf"), plot=post.hfc$posterior_plot)
+```
+
+```{r}
+#ggsave(filename=paste0(datapath, "figures/scatter_plot_findonor_heckman_male.pdf"), plot=combined.hm$comp_plot)
+#ggsave(filename=paste0(datapath, "figures/scatter_plot_findonor_heckman_female.pdf"), plot=combined.hf$comp_plot)
+#ggsave(filename=paste0(datapath, "figures/scatter_plot_findonor_heckman_male_consts.pdf"), plot=combined.hmc$comp_plot)
+#ggsave(filename=paste0(datapath, "figures/scatter_plot_findonor_heckman_female_consts.pdf"), plot=combined.hfc$comp_plot)
+```
+
+```{r}
+# errors <- data.frame(fMAE = c(combined.hf$mean_errors[1,2], combined.hfc$mean_errors[1,2]), 
+#                  fRMSE= c(combined.hf$mean_errors[2,2], combined.hfc$mean_errors[2,2]), 
+#                  fAUC = c(combined.hf$roc_auc,          combined.hfc$roc_auc),
+#                  mMAE = c(combined.hm$mean_errors[1,2], combined.hmc$mean_errors[1,2]), 
+#                  mRMSE= c(combined.hm$mean_errors[2,2], combined.hmc$mean_errors[2,2]), 
+#                  mAUC = c(combined.hm$roc_auc,          combined.hmc$roc_auc)
+#                  )
+#rownames(errors) <- c("Heckman", "Heckman consts")
+mypath2="~/FRCBS/results-for-eba-project/tables/"
+errors <- tibble(
+  Data = "FinDonor",
+  Gender = c("Female", "Male"),
+  Model = "Dynamic linear mixed model",
+  `MAE (g / L)` = c(combined.hfc$mean_errors[1,1], combined.hmc$mean_errors[1,1]),
+  `RMSE (g / L)` = c(combined.hfc$mean_errors[2,1], combined.hmc$mean_errors[2,1]),
+  `MAE (mmol / L)` = c(combined.hfc$mean_errors[1,2], combined.hmc$mean_errors[1,2]),
+  `RMSE (mmol / L)` = c(combined.hfc$mean_errors[2,2], combined.hmc$mean_errors[2,2]),
+  AUC = c(combined.hfc$roc_auc, combined.hmc$roc_auc),
+  AUPR = c(combined.hfc$pr_auc, combined.hmc$pr_auc))
+#FinDonor Prediction errors, average over 4 folds
+write.csv(errors, file = paste0(mypath2, "findonor-errors-both-icp-fix.csv"), row.names = FALSE, quote=FALSE)
+latex_errors <- kable(errors, format="latex", digits=3, caption="findonor-errors-both-icp-fix", label="findonor-errors-both-icp-fix",
+                           linesep="")
+errors
+```
+```{r}
+#heckman_cis <- cbind(post.hf$cis, post.hm$cis)
+#latex_heckman_cis <- kable(heckman_cis, format="latex", digits=3, caption="Effect sizes Heckman", label="effects-fd-h",
+#                           linesep="")
+#heckman_cis
+```
+
+```{r store scatter-confusion and performances}
+mypath="~/FRCBS/results-for-eba-project/pdf/"
+create_scatter_confusion_plots(combined.hfc$df, 125, filename=paste0(mypath, "findonor-scatter-confusion-female-icp-fix.pdf"))
+create_scatter_confusion_plots(combined.hmc$df, 135, filename=paste0(mypath, "findonor-scatter-confusion-male-icp-fix.pdf"))
+
+create_performance_plots(combined.hfc$df, filename=paste0(mypath, "findonor-performance-female-icp-fix.pdf"))
+create_performance_plots(combined.hmc$df, filename=paste0(mypath, "findonor-performance-male-icp-fix.pdf"))
+```
+
+```{r store regression coefficients}
+mypath="~/FRCBS/results-for-eba-project/pdf/"
+ggsave(filename=paste0(mypath, "findonor-coefficient-male-icp-fix.pdf"), plot=post.hmc$posterior_plot, width = 180, units="mm")
+ggsave(filename=paste0(mypath, "findonor-coefficient-female-icp-fix.pdf"), plot=post.hfc$posterior_plot, width = 180, units="mm")
+
+mypath2="~/FRCBS/results-for-eba-project/tables/"
+heckman_consts_cis <- cbind(post.hfc$cis, post.hmc$cis)[-5]
+write.csv(heckman_consts_cis, file = paste0(mypath2, "findonor-coefficient-both-icp-fix.csv"))
+latex_heckman_consts_cis <- kable(heckman_consts_cis, format="latex", digits=3, caption="findonor-coefficient-both-icp-fix", label="findonor-coefficient-both-icp-fix",
+                           linesep="")
+cat(latex_heckman_consts_cis, file = paste0(mypath2, "findonor-coefficient-both-icp-fix.tex"), sep = "\n")
+```
+
+# Additional material
+
+All below this is irrelevant!
+
+Test if the icp-model works with improved code (different handling of first event)
+
+```{r Load and preprocess data, echo = FALSE}
+# Fix previous_Hb_def and days_to_prev
+
+train_male <- male_splits$train %>% select(-gender) %>% select(Hb, everything())
+
+sl.male <- stan_preprocess_new(train_male)
+first_events <- which(ifelse(sl.male$train_donors != lag(sl.male$train_donors, default = 0), TRUE, FALSE))
+# There is an issue with 
+rdon <- sample(unique(train_male$donor), 1000)
+small.train <- train_male %>% filter(donor %in% rdon)
+sl.male.icp.small <- stan_preprocess_icp_new(small.train)
+```
+
+
+```{r Load and preprocess data, echo = FALSE}
+
+code <- 'data {
+    // Train data
+    int<lower=1> N; // Amount of donation events
+    int<lower=1> K; // Amount of variables measured at each donation
+    int<lower=1> Ndon; // Amount of donors in our data
+    int<lower=1> L;
+
+    matrix[N, K] Q_star; // Q_matrix
+    matrix[K, K] R_star; // R_matrix
+    matrix[K, K] R_star_inv;
+    vector[N] Hb; // Hemoglobin values (that we are trying to predict)
+    int<lower=1, upper=Ndon> donor[N]; // Donor identifier
+    int<lower=1, upper=N> first_events[Ndon]; // Used to process first event of each doner differently
+
+
+    matrix[Ndon, L] Z;
+    vector[Ndon] Hb_0;
+
+    // Test data
+    int<lower=1> Ntest; // Amount of test observations
+    matrix[Ntest, K] x_test; // Test data
+    int<lower = 1, upper=Ndon> test_donor[Ntest]; // Test donor identifier
+}
+parameters {
+    vector[K] theta_raw; // Coefficients on Q_star
+    vector[K] mu_theta;
+    real<lower=0> sigma_theta;
+    real<lower=0> sigma_a; // Variance of the individual variation don_a
+    real<lower=0> sigmaeps; // Variance of the random noise
+    real zeeta_1; // Common slope term for Hb_0
+    vector[Ndon] don_a_raw; // Donor specific random effect
+    vector[L] ups; // Coefficients for exogenous variables
+}
+transformed parameters {
+    vector[Ndon] don_b;
+    vector[Ndon] don_a;
+    vector[K] theta;
+
+    theta = mu_theta + sigma_theta * theta_raw;
+    for (i in 1:Ndon) {
+        don_a[i] = sigma_a * don_a_raw[i]; 
+        don_b[i] = zeeta_1 * Hb_0[i] + Z[i,] * ups + don_a[i];
+    }
+    // Implies Hb ~ normal(Q_star * theta + don_b[donor], sigmaeps);  
+}
+model {
+    mu_theta ~ normal(0,10);
+    sigma_theta ~ inv_gamma(0.01, 0.01);
+    sigma_a ~ inv_gamma(0.01, 0.01);
+    sigmaeps ~ inv_gamma(0.01, 0.01);
+    zeeta_1 ~ normal(0,10);
+    ups ~ normal(0,10);
+    
+    theta_raw ~ std_normal();
+    don_a_raw ~ std_normal();
+    for(i in 1:N) {
+        if (i == first_events[donor[i]]) {
+            Hb[i] ~ normal(don_a[donor[i]] + Z[donor[i],] * ups, sigmaeps);
+        }
+        else {
+            Hb[i] ~ normal(Q_star[i,] * theta + don_b[donor[i]], sigmaeps);
+        }
+    }
+}
+generated quantities {
+    vector[N] log_lik;
+    vector[K] beta; // Actual coefficients on x
+    vector[Ntest] y_pred;
+    beta = R_star_inv * theta;
+
+    for (n in 1:N) log_lik[n] = normal_lpdf(Hb[n] | Q_star[n,] * theta + don_b[donor[n]], sigmaeps);
+
+    // Predict using parameters and test data
+    for (i in 1:Ntest) {
+        y_pred[i] = normal_rng(x_test[i]*beta + don_b[test_donor[i]], sigmaeps);
+    }
+}'
+
+stanf <- paste0(basepath, "src/stan/mem_qr_1_icp_reparamterized.stan")
+qr0 <- qr_decomposition(sl.male.icp.small$x_train)
+
+stan_data <- list(N = nrow(sl.male.icp.small$x_train),
+                  K = ncol(sl.male.icp.small$x_train),
+                  Ndon = length(unique(sl.male.icp.small$train_donors)),
+                  L = ncol(sl.male.icp.small$Z),
+                  Q_star = qr0$Q_star,
+                  R_star = qr0$R_star,
+                  R_star_inv = qr0$R_star_inv,
+                  Hb = sl.male.icp.small$y_train,
+                  donor = sl.male.icp.small$train_donors,
+                  first_events = sl.male.icp.small$first_events,
+                  Z = sl.male.icp.small$Z,
+                  Hb_0 = sl.male.icp.small$Hb0,
+                  Ntest = nrow(sl.male.icp.small$x_test),
+                  x_test = sl.male.icp.small$x_test,
+                  test_donor = sl.male.icp.small$test_donors)
+
+sf <- stan(model_code = code,
+           data = stan_data,
+           cores = 4,
+           control = list(adapt_delta = 0.9))
+
+```
+
+
+
+
+```{r}
+library(bayesplot)
+
+params <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]","beta[11]", "zeeta_1",
+            "ups[1]", "ups[2]", "ups[3]", "ups[4]")
+#params <- c("beta[1]", "beta[2]", "beta[3]", "beta[4]","beta[5]","beta[6]","beta[7]","beta[8]","beta[9]","beta[10]", "delta")
+lp_fit <- log_posterior(sf)
+posterior <- as.array(sf)
+color_scheme_set("darkgray")
+np_fit <- nuts_params(sf)
+
+color_scheme_set("red")
+mcmc_nuts_energy(np_fit, binwidth = 10)
+```
+
+
+
+```{r run findonor model}
+# Let's first try with constant variables
+
+deltamodel.c <- paste0(basepath, "src/stan/mem_lagged_deltamodel_repar_consts.stan")
+Qr <- qr_decomposition(sl.fd.male.delta$x_train)
+# Does not work due to high correlation between MCH and MCV
+deltamodel.male.fd.c.data <- list(Ndon = length(unique(sl.fd.male.delta$train_donors)),
+                                  N = nrow(sl.fd.male.delta$x_train),
+                                  K = ncol(sl.fd.male.delta$x_train),
+                                  L = ncol(sl.fd.male.delta$C),
+                                  Hb = sl.fd.male.delta$y_train, 
+                                  Hb_lag = sl.fd.male.delta$Hb_lag,
+                                  donor = sl.fd.male.delta$train_donors,
+                                  Q = Qr$Q_star,
+                                  R = Qr$R_star,
+                                  R_inv = Qr$R_star_inv,
+                                  #x_train = sl.fd.male.delta$x_train,
+                                  C = sl.fd.male.delta$C,
+                                  first_events = sl.fd.male.delta$first_events)
+
+deltamodel.male.fd.c <- stan(deltamodel.c,
+                             data = deltamodel.male.fd.c.data,
+                             cores = 4,
+                             iter = 4000,
+                             save_warmup = FALSE,
+                             control = list(adapt_delta = 0.9))
+
+```

@@ -6,6 +6,8 @@ library(bayesplot)
 library(ggmcmc)
 library(cutpointr)
 library(pROC)
+library(boot)
+library(progress)  # For progress bar
 
 source("helper_functions.R")
 
@@ -66,7 +68,9 @@ create_roc_new <- function(labels, scores) {
                         xlab = "False Positive Rate", ylab = "True Positive Rate",
                         #percent = TRUE,
                         # arguments for ci
-                        #ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+                        ci=TRUE, 
+                        conf.level=0.95, 
+                        boot.stratified=TRUE,
                         # arguments for plot
                         plot=FALSE, #plot=TRUE, 
                         main="Receiver operating characteric",
@@ -80,9 +84,10 @@ create_roc_new <- function(labels, scores) {
   #title <- "Receiver operating characteristic"
   title <- "ROC"
   #title <- sprintf("Receiver operating characteristicc (AUC=%.3f)", AUC)
+  c <- as.numeric(roc$ci)
   roc_plot <- ggroc(roc, legacy.axes=TRUE) +
-    geom_abline(aes(intercept=0, slope=1), color="lightgray", alpha=0.5) +
-    annotate(geom="text", label=sprintf("AUC: %.3f", AUC), x=0.5, y=0.125) +
+    geom_abline(aes(intercept=0, slope=1), color="lightgray") +
+    annotate(geom="text", label=sprintf("AUROC: %.2f (%.2f–%.2f)", c[2], c[1], c[3]), x=0.5, y=0.125) +
     labs(title=title, x = "False positive rate", y = "True positive rate")
   return(list(roc_plot=roc_plot, roc=roc, roc_auc=AUC))
 }
@@ -98,6 +103,34 @@ create_roc_new <- function(labels, scores) {
 #   return(pr)
 # }
 
+
+
+# It seems that the number of replicates must be at least as high as the number of rows in the dataframe
+# https://stat.ethz.ch/pipermail/r-help/2011-February/269006.html
+precision_recall_ci <- function(df, method="basic") {
+  get_aupr <- function(df, indices) {
+    df2 <- df[indices,]
+    pb$tick()  # update progress bar
+    aupr <- PRROC::pr.curve(scores.class0=df2$scores, weights.class0=df2$labels)$auc.davis.goadrich
+    return(aupr)
+  }
+    
+  #df <- tibble(labels=as.integer(labels), scores=scores)
+  #print(head(df))
+  df <- df %>% select(labels, scores)
+  n <- max(nrow(df), 10000)
+  #n=10000
+  pb <- progress::progress_bar$new(total = n+1)# init progress bar
+  pb$tick(0)
+  #p <- progress_estimated(n+1)  # init progress bar
+  b <- boot(df, statistic = get_aupr, R=n, sim="ordinary", stype="i", strata=df$labels, parallel="multicore", ncpus=1)
+  #method = "basic"
+  #method = "bca"
+  result <- boot.ci(b, conf=0.95, type=method)
+  cis <- result[[method]][4:5]
+  return(list(cis=cis, result=result))
+}
+
 create_precision_recall_new <- function(labels, scores) {
   #n <- length(labels)
   #baseline <- names(which.max(table(labels)))   # 0 or 1, which ever is more common
@@ -105,26 +138,29 @@ create_precision_recall_new <- function(labels, scores) {
   #baseline_scores <- c(1.0 - baseline_score, rep(baseline_score, n-1))
   #random_scores <- runif(n, 0, 1)
   pr_model     <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
-  df <- data.frame(pr_model$curve)
+  points <- data.frame(pr_model$curve)
   #pr_baseline <- PRROC::pr.curve(scores.class0=baseline_scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
   #pr_random   <- PRROC::pr.curve(scores.class0=random_scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
   #df <- bind_rows(model=tibble(data.frame(pr_model$curve)), 
                   #baseline=tibble(data.frame(pr_baseline$curve)), 
   #                random=tibble(data.frame(pr_random$curve)), .id="Classifier")
   AUPR <- pr_model$auc.davis.goadrich
+  df <- tibble(labels=labels, scores=scores)
+  prci <- precision_recall_ci(df, method="basic")$cis
   #title <- sprintf("Precision-recall (AUC=%.3f)", AUPR) 
   title <- "Precision-recall"
 # pr_plot <- ggplot(data.frame(pr$curve),aes(x=X1,y=X2)) +
   m <- mean(labels)
-  pr_plot <- ggplot(df, aes(x=X1,y=X2)) +
-    geom_hline(aes(yintercept=m), color="lightgray", alpha=0.5) +   # theoretical PR curve of random classifier
-    annotate(geom="text", label=sprintf("y=%.3f", m), x=0.25, y=m, color="gray", vjust=-1) +
+  pr_plot <- ggplot(points, aes(x=X1,y=X2)) +
+    geom_hline(aes(yintercept=m), color="lightgray") +   # theoretical PR curve of random classifier
+    annotate(geom="text", label=sprintf("y=%.2f", m), x=0.25, y=m, vjust=-1) +
     geom_line() +
-    annotate(geom="text", label=sprintf("AUC: %.3f", AUPR), x=0.5, y=0.875) +
+    annotate(geom="text", label=sprintf("AUPR: %.2f (%.2f–%.2f)", AUPR, prci[1], prci[2]), x=0.5, y=0.875) +
     scale_y_continuous(limits=c(0.0, 1.0)) +
     labs(x="Recall",y="Precision", title=title)
-  return(list(pr_plot=pr_plot, pr=df, pr_auc=AUPR))
+  return(list(pr_plot=pr_plot, pr=points, pr_auc=AUPR))
 }
+
 
 generate_my_breaks <- function(step) {
   # Break between limits at every position that is multiple of 'step' 
@@ -233,7 +269,8 @@ create_performance_plots <- function(df,
   if (use_cowplot) {
     performances <- cowplot::plot_grid(roc$roc_plot, pr$pr_plot, labels = c('A', 'B'), label_size = 12, nrow=1, scale=1.0)
     if (!is.null(filename)) {
-      cowplot::save_plot(filename, performances, ncol = 1, base_asp = 2.0, base_width = width / 25.4, base_height = NULL)
+      # JT: I added device=cairo_pdf below so that special characters (en dash, in this case) get converted properly
+      cowplot::save_plot(filename, performances, ncol = 1, base_asp = 2.0, base_width = width / 25.4, base_height = NULL, device=cairo_pdf)
     }
   } else {
     performances <- gridExtra::grid.arrange(roc$roc_plot, pr$pr_plot, nrow = 1, respect=TRUE)   # Combine the plots
