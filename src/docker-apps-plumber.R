@@ -25,6 +25,7 @@ get_info <- function(x) {
 function(req, fileUpload){
   #cat("At the start\n")
   cat("Before multipart$parse")
+  saveRDS(req, file="~/test_multipart_form_data/request.rds")
   post = Rook::Multipart$parse(req)
   cat("After multipart$parse")
   str(post, nchar.max = 10000)
@@ -128,7 +129,7 @@ function(req, fileUpload){
                           params = myparams)
         error_dfs[[gender]] <- read_csv(filename)
       }
-      }
+    }
     
     # Run random forest etc
     methods <- intersect(c("decision-tree", "random-forest"), names(post))
@@ -139,7 +140,8 @@ function(req, fileUpload){
       filename <- sprintf("/tmp/errors-%s.csv", "ml")
       myparams["errors_table_file"] <- filename
       rmarkdown::render(
-        'template.Rmd',
+        'random_forest.Rmd',
+        #'template.Rmd',
         output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
         output_format=c('html_document', 'pdf_document'),
         clean=FALSE,
@@ -266,10 +268,10 @@ function(req){
 
         <h3>Detailed result pages</h3>
         <table id="detailed-results" class="table table-condensed">
-        <tr> <th>Gender</th> <th>html</th> <th>pdf</th> </tr>
-        <tr> <td>Male</td> <td><a href="output/results-male.html" target="_blank" >html</a></td> <td><a href="output/results-male.pdf" target="_blank" >pdf</a></td> </tr>
-        <tr> <td>Female</td> <td><a href="output/results-female.html" target="_blank" >html</a></td> <td><a href="output/results-female.pdf" target="_blank" >pdf</a></td> </tr>
-        <tr> <td>Other</td> <td><a href="output/results-both.html" target="_blank" >html</a></td> <td><a href="output/results-both.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr> <th>Model</th> <th>html</th> <th>pdf</th> </tr>
+        <tr> <td>LMM (male)</td> <td><a href="output/results-male.html" target="_blank" >html</a></td> <td><a href="output/results-male.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr> <td>LMM (female)</td> <td><a href="output/results-female.html" target="_blank" >html</a></td> <td><a href="output/results-female.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr> <td>Random forest</td> <td><a href="output/results-both.html" target="_blank" >html</a></td> <td><a href="output/results-both.pdf" target="_blank" >pdf</a></td> </tr>
         </table>
       </div>
       

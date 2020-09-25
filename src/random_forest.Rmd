@@ -1,0 +1,767 @@
+---
+#title: "Subset analyses"
+output: md_document
+params:
+  input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
+  hlen: NULL
+  hlen_exactly: FALSE
+  sample_fraction: 1.0
+  method: "both"
+  gender: "both"
+  id: NULL
+  date: "2020-07-08"
+  extra_id: NULL
+  errors_table_file: NULL
+  Hb_cutoff_male: 135
+  Hb_cutoff_female: 125
+  cores: 4
+  iterations: 2000
+  skip_train: FALSE
+  create_datasets_bool: TRUE
+#  donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
+  donor_specific_file: NULL
+---
+
+<!-- <h2> Initialization </h2> -->
+```{r Setup, setup = TRUE, echo=FALSE, message=FALSE}
+
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(knitr))
+library(rstan)
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(tictoc))
+suppressPackageStartupMessages(library(entropy))
+suppressPackageStartupMessages(library(brms))
+suppressPackageStartupMessages(library(ggmcmc))
+suppressPackageStartupMessages(library(ggthemes))
+suppressPackageStartupMessages(library(ggridges))
+suppressPackageStartupMessages(library(ROCR))
+suppressPackageStartupMessages(library(pROC))
+suppressPackageStartupMessages(library(furrr))
+suppressPackageStartupMessages(library(sn))
+library(tidyselect)
+
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
+#knitr::opts_chunk$set(echo=TRUE, message=TRUE)
+#options(warn = 1)
+
+message("Parameters are:")
+for (name in names(params)) {
+  message(sprintf("%s = ", name), params[[name]])
+}
+
+# These are used to select which computations to perform,
+# base on params$gender and params$method
+compute_male   <- params$gender %in% c("male", "both")
+compute_female <- params$gender %in% c("female", "both")
+compute_decision_tree  <- params$method %in% c("decision-tree", "both")
+compute_random_forest <- params$method %in% c("random-forest", "both")
+compute_male_decision_tree <- compute_male && compute_decision_tree 
+compute_female_decision_tree <- compute_female && compute_decision_tree
+compute_male_random_forest <- compute_male && compute_random_forest
+compute_female_random_forest <- compute_female && compute_random_forest
+
+set.seed(123)
+if (!is.null(params$cores)) {
+  options(mc.cores = params$cores)   # This option is in package parallel
+}
+
+
+datadir = "../data/rdata/"
+rawresultdir = "../data/raw_results/"   # I store plot objects and tables in this directory
+
+# Id for a run. For example files in rawresultdir use this id as part of their name. 
+# Probably I should add a possibility to download raw results from the web interface.
+if (is.null(params$id)) {
+  id <- paste(params$date, params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
+} else {
+  id <- params$id
+}
+
+source("helper_functions.R")
+source("validate_stan_fit.R")
+source("ppc.R")
+source("enrich_deferrals_rf.R")
+
+```
+
+```{r, results="asis", echo=FALSE}
+cat(sprintf("# Subset analyses (%s)\n", params$gender))
+```
+
+
+
+```{r, echo=FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+set.seed(123)
+```
+
+```{r, echo = FALSE}
+
+# Variables that are in use
+
+descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
+                                "year", "warm_season", "consecutive_deferrals", "recent_donations",
+                                "recent_deferrals", "hour", 
+                                "previous_Hb", "Hb_first", "Hb_deferral"), 
+                   Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous Hb deferral", 
+                              "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
+                              "Recent deferrals", "Hour", 
+                              "Previous Hb", "First Hb", "Hb deferral"),
+                   Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
+                            "numeric (int)", "boolean", "numeric (int)", "numeric (int)", "numeric (int)", "numeric",
+                            "numeric", "numeric", "boolean"),
+                   Explanation = c("Donor identifier",
+                                   "Amount of Hemoglobin",
+                                   "Time (in days) between Hb measurement and previous full blood donation event",
+                                   "Age of donor",
+                                   "Indicates whether the donor was deferred from blood donation due to low hemoglobin at previous donation event",
+                                   "Year of donation",
+                                   "True if donation was given in April-September",
+                                   "Number of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
+                                   "Number of donations in the last two years",
+                                   "Number of deferrals due to low hemoglobin in the last two years",
+                                   "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
+                                   "Hb value at previous measurement (ICP-model)",
+                                   "Hb value at first donation of this donor (Non ICP-model)",
+                                   "Deferred based on low hemoglogin")
+                   )
+
+donor_descript <- tibble(
+  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs"),
+  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score"),
+  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric"),
+  Explanation = c("Does the person smoke", "Height of the donor", "Weight of the donor", 
+                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin")
+)
+
+# Converts column names of a dataframe 'df' to pretty format using dataframe 'description'.
+to_pretty <- function(df, description) {
+  old_names <- colnames(df)
+  new_names <- description %>% filter(Variable %in% all_of(old_names)) %>% pull(Pretty)
+  colnames(df) <- new_names
+  df
+}
+
+```
+
+
+
+```{r}
+data <- load_single(params$input_file) # Forgets the name of the object
+
+data <- data %>%
+  mutate(days_to_previous_fb = as.double(days_to_previous_fb),
+         donor = as.character(donor))   # For some reason this cannot be a factor
+
+
+
+sample_fraction <- params$sample_fraction
+
+is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+
+if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample size is given instead of fraction, convert it to sample fraction
+  low_limit <- ifelse(params$method=="no-fix", 2, 1)
+  data <- data %>% group_by(donor) %>%
+    filter(n() > low_limit) %>%
+    ungroup()
+  
+  if (params$gender == "male") {
+    temp <- data %>% filter(gender=="Men")
+  }
+  else if (params$gender == "female") {
+    temp <- data %>% filter(gender=="Women")
+  } else {
+    temp <- data
+  }
+  n <- length(unique(temp$donor))  # number of donors
+  rm(temp)
+  sample_fraction <- sample_fraction / n
+  message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
+}
+
+# I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
+if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
+  donor_variables <- donor_descript$Variable
+  pretty_donor_variables <- donor_descript$Pretty
+  
+  findonor_and_snip_and_prs <- load_single(params$donor_specific_file)
+  data <- inner_join(data, findonor_and_snip_and_prs, by="donor")
+} else {
+  donor_variables = NULL
+}
+
+
+# Pretty names for parameters
+vars <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
+
+if (!is.null(donor_variables)) {
+  vars     <- c(vars, pretty_donor_variables)
+}
+
+# Make sure the columns in data are in the same order as in the vars list (only needed for stan preprocessing)
+variables_in_order <- setdiff(descript$Variable, "donor")
+if (!is.null(donor_variables)) {
+  data <- data %>% select(all_of(variables_in_order),
+                          all_of(donor_variables), everything())
+} else {
+  data <- data %>% select(all_of(variables_in_order), everything())
+}
+
+
+# data.male <-
+#   data %>% filter(gender == "Men")
+# data.female <-
+#   data %>% filter(gender == "Women")
+
+# Split for men and women separately, done in a complicated way, because I reuse the split_set function
+# data.male <- split_set(data.male, 1.0)
+# data.female <- split_set(data.female, 1.0)
+# names(data.male) <- c("general","validation")
+# names(data.female) <- c("general","validation")
+# # Small test sets
+# smallm <- split_set(data.male$general, sample_fraction)
+# smallf <- split_set(data.female$general, sample_fraction)
+# data.male <- smallm$train
+# data.female <- smallf$train
+# rm(smallm, smallf)
+#data.male <- sample_frac(data.male, sample_fraction, replace=FALSE)
+#data.female <- sample_frac(data.female, sample_fraction, replace=FALSE)
+
+
+# Maybe this is not needed except for linear regression
+#data.male <- filter_based_on_number_of_donations(data.male, params$hlen, params$hlen_exactly)
+#data.female <- filter_based_on_number_of_donations(data.female, params$hlen, params$hlen_exactly)
+
+
+
+error_rows <- list()  # This is used to construct the error table in the end
+                   # It has columns Model, MAE, RMSE, AUROC, and AUPR
+
+```
+
+
+
+## Data description
+
+
+
+### Variables used in prediction
+
+```{r, echo=FALSE}
+kable(descript)
+kable(donor_descript)
+```
+
+
+
+### Summary plots of variables (both)
+
+
+```{r Summary plots for both genders, echo = FALSE, eval=TRUE}
+#Plot distributions for male donors
+
+
+data2 <- data %>%
+  filter(first_event == FALSE) %>%
+  select(all_of(descript$Variable)) %>%
+  mutate(Hb_deferral = as.integer(Hb_deferral),
+         warm_season = as.integer(warm_season),
+         previous_Hb_def = as.integer(previous_Hb_def))
+
+pboth <- data2 %>%
+  keep(is.numeric) %>%
+  to_pretty(descript) %>%
+  gather() %>%
+  mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram(fill = "blue")
+pboth
+
+if (!is.null(params$donor_specific_file)) {
+  both_donor_specific <- findonor_and_snip_and_prs %>%
+    semi_join(data2, by="donor") %>%
+    mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
+    keep(is.numeric) %>%
+    to_pretty(donor_descript) 
+  both_donor_specific %>%
+    gather() %>%
+    mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
+    ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram(fill = "blue")
+}
+rm(data2, pmale);
+```
+
+
+
+
+
+```{r Summary plots for females, echo = FALSE, eval=FALSE}
+#Plot distributions for female donors
+
+data.female2 <- data.female %>%
+  filter(first_event == FALSE) %>%
+  select(all_of(descript$Variable)) %>%
+  mutate(Hb_deferral = as.integer(Hb_deferral),
+         warm_season = as.integer(warm_season),
+         previous_Hb_def = as.integer(previous_Hb_def))
+
+pfemale <- data.female2 %>%
+          keep(is.numeric) %>%
+          to_pretty(descript) %>%
+          gather() %>%
+          mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
+          ggplot(aes(value)) +
+            facet_wrap(~ key, scales = "free") +
+            geom_histogram(fill = "orange")
+
+pfemale
+
+if (!is.null(params$donor_specific_file)) {
+  female_donor_specific <- findonor_and_snip_and_prs %>%
+    semi_join(data.female2, by="donor") %>%
+    mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant))
+  female_donor_specific %>%
+    keep(is.numeric) %>%
+    to_pretty(donor_descript) %>%
+    gather() %>%
+    mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
+    ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram(fill = "orange")
+}
+rm(data.female2, pfemale);
+```
+
+
+```{r clean up memory, echo = FALSE}
+#rm(data); invisible(gc())
+rm(data.male, data.female); invisible(gc(reset = TRUE))
+```
+
+## Preprocess
+
+```{r}
+a <- caret::createDataPartition(1:nrow(data), p=0.8, list=FALSE)
+train <- data[a,]
+enriched <- enrich_deferrals_rf(train, 0.5)
+rm(train)
+test <- data[-a,]
+```
+
+
+```{r}
+enriched %>% ungroup() %>% count()
+```
+
+Full time series except those removed who only have one event or who's only deferral was the first event.
+
+
+```{r}
+test %>% ungroup() %>% count()
+```
+
+
+```{r}
+enriched %>% group_by(donor) %>% arrange(desc(dateonly)) %>% 
+  dplyr::slice(1) %>% 
+  ungroup() %>% group_by(Hb_deferral) %>% count()
+```
+Enriched to 50:50 balance.
+
+
+```{r}
+test %>% group_by(donor) %>% arrange(desc(dateonly)) %>% 
+  dplyr::slice(1) %>% 
+  ungroup() %>% group_by(Hb_deferral) %>% count()
+```
+Quite unbalanced as it should be.
+
+Does the deferral percentage depend some how on donation carreer length
+```{r , warning=FALSE}
+
+temp <-test %>% ungroup() %>% 
+  replace_na(list(nb_donat_progesa = 0,nb_donat_outside = 0)) %>% 
+  group_by(donor) %>%
+  arrange(donor,dateonly) %>% 
+  mutate(nb_donat_run = row_number()) %>% 
+  rowwise() %>% 
+  mutate(
+    nb_donat = sum( nb_donat_run, nb_donat_outside)) %>% 
+      ungroup() %>% 
+   select(Hb_deferral, nb_donat,gender) %>% 
+  group_by(gender,nb_donat) %>% summarise(def = sum(Hb_deferral == 1),
+                                          acc = sum(Hb_deferral == 0),
+                                          pdef = def /(acc+def)
+                                          ) 
+ggplot(temp) + geom_line(aes(x=nb_donat,y=pdef,color=gender)) +xlim(0,50) + ylim(0,0.1)
+
+```
+```{r}
+#temp<- temp %>% group_by(nb_donat) %>% summarise(def=sum(def),
+ #                                         acc=sum(acc)) 
+ggplot(temp) + geom_line(aes(x=nb_donat,y=def,color=gender,linetype='Deferral')) +geom_line(aes(x=nb_donat,y=acc,color=gender,linetype='Accepted')) + ylab("Count")
+```
+Yes, women have a lower deferral percentage in first event so removing the first event makes the overall deferral percentage in the data set bigger.
+
+Take only last events and do come cleaning
+```{r}
+#Train
+train <- enriched %>% group_by(donor) %>% 
+  arrange(desc(dateonly)) %>% 
+  dplyr::slice(1) %>%   
+  mutate(
+    nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    Hb_deferral=factor(Hb_deferral,labels = c("Accepted","Deferred"))
+         ) %>% 
+  filter( !nb_donat == '0') %>% #Some spurious mistake in the donation record
+  filter(!(days_to_previous_fb < 62 & gender == "Men"))  %>% #Take out people that return faster than they should as we do not really know what they mean
+  filter(!(days_to_previous_fb < 92 & gender == "Women"))
+
+train <- train %>% ungroup() %>%   select(Hb_deferral,
+                              days_to_previous_fb, 
+                              age, 
+                              previous_Hb_def,
+                              #year, #CHECK! 
+                              warm_season, 
+                              consecutive_deferrals, 
+                              recent_donations,
+                              recent_deferrals, 
+                              hour, 
+                              previous_Hb, 
+                              Hb_first, 
+                              Hb_deferral,
+                              nb_donat,
+                              gender
+)
+
+#Validate
+
+
+validate <-test %>% group_by(donor) %>%
+  dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
+  arrange(desc(dateonly)) %>% 
+  dplyr::slice(1) %>%   
+  mutate(
+    nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    Hb_deferral=factor(Hb_deferral,labels = c("Accepted","Deferred"))
+         ) %>% 
+  filter( !nb_donat == '0') %>% #Some spurious mistake in the donation record
+  filter(!(days_to_previous_fb < 62 & gender == "Men"))  %>% #Take out people that return faster than they should as we do not really know what they mean
+  filter(!(days_to_previous_fb < 92 & gender == "Women"))
+
+
+validate <- validate %>% ungroup() %>%   select(
+  Hb_deferral,
+  days_to_previous_fb, 
+  age, 
+  previous_Hb_def,
+  #year, #CHECK! 
+  warm_season, 
+  consecutive_deferrals, 
+  recent_donations,
+  recent_deferrals, 
+  hour, 
+  previous_Hb, 
+  Hb_first, 
+  Hb_deferral,
+  nb_donat,
+  gender
+)
+
+
+
+#Total donation count
+
+
+```
+
+Is there any NAs left?
+```{r}
+train %>% ungroup() %>%   summarise_all(list(~sum(is.na(.)))) %>% t()
+```
+
+```{r}
+validate %>% ungroup() %>%   summarise_all(list(~sum(is.na(.)))) %>% t()
+```
+
+
+No.
+
+## Summarise
+
+How do the donation carreers seem on the last event?
+
+```{r}
+train %>% 
+  group_by(Hb_deferral,gender) %>% 
+  summarise(Ntot=n(),max=max(nb_donat),min=min(nb_donat),mean=mean(nb_donat),median=median(nb_donat)) %>% arrange(gender,Hb_deferral)
+```
+
+```{r}
+validate %>% 
+  group_by(Hb_deferral,gender) %>% 
+  summarise(Ntot=n(),max=max(nb_donat),min=min(nb_donat),mean=mean(nb_donat),median=median(nb_donat)) %>% arrange(gender,Hb_deferral)
+```
+
+Hmmm, would this require more thought?
+
+```{r}
+summary(train)
+```
+
+
+```{r}
+summary(validate)
+```
+
+
+```{r}
+train %>% filter(gender=='Men') %>% summary()
+```
+
+```{r}
+validate %>% filter(gender=='Men') %>% summary()
+```
+
+
+
+```{r}
+train %>% filter(gender=='Women') %>% summary()
+```
+
+```{r}
+validate %>% filter(gender=='Women') %>% summary()
+```
+
+```{r}
+rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
+                 method = "ranger", 
+                 #mtry = 4,
+                 #splitrule="hellinger",
+                 #min.node.size = 34,
+                 trControl = caret::trainControl(method="none", classProbs = TRUE), 
+                 verbose = FALSE, 
+                 ## Now specify the exact models 
+                 ## to evaluate:
+                 #tuneLength=1,
+                 tuneGrid = expand_grid(mtry = 4,
+                  splitrule="hellinger",
+                  min.node.size = 34),
+                #metric="ROC",
+                #should we use Kappa or ROC?
+                importance = "permutation"
+                #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
+                #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
+                )
+```
+
+```{r}
+rrfFit_roc
+```
+
+
+```{r}
+#ggplot(rrfFit_roc)
+```
+
+```{r}
+prediction.vl <- predict(rrfFit_roc, newdata = validate)
+caret::confusionMatrix(reference=validate$Hb_deferral,data=prediction.vl,positive = "Deferred")
+
+```
+
+
+
+```{r}
+caret::confusionMatrix(reference=validate$Hb_deferral, data=prediction.vl, positive = "Deferred", mode = "prec_recall")
+```
+
+
+```{r}
+prediction.probs <- predict(rrfFit_roc, newdata = validate, type="prob")
+
+#validate.ROC <- roc(predictor=prediction.probs$Deferred,
+#               response=validate$Hb_deferral
+##               levels=rev(levels(validate$Hb_deferral))
+#  )
+#validate.ROC$auc
+```
+
+
+```{r}
+#plot(validate.ROC)
+```
+
+```{r}
+histogram(~prediction.probs$Deferred|validate$Hb_deferral,xlab="Probability of Poor Segmentation")
+```
+
+And what does this mean?
+
+```{r , warning=FALSE}
+source("validate_stan_fit.R")
+width = 180
+#create_precision_recall_new <- function(labels, scores) {
+df <- tibble(deferral = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
+             predicted_labels = ifelse(prediction.vl == "Deferred", 1, 0), 
+             scores=prediction.probs$Deferred)
+#performances <- create_performance_plots(
+#  df=df, 
+#  #filename="../results/rrfFit_roc_validate_performances.pdf",
+#  width = 180
+#)
+#performances
+```
+
+## Results
+
+
+```{asis, echo=compute_male_decision_tree}
+### Decision tree, male donors
+```
+
+```{r}
+dummy_plots <- function(df) {
+  result <- list()
+  result$df <- df
+  result$conf_matrix_plot <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
+  result$roc_plot <- create_roc_new(df$deferral, df$scores)
+  result$pr_plot <- create_precision_recall_new(df$deferral, df$scores)
+  return(result)
+}
+```
+
+```{r Random forest both}
+
+
+results_both_random_forest <- dummy_plots(df)
+
+results_both_random_forest$conf_matrix_plot
+results_both_random_forest$roc_plot 
+results_both_random_forest$pr_plot
+
+
+error_rows[[length(error_rows)+1]] <- list(Model="Both, random forest", MAE=NA, RMSE=NA, 
+                                           MAE2=NA, RMSE2=NA, 
+                                           AUC=results_both_random_forest$roc_plot$roc_auc, 
+                                           AUPR=results_both_random_forest$pr_plot$pr_auc)
+
+#save(results_male_random_forest, file = paste0(rawresultdir, "raw_result_male_random_forest_", id, ".rdata"))
+
+# Remove unnescessary values to save memory
+#if (knit == TRUE) {rm(results_male_decision_tree); invisible(gc(reset = TRUE))}
+
+```
+
+
+
+```{asis, echo=compute_male_random_forest}
+### Random forest, male donors
+```
+
+
+```{r Random forest male donors, results="hide", eval=compute_male_random_forest}
+# Load first datasets
+
+n=500   # We create n random rows
+df <- tibble(observed = rnorm(n, 150, 20),
+             predicted = rnorm(n, 150, 20),
+             deferral         = as.integer(observed < params$Hb_cutoff_male),
+             predicted_labels = as.integer(predicted < params$Hb_cutoff_male),
+             scores           = rnorm(n))
+
+
+
+results_male_random_forest <- dummy_plots(df)
+
+results_male_random_forest$conf_matrix_plot
+results_male_random_forest$roc_plot 
+results_male_random_forest$pr_plot
+
+
+error_rows[[length(error_rows)+1]] <- list(Model="Male, random forest", MAE=NA, RMSE=NA, 
+                                           MAE2=NA, RMSE2=NA, 
+                                           AUC=results_male_random_forest$roc_plot$roc_auc, 
+                                           AUPR=results_male_random_forest$pr_plot$pr_auc)
+
+save(results_male_random_forest, file = paste0(rawresultdir, "raw_result_male_random_forest", id, ".rdata"))
+
+# Remove unnescessary values to save memory
+#if (knit == TRUE) {rm(results_male_random_forest); invisible(gc(reset = TRUE))}
+
+```
+
+
+```{asis, echo=compute_female_random_forest}
+### Random forest, female donors
+```
+
+```{r Random forest female donors, results="hide", eval=compute_female_random_forest}
+# Load first datasets
+
+n=500   # We create n random rows
+df <- tibble(observed = rnorm(n, 140, 20),
+             predicted = rnorm(n, 140, 20),
+             deferral         = as.integer(observed < params$Hb_cutoff_female),
+             predicted_labels = as.integer(predicted < params$Hb_cutoff_female),
+             scores           = rnorm(n))
+
+
+
+results_female_random_forest <- dummy_plots(df)
+
+results_female_random_forest$conf_matrix_plot
+results_female_random_forest$roc_plot 
+results_female_random_forest$pr_plot
+
+
+error_rows[[length(error_rows)+1]] <- list(Model="Female, random_forest", MAE=NA, RMSE=NA, 
+                                           MAE2=NA, RMSE2=NA, 
+                                           AUC=results_female_random_forest$roc_plot$roc_auc, 
+                                           AUPR=results_female_random_forest$pr_plot$pr_auc)
+
+save(results_female_random_forest, file = paste0(rawresultdir, "raw_result_female_random_forest", id, ".rdata"))
+
+# Remove unnescessary values to save memory
+#if (knit == TRUE) {rm(results_female_random_forest); invisible(gc(reset = TRUE))}
+
+```
+
+
+### Errors
+
+```{r Errors}
+
+#str(error_rows)
+#df <- do.call(rbind, error_rows)
+for (i in seq_along(error_rows)) {
+  if (i == 1) {
+    errors <- as_tibble(error_rows[[1]])
+  } else {
+    errors <- rbind(errors, error_rows[[i]])
+  }
+}  
+#errors <- as_tibble(df)
+errors <- errors %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
+                            "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
+
+write_csv(errors, paste(rawresultdir, "errors_", id, ".csv", sep = ''))
+if (!is.null(params$errors_table_file)) {
+  write_csv(errors, params$errors_table_file)   # Pass the table to the web app as well
+}
+
+```
+
+```{r}
+kable(errors, digits=3, format.args = list(digits=3))
+```

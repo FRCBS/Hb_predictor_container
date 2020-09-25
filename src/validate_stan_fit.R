@@ -118,8 +118,9 @@ precision_recall_ci <- function(df, method="basic") {
   #df <- tibble(labels=as.integer(labels), scores=scores)
   #print(head(df))
   df <- df %>% select(labels, scores)
-  n <- max(nrow(df), 10000)
+  #n <- max(nrow(df), 10000)
   #n=10000
+  n=2000
   pb <- progress::progress_bar$new(total = n+1)# init progress bar
   pb$tick(0)
   #p <- progress_estimated(n+1)  # init progress bar
