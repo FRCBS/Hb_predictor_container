@@ -34,7 +34,7 @@ COPY /src/validate_stan_fit.R /src/validate_stan_fit.R
 COPY /src/jarkko_create_datasets.R /src/jarkko_create_datasets.R
 COPY /src/hb-predictor.sh /src/hb-predictor.sh
 COPY /src/hb-predictor-helper.R /src/hb-predictor-helper.R
-COPY /src/jarkko_subset_analyses.Rmd /src/jarkko_subset_analyses.Rmd
+COPY /src/linear_models.Rmd /src/linear_models.Rmd
 COPY /src/template.Rmd /src/template.Rmd
 COPY /src/random_forest.Rmd /src/random_forest.Rmd
 

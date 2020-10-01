@@ -1,8 +1,8 @@
 #library(Rook)  
 #library(data.table, quietly=TRUE)
 
-message(paste0("Working directory is", getwd()))
-setwd("src")
+message(paste0("Working directory is", getwd(), "\n"))
+#setwd("src")
 source("new_preprocess.R")
 # plumber.R
 
@@ -61,14 +61,15 @@ function(req, fileUpload){
     }
     
     #l=list()
-    time_start <- now()
+    # Timing now done on client side
+    #time_start <- now()
     
     str(donors_o, nchar.max = 10000)
     upload_info <- c(get_info(donations_o), get_info(donors_o))
     donations <- read_delim(donations_o$tempfile, col_names=FALSE, delim='|')
-    s1 <- sprintf("<p>Donations: filename=%s, rows=%i, columns=%i</p>", donations_o$filename, nrow(donations), ncol(donations))
+    donation_info <- sprintf("<p>Donations: filename=%s, rows=%i, columns=%i</p>", donations_o$filename, nrow(donations), ncol(donations))
     donors <- read_delim(donors_o$tempfile, col_names=FALSE, delim='|')
-    s2 <- sprintf("<p>Donor: filename=%s, rows=%i, columns=%i</p>", donors_o$filename, nrow(donors), ncol(donors))
+    donor_info <- sprintf("<p>Donor: filename=%s, rows=%i, columns=%i</p>", donors_o$filename, nrow(donors), ncol(donors))
     
     myparams <- list()
     myparams$Hb_cutoff_male <- ifelse ("Hb_cutoff_male" %in% names(post), as.integer(post$Hb_cutoff_male), 135)
@@ -85,7 +86,7 @@ function(req, fileUpload){
     # Do the preprocessing
     fulldata_preprocessed <- preprocess(donations_o$tempfile, donors_o$tempfile,
                                         myparams$Hb_cutoff_male, myparams$Hb_cutoff_female)
-    s3 <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
+    preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     #data_filename <- "/tmp/temp.rdata"
     data_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
     save(fulldata_preprocessed, file=data_filename)
@@ -120,7 +121,7 @@ function(req, fileUpload){
         filename <- sprintf("/tmp/errors-%s.csv", gender)
         myparams["errors_table_file"] <- filename
         rmarkdown::render(
-                          'jarkko_subset_analyses.Rmd',
+                          'linear_models.Rmd',
                           output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
                           #output_file=sprintf('results-%s', gender),   # One for each output format: html and pdf 
                           output_format=c('html_document', 'pdf_document'),
@@ -155,6 +156,7 @@ function(req, fileUpload){
       unlink(donor_specific_filename)
     #errors_both <- bind_rows(error_dfs[["male"]], error_dfs[["female"]], errors_dfs[["ml"]])
     errors_both <- bind_rows(error_dfs)
+    write_csv(errors_both, "../output/summary.csv")
     #errors_both <- rbind(error_dfs[["male"]])
     errors_string <- kable(errors_both, format="html", digits=3, 
                            caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE),\
@@ -162,17 +164,18 @@ function(req, fileUpload){
                            align="llllll",
                              table.attr = "id='errors_table' class='table table-condensed'")
 
-    time_end <- now()
-    time_start_s <- sprintf("<p>Computation started: %s</p>\n", as.character(time_start))
-    time_end_s <- sprintf("<p>Computation ended: %s</p>\n", as.character(time_end))
-    total_time <- sprintf("<p>Computation took %.2f seconds</p>\n", as.double(as.duration(time_end - time_start)))
+    # Timing now done on client side
+    #time_end <- now()
+    #time_start_s <- sprintf("<p>Computation started: %s</p>\n", as.character(time_start))
+    #time_end_s <- sprintf("<p>Computation ended: %s</p>\n", as.character(time_end))
+    #total_time <- sprintf("<p>Computation took %.2f seconds</p>\n", as.double(as.duration(time_end - time_start)))
 
-    
-    iframe_male <- sprintf("<iframe src='output/results-male.html' width='800' height='800'></iframe>")
-    iframe_female <- sprintf("<iframe src='output/results-female.html' width='800' height='800'></iframe>")
+    # These are now on separate pages, not in iframes
+    #iframe_male <- sprintf("<iframe src='output/results-male.html' width='800' height='800'></iframe>")
+    #iframe_female <- sprintf("<iframe src='output/results-female.html' width='800' height='800'></iframe>")
 
     #result2 <- c(upload_info, s1, s2, s3, myparams_string, time_start_s, time_end_s, total_time)
-    result2 <- c(s1, s2, s3)
+    result2 <- c(donation_info, donor_info, preprocessed_info)
     result2 <- paste(result2, collapse="\n")
 
   
@@ -190,6 +193,7 @@ function(req){
   <html>
   
   <head>
+  <title>Hemoglobin predictor</title>
   <link rel="stylesheet" href="static/bootstrap.min.css">
   <link rel="stylesheet" href="static/style.css">
   <script type="text/javascript" src="static/script.js"></script>
@@ -231,10 +235,12 @@ function(req){
             <input type="checkbox" value="on", id="icp-fix" name="icp-fix" checked/>
             Dynamic linear mixed model
           </label>
+          <!--
           <label for="decision-tree">
             <input type="checkbox" value="on", id="decision-tree" name="decision-tree" checked/>
             Decision tree
           </label>
+          -->
           <label for="random-forest">
             <input type="checkbox" value="on", id="random-forest" name="random-forest" checked/>
             Random forest
@@ -267,7 +273,8 @@ function(req){
         --> 
         <h3>Summary</h3>
         <div id="table_container"></div>
-
+        <p>Load the summary table in CSV form from <a href="/output/summary.csv">here.</a></p>
+        
         <h3>Detailed result pages</h3>
         <table id="detailed-results" class="table table-condensed">
         <tr> <th>Model</th> <th>html</th> <th>pdf</th> </tr>

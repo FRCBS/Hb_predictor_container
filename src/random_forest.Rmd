@@ -23,7 +23,7 @@ params:
 ---
 
 <!-- <h2> Initialization </h2> -->
-```{r Setup, setup = TRUE, echo=FALSE, message=FALSE}
+```{r Setup, setup = TRUE, echo=FALSE, message=FALSE, results="hide"}
 
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(knitr))
@@ -43,7 +43,7 @@ suppressPackageStartupMessages(library(sn))
 suppressPackageStartupMessages(library(tidyverse))
 set.seed(123)
 
-knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, results = "hide")
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE)
 #options(warn = 1)
 
@@ -146,7 +146,7 @@ to_pretty <- function(df, description) {
 
 
 
-```{r}
+```{r, echo=FALSE}
 data <- load_single(params$input_file) # Forgets the name of the object
 
 data <- data %>%
@@ -247,7 +247,7 @@ error_rows <- list()  # This is used to construct the error table in the end
 
 ### Variables used in prediction
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, results="markup"}
 kable(descript)
 kable(donor_descript)
 ```
@@ -341,9 +341,9 @@ rm(data.female2, pfemale);
 rm(data.male, data.female); invisible(gc(reset = TRUE))
 ```
 
-## Preprocess
 
-```{r}
+
+```{r, echo=FALSE}
 a <- caret::createDataPartition(1:nrow(data), p=0.8, list=FALSE)
 train <- data[a,]
 enriched <- enrich_deferrals_rf(train, 0.5)
@@ -352,12 +352,13 @@ test <- data[-a,]
 ```
 
 
-```{r}
+```{r, echo=FALSE}
 enriched %>% ungroup() %>% count()
 ```
 
+<!--
 Full time series except those removed who only have one event or who's only deferral was the first event.
-
+-->
 
 ```{r}
 test %>% ungroup() %>% count()
@@ -369,18 +370,21 @@ enriched %>% group_by(donor) %>% arrange(desc(dateonly)) %>%
   dplyr::slice(1) %>% 
   ungroup() %>% group_by(Hb_deferral) %>% count()
 ```
+<!--
 Enriched to 50:50 balance.
-
+-->
 
 ```{r}
 test %>% group_by(donor) %>% arrange(desc(dateonly)) %>% 
   dplyr::slice(1) %>% 
   ungroup() %>% group_by(Hb_deferral) %>% count()
 ```
+<!--
 Quite unbalanced as it should be.
 
 Does the deferral percentage depend some how on donation carreer length
-```{r , warning=FALSE}
+-->
+```{r , warning=FALSE, echo=FALSE, eval=FALSE}
 
 temp <-test %>% ungroup() %>% 
   replace_na(list(nb_donat_progesa = 0,nb_donat_outside = 0)) %>% 
@@ -399,14 +403,17 @@ temp <-test %>% ungroup() %>%
 ggplot(temp) + geom_line(aes(x=nb_donat,y=pdef,color=gender)) +xlim(0,50) + ylim(0,0.1)
 
 ```
-```{r}
+
+```{r, eval=FALSE}
 #temp<- temp %>% group_by(nb_donat) %>% summarise(def=sum(def),
  #                                         acc=sum(acc)) 
 ggplot(temp) + geom_line(aes(x=nb_donat,y=def,color=gender,linetype='Deferral')) +geom_line(aes(x=nb_donat,y=acc,color=gender,linetype='Accepted')) + ylab("Count")
 ```
+<!--
 Yes, women have a lower deferral percentage in first event so removing the first event makes the overall deferral percentage in the data set bigger.
 
 Take only last events and do come cleaning
+-->
 ```{r}
 #Train
 train <- enriched %>% group_by(donor) %>% 
@@ -483,8 +490,9 @@ validate <- validate %>% ungroup() %>%   select(
 
 
 ```
-
+<!--
 Is there any NAs left?
+-->
 ```{r}
 train %>% ungroup() %>%   summarise_all(list(~sum(is.na(.)))) %>% t()
 ```
@@ -493,13 +501,13 @@ train %>% ungroup() %>%   summarise_all(list(~sum(is.na(.)))) %>% t()
 validate %>% ungroup() %>%   summarise_all(list(~sum(is.na(.)))) %>% t()
 ```
 
-
-No.
+<!--
+No
 
 ## Summarise
 
 How do the donation carreers seem on the last event?
-
+-->
 ```{r}
 train %>% 
   group_by(Hb_deferral,gender) %>% 
@@ -512,8 +520,9 @@ validate %>%
   summarise(Ntot=n(),max=max(nb_donat),min=min(nb_donat),mean=mean(nb_donat),median=median(nb_donat)) %>% arrange(gender,Hb_deferral)
 ```
 
+<!--
 Hmmm, would this require more thought?
-
+-->
 ```{r}
 summary(train)
 ```
@@ -601,13 +610,13 @@ prediction.probs <- predict(rrfFit_roc, newdata = validate, type="prob")
 #plot(validate.ROC)
 ```
 
-```{r}
+```{r, eval=FALSE}
 histogram(~prediction.probs$Deferred|validate$Hb_deferral,xlab="Probability of Poor Segmentation")
 ```
-
+<!--
 And what does this mean?
-
-```{r , warning=FALSE}
+-->
+```{r , warning=FALSE, echo=FALSE}
 source("validate_stan_fit.R")
 width = 180
 #create_precision_recall_new <- function(labels, scores) {
@@ -629,7 +638,7 @@ df <- tibble(deferral = ifelse(validate$Hb_deferral == "Deferred", 1, 0),
 ### Decision tree, male donors
 ```
 
-```{r}
+```{r, echo=FALSE}
 dummy_plots <- function(df) {
   result <- list()
   result$df <- df
@@ -640,7 +649,7 @@ dummy_plots <- function(df) {
 }
 ```
 
-```{r Random forest both}
+```{r Random forest both, echo=FALSE}
 
 
 results_both_random_forest <- dummy_plots(df)
@@ -739,7 +748,7 @@ save(results_female_random_forest, file = paste0(rawresultdir, "raw_result_femal
 
 ### Errors
 
-```{r Errors}
+```{r Errors, results="markup"}
 
 #str(error_rows)
 #df <- do.call(rbind, error_rows)
@@ -761,6 +770,6 @@ if (!is.null(params$errors_table_file)) {
 
 ```
 
-```{r}
+```{r, results="markup"}
 kable(errors, digits=3, format.args = list(digits=3))
 ```
