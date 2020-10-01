@@ -1,6 +1,7 @@
 #library(Rook)  
 #library(data.table, quietly=TRUE)
 
+message(paste0("Working directory is", getwd()))
 setwd("src")
 source("new_preprocess.R")
 # plumber.R
@@ -25,7 +26,7 @@ get_info <- function(x) {
 function(req, fileUpload){
   #cat("At the start\n")
   cat("Before multipart$parse")
-  saveRDS(req, file="~/test_multipart_form_data/request.rds")
+  #saveRDS(req, file="~/test_multipart_form_data/request.rds")
   post = Rook::Multipart$parse(req)
   cat("After multipart$parse")
   str(post, nchar.max = 10000)
@@ -156,7 +157,8 @@ function(req, fileUpload){
     errors_both <- bind_rows(error_dfs)
     #errors_both <- rbind(error_dfs[["male"]])
     errors_string <- kable(errors_both, format="html", digits=3, 
-                           caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE), and area under ROC curve (AUC).",
+                           caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE),\
+                           area under ROC curve (AUROC), and area under precision-recall curve (AUPR).",
                            align="llllll",
                              table.attr = "id='errors_table' class='table table-condensed'")
 

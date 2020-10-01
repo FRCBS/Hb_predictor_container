@@ -27,6 +27,7 @@ COPY /static/FundedbyEBA.jpg /static/FundedbyEBA.jpg
 COPY /src/docker-server-plumber.R /src/docker-server-plumber.R
 COPY /src/docker-apps-plumber.R /src/docker-apps-plumber.R
 COPY /src/ppc.R /src/ppc.R
+COPY /src/enrich_deferrals_rf.R /src/enrich_deferrals_rf.R
 COPY /src/new_preprocess.R /src/new_preprocess.R
 COPY /src/helper_functions.R /src/helper_functions.R
 COPY /src/validate_stan_fit.R /src/validate_stan_fit.R
@@ -35,7 +36,8 @@ COPY /src/hb-predictor.sh /src/hb-predictor.sh
 COPY /src/hb-predictor-helper.R /src/hb-predictor-helper.R
 COPY /src/jarkko_subset_analyses.Rmd /src/jarkko_subset_analyses.Rmd
 COPY /src/template.Rmd /src/template.Rmd
+COPY /src/random_forest.Rmd /src/random_forest.Rmd
 
-
+WORKDIR /
 ## run the script
 CMD Rscript /src/docker-server-plumber.R

@@ -48,7 +48,8 @@ r-cran-caret \
 r-cran-entropy \
 r-cran-ggmcmc \
 r-cran-ggthemes \
-r-cran-proc
+r-cran-proc \
+r-cran-ranger
 
 RUN apt-get update -qq && apt-get -y --no-install-recommends install \
 r-cran-sn \

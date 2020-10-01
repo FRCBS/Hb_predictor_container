@@ -39,7 +39,9 @@ suppressPackageStartupMessages(library(ROCR))
 suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
 suppressPackageStartupMessages(library(sn))
-library(tidyselect)
+#library(tidyselect)  # Why is this needed?
+suppressPackageStartupMessages(library(tidyverse))
+set.seed(123)
 
 knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE)
@@ -78,6 +80,7 @@ if (is.null(params$id)) {
   id <- params$id
 }
 
+
 source("helper_functions.R")
 source("validate_stan_fit.R")
 source("ppc.R")
@@ -86,15 +89,11 @@ source("enrich_deferrals_rf.R")
 ```
 
 ```{r, results="asis", echo=FALSE}
-cat(sprintf("# Subset analyses (%s)\n", params$gender))
+cat(sprintf("# Random forest (%s)\n", params$gender))
 ```
 
 
 
-```{r, echo=FALSE}
-suppressPackageStartupMessages(library(tidyverse))
-set.seed(123)
-```
 
 ```{r, echo = FALSE}
 
@@ -653,7 +652,7 @@ results_both_random_forest$pr_plot
 
 error_rows[[length(error_rows)+1]] <- list(Model="Both, random forest", MAE=NA, RMSE=NA, 
                                            MAE2=NA, RMSE2=NA, 
-                                           AUC=results_both_random_forest$roc_plot$roc_auc, 
+                                           AUROC=results_both_random_forest$roc_plot$roc_auc, 
                                            AUPR=results_both_random_forest$pr_plot$pr_auc)
 
 #save(results_male_random_forest, file = paste0(rawresultdir, "raw_result_male_random_forest_", id, ".rdata"))
@@ -665,12 +664,12 @@ error_rows[[length(error_rows)+1]] <- list(Model="Both, random forest", MAE=NA, 
 
 
 
-```{asis, echo=compute_male_random_forest}
+```{asis, echo=FALSE}
 ### Random forest, male donors
 ```
 
 
-```{r Random forest male donors, results="hide", eval=compute_male_random_forest}
+```{r Random forest male donors, results="hide", eval=FALSE}
 # Load first datasets
 
 n=500   # We create n random rows
@@ -691,7 +690,7 @@ results_male_random_forest$pr_plot
 
 error_rows[[length(error_rows)+1]] <- list(Model="Male, random forest", MAE=NA, RMSE=NA, 
                                            MAE2=NA, RMSE2=NA, 
-                                           AUC=results_male_random_forest$roc_plot$roc_auc, 
+                                           AUROC=results_male_random_forest$roc_plot$roc_auc, 
                                            AUPR=results_male_random_forest$pr_plot$pr_auc)
 
 save(results_male_random_forest, file = paste0(rawresultdir, "raw_result_male_random_forest", id, ".rdata"))
@@ -702,11 +701,11 @@ save(results_male_random_forest, file = paste0(rawresultdir, "raw_result_male_ra
 ```
 
 
-```{asis, echo=compute_female_random_forest}
+```{asis, echo=FALSE}
 ### Random forest, female donors
 ```
 
-```{r Random forest female donors, results="hide", eval=compute_female_random_forest}
+```{r Random forest female donors, results="hide", eval=FALSE}
 # Load first datasets
 
 n=500   # We create n random rows
@@ -727,7 +726,7 @@ results_female_random_forest$pr_plot
 
 error_rows[[length(error_rows)+1]] <- list(Model="Female, random_forest", MAE=NA, RMSE=NA, 
                                            MAE2=NA, RMSE2=NA, 
-                                           AUC=results_female_random_forest$roc_plot$roc_auc, 
+                                           AUROC=results_female_random_forest$roc_plot$roc_auc, 
                                            AUPR=results_female_random_forest$pr_plot$pr_auc)
 
 save(results_female_random_forest, file = paste0(rawresultdir, "raw_result_female_random_forest", id, ".rdata"))

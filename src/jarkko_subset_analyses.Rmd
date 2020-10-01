@@ -484,7 +484,7 @@ val1.m$pr_plot
 
 
 error_rows[[length(error_rows)+1]] <- list(Model="Male, linear mixed model", MAE=val1.m$mae, RMSE=val1.m$rmse, 
-                                           MAE2=val1.m$mae2, RMSE2=val1.m$rmse2, AUC=val1.m$roc_auc, AUPR=val1.m$pr_auc)
+                                           MAE2=val1.m$mae2, RMSE2=val1.m$rmse2, AUROC=val1.m$roc_auc, AUPR=val1.m$pr_auc)
 
 save(val1.m, file = paste(rawresultdir, "raw_result_male_", fit_id, ".rdata", sep = ''))
 
@@ -535,7 +535,7 @@ val1.f$roc_plot
 val1.f$pr_plot
 
 error_rows[[length(error_rows)+1]] <- list(Model="Female, linear mixed model", MAE=val1.f$mae, RMSE=val1.f$rmse, 
-                                        MAE2=val1.f$mae2, RMSE2=val1.f$rmse2, AUC=val1.f$roc_auc, AUPR=val1.f$pr_auc)
+                                        MAE2=val1.f$mae2, RMSE2=val1.f$rmse2, AUROC=val1.f$roc_auc, AUPR=val1.f$pr_auc)
 
 save(val1.f, file = paste(rawresultdir, "raw_result_female_", fit_id, ".rdata", sep = ''))
 
@@ -586,7 +586,7 @@ val1.m.icp$roc_plot
 val1.m.icp$pr_plot
 
 error_rows[[length(error_rows)+1]] <- list(Model="Male, dynamic linear mixed model", MAE=val1.m.icp$mae, RMSE=val1.m.icp$rmse, 
-                                        MAE2=val1.m.icp$mae2, RMSE2=val1.m.icp$rmse2, AUC=val1.m.icp$roc_auc, AUPR=val1.m.icp$pr_auc)
+                                        MAE2=val1.m.icp$mae2, RMSE2=val1.m.icp$rmse2, AUROC=val1.m.icp$roc_auc, AUPR=val1.m.icp$pr_auc)
 
 save(val1.m.icp, file = paste(rawresultdir, "raw_result_male_icp_", fit_id, ".rdata", sep = ''))
 
@@ -635,7 +635,7 @@ val1.f.icp$roc_plot
 val1.f.icp$pr_plot
 
 error_rows[[length(error_rows)+1]] <- list(Model="Female, dynamic linear mixed model", MAE=val1.f.icp$mae, RMSE=val1.f.icp$rmse, 
-                                        MAE2=val1.f.icp$mae2, RMSE2=val1.f.icp$rmse2, AUC=val1.f.icp$roc_auc, AUPR=val1.f.icp$pr_auc)
+                                        MAE2=val1.f.icp$mae2, RMSE2=val1.f.icp$rmse2, AUROC=val1.f.icp$roc_auc, AUPR=val1.f.icp$pr_auc)
 
 save(val1.f.icp, file = paste(rawresultdir, "raw_result_female_icp_", fit_id, ".rdata", sep = ''))
 
