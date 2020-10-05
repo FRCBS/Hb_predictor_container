@@ -191,7 +191,7 @@ fit_id = id
 
 source("helper_functions.R")
 source("validate_stan_fit.R")
-source("ppc.R")
+#source("ppc.R")
 ```
 
 ```{r Load datas, echo=FALSE, message=FALSE}

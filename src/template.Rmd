@@ -55,9 +55,9 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
                                    "Indicates whether the donor was deferred from blood donation due to low hemoglobin at previous donation event",
                                    "Year of donation",
                                    "True if donation was given in April-September",
-                                   "Amount of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
-                                   "Amount of donations in the last two years",
-                                   "Amount of deferrals due to low hemoglobin in the last two years",
+                                   "Number of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
+                                   "Number of donations in the last two years",
+                                   "Number of deferrals due to low hemoglobin in the last two years",
                                    "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
                                    "Hb value at previous measurement (ICP-model)",
                                    "Hb value at first donation of this donor (Non ICP-model)",
@@ -140,7 +140,7 @@ if (is.null(params$id)) {
 
 source("helper_functions.R")
 source("validate_stan_fit.R")
-source("ppc.R")
+#source("ppc.R")
 
 
 data <- load_single(params$input_file) # Forgets the name of the object
