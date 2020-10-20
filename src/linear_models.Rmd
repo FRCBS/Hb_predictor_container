@@ -148,10 +148,18 @@ knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE)
 #options(warn = 1)
 
+
 message("Parameters are:")
 for (name in names(params)) {
   message(sprintf("%s = ", name), params[[name]])
 }
+
+if (knitr::opts_chunk$get("dev") == "pdf") {
+  knitr::opts_chunk$set(dev="cairo_pdf")
+  knitr::opts_current$set(dev="cairo_pdf")
+}
+message(paste0("Device is ", knitr::opts_chunk$get("dev"), "\n"))
+message(paste0("Current device is ", knitr::opts_current$get("dev"), "\n"))
 
 # These are used to select which computations to perform,
 # base on params$gender and params$method

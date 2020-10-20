@@ -67,7 +67,9 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   #ADD THE PARSING OF volume_drawn TO A NUMBER
   
   ######### DONOR
-  donor <- read_delim(donor.file, col_names=FALSE, delim="|")
+  input_col_types2 <- list(
+    X1 = col_character())
+  donor <- read_delim(donor.file, col_names=FALSE, delim="|", col_types = input_col_types2)
   names(donor)=c('donor','first','family', 'gender', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
                  'tel','email', 'mobile',
                  'notifiable', 'notification_method_1', 'notification_method_2', 'notification_method_3', 

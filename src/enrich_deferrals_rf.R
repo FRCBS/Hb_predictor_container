@@ -79,6 +79,8 @@ balance_classes <- function(df, target_fraction) {
   #print(n_never_deferred)
   #print(target_fraction)
   n <- as.integer(n_sometime_deferred / target_fraction - n_sometime_deferred)
+  message(sprintf("n=%i, nrow(never_deferred)=%i, target_fraction=%f", n, nrow(never_deferred), target_fraction))
+  n <- min(length(never_deferred), n)
   #print(n)
   never_deferred <- sample(never_deferred, n)
   #print(never_deferred)
@@ -91,6 +93,7 @@ balance_classes <- function(df, target_fraction) {
 }
 
 enrich_deferrals_rf <- function(df, target_fraction) {
+  save(df, file="/tmp/taulu.rdata")
   df <- trim_time_series(df)
   enriched <- balance_classes(df, target_fraction)
   return(enriched)  

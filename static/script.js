@@ -31,9 +31,14 @@ document.onreadystatechange = function() {
     */
     
     httpRequest.onreadystatechange = handleResponse;
+    //httpRequest.timeout = 5000;
+    httpRequest.ontimeout = handleTimeout;
+    httpRequest.onerror = handleError;
+    httpRequest.onabort = handleAbort;
     httpRequest.open("POST", form.action);
     httpRequest.setRequestHeader("Accept", "application/json");
     httpRequest.send(formData);
+    console.log("Timeout is " + httpRequest.timeout);
     document.getElementById("submit").disabled = true;
     document.getElementById("finish-time-container").style.display = "none";
     //document.getElementsByClassName("lds-spinner")[0].removeAttribute("hidden");
@@ -48,6 +53,20 @@ document.onreadystatechange = function() {
     
   }
   
+  function handleTimeout() {
+    console.log("Timeout");
+    el = document.getElementById("error_messages");
+    el.innerHTML = "<p>Timeout</p>  ";
+  }
+  
+  function handleError() {
+    console.log("Error");
+  }
+
+  function handleAbort() {
+    console.log("Abort");
+  }
+
   function handleResponse() {
     console.log("In handleResponse, readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
     if (httpRequest.readyState == 4 && httpRequest.status == 200) {
@@ -70,6 +89,12 @@ document.onreadystatechange = function() {
       document.getElementById("info").innerHTML += data.result[0];
       document.getElementById("table_container").innerHTML = data.errors[0];
       
+      if (!document.getElementById("random-forest").checked)
+        document.getElementById("detail-rf").style.display = "none";
+      if (!document.getElementById("no-fix").checked && !document.getElementById("icp-fix").checked) {
+        document.getElementById("detail-lmm-male").style.display = "none";
+        document.getElementById("detail-lmm-female").style.display = "none";
+      }
       
       document.getElementById("results-container").removeAttribute("hidden");  
     } else if (httpRequest.readyState == 4 && httpRequest.status != 200) {

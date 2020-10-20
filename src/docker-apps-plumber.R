@@ -1,12 +1,13 @@
 #library(Rook)  
 #library(data.table, quietly=TRUE)
 
-message(paste0("Working directory is", getwd(), "\n"))
+message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
 source("new_preprocess.R")
 # plumber.R
 
-
+library(readr)
+library(rjson)
 
 get_info <- function(x) {
   v = c("<pre>",
@@ -20,15 +21,31 @@ get_info <- function(x) {
 
 #' Make html page
 #aaa #' @param firstname If provided, filter the data to only this species (e.g. 'setosa')
-#' @get /hb-predictor2
+#aaa #' @get /hb-predictor2
 #' @post /hb-predictor2
+#' @parser multi
 #' @json
-function(req, fileUpload){
+function(req, parametrit){
   #cat("At the start\n")
-  cat("Before multipart$parse")
+  cat("Before multipart$parse\n")
+  tic()
   #saveRDS(req, file="~/test_multipart_form_data/request.rds")
-  post = Rook::Multipart$parse(req)
-  cat("After multipart$parse")
+  if (FALSE) {
+    post = Rook::Multipart$parse(req)
+  } else {
+    #separator <- req$postBody[[1]]
+    #readr::write_lines(req$postBody, "/tmp/poista.bin", sep="\r\n")
+    separator <- ""
+    writeBin(req$bodyRaw, con="/tmp/poista.bin")
+    command <- sprintf("./parse /tmp/poista.bin \"%s\" /tmp/poista.json", separator)
+    system(command)
+    post <- rjson::fromJSON(file="/tmp/poista.json")
+    #unlink("/tmp/poista.bin")
+    #unlink("/tmp/poista.json")
+  }
+  toc()
+  #saveRDS(post, file="~/test_multipart_form_data/post.rds")
+  cat("After multipart$parse\n")
   str(post, nchar.max = 10000)
 
   error_messages=c()
@@ -54,7 +71,7 @@ function(req, fileUpload){
     donations_o = post$donations_fileUpload
     donors_o = post$donors_fileUpload
     
-    if ("donor_specific_fileUpload" %in% names(post)) {
+    if ("donor_specific_fileUpload" %in% names(post) && post$donor_specific_fileUpload$filename != "") {
       donor_specific_filename <- post$donor_specific_fileUpload$tempfile
     } else {
       donor_specific_filename <- NULL
@@ -125,6 +142,7 @@ function(req, fileUpload){
                           output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
                           #output_file=sprintf('results-%s', gender),   # One for each output format: html and pdf 
                           output_format=c('html_document', 'pdf_document'),
+                          #output_format=list('html_document', pdf_document(dev="pdf_cairo")),
                           #output_format=c('html_document'),
                           clean=FALSE,
                           output_dir='../output',
@@ -278,9 +296,9 @@ function(req){
         <h3>Detailed result pages</h3>
         <table id="detailed-results" class="table table-condensed">
         <tr> <th>Model</th> <th>html</th> <th>pdf</th> </tr>
-        <tr> <td>LMM (male)</td> <td><a href="output/results-male.html" target="_blank" >html</a></td> <td><a href="output/results-male.pdf" target="_blank" >pdf</a></td> </tr>
-        <tr> <td>LMM (female)</td> <td><a href="output/results-female.html" target="_blank" >html</a></td> <td><a href="output/results-female.pdf" target="_blank" >pdf</a></td> </tr>
-        <tr> <td>Random forest</td> <td><a href="output/results-both.html" target="_blank" >html</a></td> <td><a href="output/results-both.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr id="detail-lmm-male"> <td>LMM (male)</td> <td><a href="output/results-male.html" target="_blank" >html</a></td> <td><a href="output/results-male.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr id="detail-lmm-female"> <td>LMM (female)</td> <td><a href="output/results-female.html" target="_blank" >html</a></td> <td><a href="output/results-female.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr id="detail-rf"> <td>Random forest</td> <td><a href="output/results-both.html" target="_blank" >html</a></td> <td><a href="output/results-both.pdf" target="_blank" >pdf</a></td> </tr>
         </table>
       </div>
       

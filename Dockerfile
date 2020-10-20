@@ -26,7 +26,7 @@ COPY /static/FundedbyEBA.jpg /static/FundedbyEBA.jpg
 
 COPY /src/docker-server-plumber.R /src/docker-server-plumber.R
 COPY /src/docker-apps-plumber.R /src/docker-apps-plumber.R
-COPY /src/ppc.R /src/ppc.R
+#COPY /src/ppc.R /src/ppc.R
 COPY /src/enrich_deferrals_rf.R /src/enrich_deferrals_rf.R
 COPY /src/new_preprocess.R /src/new_preprocess.R
 COPY /src/helper_functions.R /src/helper_functions.R
@@ -37,7 +37,11 @@ COPY /src/hb-predictor-helper.R /src/hb-predictor-helper.R
 COPY /src/linear_models.Rmd /src/linear_models.Rmd
 COPY /src/template.Rmd /src/template.Rmd
 COPY /src/random_forest.Rmd /src/random_forest.Rmd
+COPY /src/Makefile /src/Makefile
+COPY /src/parse.cpp /src/parse.cpp
 
-WORKDIR /
+RUN make -C src
+
+WORKDIR /src
 ## run the script
-CMD Rscript /src/docker-server-plumber.R
+CMD Rscript docker-server-plumber.R

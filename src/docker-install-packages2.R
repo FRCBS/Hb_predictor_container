@@ -1,6 +1,7 @@
 install.packages("cutpointr")
 install.packages("farver")
 install.packages("PRROC")
+install.packages("future")
 #install.packages("tictoc")
 #install.packages("entropy")
 #install.packages("ggmcmc")

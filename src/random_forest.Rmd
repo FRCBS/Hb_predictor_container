@@ -18,8 +18,9 @@ params:
   iterations: 2000
   skip_train: FALSE
   create_datasets_bool: TRUE
-#  donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
+#   donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
   donor_specific_file: NULL
+  dev: "cairo_pdf"  
 ---
 
 <!-- <h2> Initialization </h2> -->
@@ -46,6 +47,14 @@ set.seed(123)
 knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, results = "hide")
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE)
 #options(warn = 1)
+
+if (knitr::opts_chunk$get("dev") == "pdf") {
+  knitr::opts_chunk$set(dev="cairo_pdf")
+  knitr::opts_current$set(dev="cairo_pdf")
+}
+message(paste0("Device is ", knitr::opts_chunk$get("dev"), "\n"))
+message(paste0("Current device is ", knitr::opts_current$get("dev"), "\n"))
+
 
 message("Parameters are:")
 for (name in names(params)) {
@@ -249,7 +258,9 @@ error_rows <- list()  # This is used to construct the error table in the end
 
 ```{r, echo=FALSE, results="markup"}
 kable(descript)
-kable(donor_descript)
+if (!is.null(params$donor_specific_file)) {
+  kable(donor_descript)
+}
 ```
 
 
@@ -258,7 +269,7 @@ kable(donor_descript)
 
 
 ```{r Summary plots for both genders, echo = FALSE, eval=TRUE}
-#Plot distributions for male donors
+#Plot distributions for all donors
 
 
 data2 <- data %>%
@@ -301,38 +312,25 @@ rm(data2, pmale);
 ```{r Summary plots for females, echo = FALSE, eval=FALSE}
 #Plot distributions for female donors
 
-data.female2 <- data.female %>%
-  filter(first_event == FALSE) %>%
-  select(all_of(descript$Variable)) %>%
-  mutate(Hb_deferral = as.integer(Hb_deferral),
-         warm_season = as.integer(warm_season),
-         previous_Hb_def = as.integer(previous_Hb_def))
+# data.female2 <- data.female %>%
+#   filter(first_event == FALSE) %>%
+#   select(all_of(descript$Variable)) %>%
+#   mutate(Hb_deferral = as.integer(Hb_deferral),
+#          warm_season = as.integer(warm_season),
+#          previous_Hb_def = as.integer(previous_Hb_def))
 
-pfemale <- data.female2 %>%
-          keep(is.numeric) %>%
-          to_pretty(descript) %>%
-          gather() %>%
-          mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
-          ggplot(aes(value)) +
-            facet_wrap(~ key, scales = "free") +
-            geom_histogram(fill = "orange")
+# pfemale <- data.female2 %>%
+#           keep(is.numeric) %>%
+#           to_pretty(descript) %>%
+#           gather() %>%
+#           mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
+#           ggplot(aes(value)) +
+#             facet_wrap(~ key, scales = "free") +
+#             geom_histogram(fill = "orange")
+# 
+# pfemale
 
-pfemale
-
-if (!is.null(params$donor_specific_file)) {
-  female_donor_specific <- findonor_and_snip_and_prs %>%
-    semi_join(data.female2, by="donor") %>%
-    mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant))
-  female_donor_specific %>%
-    keep(is.numeric) %>%
-    to_pretty(donor_descript) %>%
-    gather() %>%
-    mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
-    ggplot(aes(value)) +
-    facet_wrap(~ key, scales = "free") +
-    geom_histogram(fill = "orange")
-}
-rm(data.female2, pfemale);
+#rm(data.female2, pfemale);
 ```
 
 
@@ -346,9 +344,11 @@ rm(data.male, data.female); invisible(gc(reset = TRUE))
 ```{r, echo=FALSE}
 a <- caret::createDataPartition(1:nrow(data), p=0.8, list=FALSE)
 train <- data[a,]
+message("Here")
 enriched <- enrich_deferrals_rf(train, 0.5)
 rm(train)
 test <- data[-a,]
+message("and here")
 ```
 
 
@@ -430,22 +430,25 @@ train <- enriched %>% group_by(donor) %>%
   filter(!(days_to_previous_fb < 62 & gender == "Men"))  %>% #Take out people that return faster than they should as we do not really know what they mean
   filter(!(days_to_previous_fb < 92 & gender == "Women"))
 
-train <- train %>% ungroup() %>%   select(Hb_deferral,
-                              days_to_previous_fb, 
-                              age, 
-                              previous_Hb_def,
-                              #year, #CHECK! 
-                              warm_season, 
-                              consecutive_deferrals, 
-                              recent_donations,
-                              recent_deferrals, 
-                              hour, 
-                              previous_Hb, 
-                              Hb_first, 
-                              Hb_deferral,
-                              nb_donat,
-                              gender
-)
+variables <- c("Hb_deferral",
+               "days_to_previous_fb", 
+               "age", 
+               "previous_Hb_def",
+               #year, #CHECK! 
+               "warm_season", 
+               "consecutive_deferrals", 
+               "recent_donations",
+               "recent_deferrals", 
+               "hour", 
+               "previous_Hb", 
+               "Hb_first", 
+               "Hb_deferral",
+               "nb_donat",
+               "gender")
+if (!is.null(donor_variables)) {
+  variables <- c(variables, donor_variables)
+}
+train <- train %>% ungroup() %>%   select(all_of(variables))
 
 #Validate
 
@@ -466,23 +469,7 @@ validate <-test %>% group_by(donor) %>%
   filter(!(days_to_previous_fb < 92 & gender == "Women"))
 
 
-validate <- validate %>% ungroup() %>%   select(
-  Hb_deferral,
-  days_to_previous_fb, 
-  age, 
-  previous_Hb_def,
-  #year, #CHECK! 
-  warm_season, 
-  consecutive_deferrals, 
-  recent_donations,
-  recent_deferrals, 
-  hour, 
-  previous_Hb, 
-  Hb_first, 
-  Hb_deferral,
-  nb_donat,
-  gender
-)
+validate <- validate %>% ungroup() %>%   select(all_of(variables))
 
 
 
@@ -582,6 +569,34 @@ rrfFit_roc
 #ggplot(rrfFit_roc)
 ```
 
+## Results
+
+
+```{r}
+rrfFit_rocImp <- caret::varImp(rrfFit_roc, scale = FALSE)
+#plot(rrfFit_rocImp)
+
+
+#rrfFit.varimp <- as_tibble(cbind(rownames(rrfFit_rocImp$importance), rrfFit_rocImp$importance))
+rrfFit.varimp <- rownames_to_column(rrfFit_rocImp$importance)  # Cleaner than above
+colnames(rrfFit.varimp) <- c("Variable", "Importance")
+rrfFit.varimp <- left_join(rrfFit.varimp, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>% select(Variable, Pretty, Importance) %>% arrange(Importance)
+
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "previous_Hb_defTRUE"] <- "Previous donation deferred"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "warm_seasonTRUE"] <- "Warm season"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "smokingTRUE"] <- "Smoking"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "RNF43_mutantTRUE"] <- "RNF43 minor allele"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "genderWomen"] <- "Sex"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "nb_donat"] <- "Number of donations"
+
+varimp.plot <- ggplot(rrfFit.varimp) + geom_col(aes(y=Importance, x=reorder(Pretty, Importance)), alpha=0.7) + coord_flip() + xlab("Variable")
+
+#filename="../results/rrfFit_roc_importance.pdf"
+#ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
+varimp.plot
+```
+
+
 ```{r}
 prediction.vl <- predict(rrfFit_roc, newdata = validate)
 caret::confusionMatrix(reference=validate$Hb_deferral,data=prediction.vl,positive = "Deferred")
@@ -623,15 +638,9 @@ width = 180
 df <- tibble(deferral = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
              predicted_labels = ifelse(prediction.vl == "Deferred", 1, 0), 
              scores=prediction.probs$Deferred)
-#performances <- create_performance_plots(
-#  df=df, 
-#  #filename="../results/rrfFit_roc_validate_performances.pdf",
-#  width = 180
-#)
-#performances
+
 ```
 
-## Results
 
 
 ```{asis, echo=compute_male_decision_tree}
@@ -673,77 +682,12 @@ error_rows[[length(error_rows)+1]] <- list(Model="Both, random forest", MAE=NA, 
 
 
 
-```{asis, echo=FALSE}
-### Random forest, male donors
-```
-
-
-```{r Random forest male donors, results="hide", eval=FALSE}
-# Load first datasets
-
-n=500   # We create n random rows
-df <- tibble(observed = rnorm(n, 150, 20),
-             predicted = rnorm(n, 150, 20),
-             deferral         = as.integer(observed < params$Hb_cutoff_male),
-             predicted_labels = as.integer(predicted < params$Hb_cutoff_male),
-             scores           = rnorm(n))
 
 
 
-results_male_random_forest <- dummy_plots(df)
-
-results_male_random_forest$conf_matrix_plot
-results_male_random_forest$roc_plot 
-results_male_random_forest$pr_plot
-
-
-error_rows[[length(error_rows)+1]] <- list(Model="Male, random forest", MAE=NA, RMSE=NA, 
-                                           MAE2=NA, RMSE2=NA, 
-                                           AUROC=results_male_random_forest$roc_plot$roc_auc, 
-                                           AUPR=results_male_random_forest$pr_plot$pr_auc)
-
-save(results_male_random_forest, file = paste0(rawresultdir, "raw_result_male_random_forest", id, ".rdata"))
-
-# Remove unnescessary values to save memory
-#if (knit == TRUE) {rm(results_male_random_forest); invisible(gc(reset = TRUE))}
-
-```
-
-
-```{asis, echo=FALSE}
-### Random forest, female donors
-```
-
-```{r Random forest female donors, results="hide", eval=FALSE}
-# Load first datasets
-
-n=500   # We create n random rows
-df <- tibble(observed = rnorm(n, 140, 20),
-             predicted = rnorm(n, 140, 20),
-             deferral         = as.integer(observed < params$Hb_cutoff_female),
-             predicted_labels = as.integer(predicted < params$Hb_cutoff_female),
-             scores           = rnorm(n))
 
 
 
-results_female_random_forest <- dummy_plots(df)
-
-results_female_random_forest$conf_matrix_plot
-results_female_random_forest$roc_plot 
-results_female_random_forest$pr_plot
-
-
-error_rows[[length(error_rows)+1]] <- list(Model="Female, random_forest", MAE=NA, RMSE=NA, 
-                                           MAE2=NA, RMSE2=NA, 
-                                           AUROC=results_female_random_forest$roc_plot$roc_auc, 
-                                           AUPR=results_female_random_forest$pr_plot$pr_auc)
-
-save(results_female_random_forest, file = paste0(rawresultdir, "raw_result_female_random_forest", id, ".rdata"))
-
-# Remove unnescessary values to save memory
-#if (knit == TRUE) {rm(results_female_random_forest); invisible(gc(reset = TRUE))}
-
-```
 
 
 ### Errors

@@ -5,7 +5,7 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(knitr))
 
 
-pr <- plumber::plumb("src/docker-apps-plumber.R")
+pr <- plumber::plumb("docker-apps-plumber.R")
 
 cat("Open address http://localhost:8080/hb-predictor in your browser.\n")
 cat("Press control-c to kill the server\n")
