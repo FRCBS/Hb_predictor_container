@@ -33,30 +33,7 @@ get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
   return(predicted_probabilities) 
 }
 
-# create_roc <- function(labels, scores) {
-#   
-# 
-# 
-#   pROC_obj <- pROC::roc(response = labels,
-#                         predictor = scores,
-#                         #smoothed = TRUE,
-#                         auc = TRUE,
-#                         legacy.axes = TRUE,   # x-axis is False positive rate instead of specificity
-#                         xlab = "False Positive Rate", ylab = "True Positive Rate",
-#                         #percent = TRUE,
-#                         # arguments for ci
-#                         #ci=TRUE, ci.alpha=0.9, stratified=FALSE,
-#                         # arguments for plot
-#                         plot=TRUE, 
-#                         main="Receiver operating characteric",
-#                         #auc.polygon=TRUE, 
-#                         max.auc.polygon=TRUE, 
-#                         #grid=TRUE,
-#                         print.auc=TRUE 
-#                         #show.thres=FALSE
-#                         )
-#   return(pROC_obj)
-# }
+
 
 create_roc_new <- function(labels, scores) {
   
@@ -95,13 +72,6 @@ create_roc_new <- function(labels, scores) {
 
 
 
-# create_precision_recall <- function(labels, scores) {
-#   # create_precision_recall <- function(fit, labels, cutoff, norm_mean, norm_sd) {
-#   #   scores <- get_scores(fit, cutoff, norm_mean, norm_sd)
-#   pr <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
-# 
-#   return(pr)
-# }
 
 
 
@@ -198,6 +168,31 @@ create_scatter_plot <- function(df, threshold) {
     geom_smooth(mapping=aes(x = observed, y=predicted), colour="black", show.legend = FALSE) +
     geom_vline(xintercept = threshold, linetype = "dashed") +
     geom_hline(yintercept = threshold, linetype = "dashed") +
+    theme(legend.position = "bottom") +
+    ggtitle("Observed vs predicted Hb-values")
+  return(scatter_plot)
+}
+
+create_classification_scatter_plot <- function(df, hb_threshold, probability_of_deferral_threshold) {
+  xymin <- min(min(df$predicted), min(df$observed))
+  xymax <- max(max(df$predicted), max(df$observed))
+  df <- df %>% 
+    mutate(new_predicted_label= ifelse(scores >= probability_of_deferral_threshold, 1, 0)) %>%
+    mutate(confusion_class = factor(ifelse(deferral == 1, 
+                                    ifelse(new_predicted_label == 1, "True positive", "False negative"),
+                                    ifelse(new_predicted_label == 1, "False positive", "True negative")),
+           levels=c("True positive", "False negative", "False positive", "True negative")))
+  scatter_plot <- ggplot(df, aes(x = observed, y=predicted, color = confusion_class)) +
+    geom_point() +
+    #xlim(xymin,xymax) + ylim(xymin,xymax) +
+    scale_x_continuous(breaks = generate_my_breaks(20), limits=c(xymin,xymax)) +
+    scale_y_continuous(breaks = generate_my_breaks(20), limits=c(xymin,xymax)) +
+    geom_abline(intercept = 0, slope = 1) +
+    labs(x = "Observed", y = "Predicted", colour = "Deferral status") +
+    #scale_colour_discrete(labels=c("Accepted", "Deferred")) +
+    geom_smooth(mapping=aes(x = observed, y=predicted), colour="black", show.legend = FALSE) +
+    geom_vline(xintercept = hb_threshold, linetype = "dashed") +
+    geom_hline(yintercept = hb_threshold, linetype = "dashed") +
     theme(legend.position = "bottom") +
     ggtitle("Observed vs predicted Hb-values")
   return(scatter_plot)
