@@ -77,7 +77,8 @@ create_roc_new <- function(labels, scores) {
 
 # It seems that the number of replicates must be at least as high as the number of rows in the dataframe
 # https://stat.ethz.ch/pipermail/r-help/2011-February/269006.html
-precision_recall_ci <- function(df, method="basic") {
+# n is the number of replications, by default as many as there are rows in the dataframe
+precision_recall_ci <- function(df, method="basic", n=NULL) {
   get_aupr <- function(df, indices) {
     df2 <- df[indices,]
     pb$tick()  # update progress bar
@@ -85,18 +86,15 @@ precision_recall_ci <- function(df, method="basic") {
     return(aupr)
   }
     
-  #df <- tibble(labels=as.integer(labels), scores=scores)
-  #print(head(df))
   df <- df %>% select(labels, scores)
-  #n <- max(nrow(df), 10000)
-  #n=10000
-  n=2000
+  if (is.null(n)) {
+    n <- nrow(df)
+  }
+  
   pb <- progress::progress_bar$new(total = n+1)# init progress bar
   pb$tick(0)
   #p <- progress_estimated(n+1)  # init progress bar
   b <- boot(df, statistic = get_aupr, R=n, sim="ordinary", stype="i", strata=df$labels, parallel="multicore", ncpus=1)
-  #method = "basic"
-  #method = "bca"
   result <- boot.ci(b, conf=0.95, type=method)
   cis <- result[[method]][4:5]
   return(list(cis=cis, result=result))
@@ -129,7 +127,7 @@ create_precision_recall_new <- function(labels, scores) {
     annotate(geom="text", label=sprintf("AUPR: %.2f (%.2f–%.2f)", AUPR, prci[1], prci[2]), x=0.5, y=0.875) +
     scale_y_continuous(limits=c(0.0, 1.0)) +
     labs(x="Recall",y="Precision", title=title)
-  return(list(pr_plot=pr_plot, pr=points, pr_auc=AUPR))
+  return(list(pr_plot=pr_plot, pr=points, pr_auc=AUPR, ci=c(AUPR, prci)))
 }
 
 
@@ -173,42 +171,19 @@ create_scatter_plot <- function(df, threshold) {
   return(scatter_plot)
 }
 
-create_classification_scatter_plot <- function(df, hb_threshold, probability_of_deferral_threshold) {
-  xymin <- min(min(df$predicted), min(df$observed))
-  xymax <- max(max(df$predicted), max(df$observed))
-  df <- df %>% 
-    mutate(new_predicted_label= ifelse(scores >= probability_of_deferral_threshold, 1, 0)) %>%
-    mutate(confusion_class = factor(ifelse(deferral == 1, 
-                                    ifelse(new_predicted_label == 1, "True positive", "False negative"),
-                                    ifelse(new_predicted_label == 1, "False positive", "True negative")),
-           levels=c("True positive", "False negative", "False positive", "True negative")))
-  scatter_plot <- ggplot(df, aes(x = observed, y=predicted, color = confusion_class)) +
-    geom_point() +
-    #xlim(xymin,xymax) + ylim(xymin,xymax) +
-    scale_x_continuous(breaks = generate_my_breaks(20), limits=c(xymin,xymax)) +
-    scale_y_continuous(breaks = generate_my_breaks(20), limits=c(xymin,xymax)) +
-    geom_abline(intercept = 0, slope = 1) +
-    labs(x = "Observed", y = "Predicted", colour = "Deferral status") +
-    #scale_colour_discrete(labels=c("Accepted", "Deferred")) +
-    geom_smooth(mapping=aes(x = observed, y=predicted), colour="black", show.legend = FALSE) +
-    geom_vline(xintercept = hb_threshold, linetype = "dashed") +
-    geom_hline(yintercept = hb_threshold, linetype = "dashed") +
-    theme(legend.position = "bottom") +
-    ggtitle("Observed vs predicted Hb-values")
-  return(scatter_plot)
-}
 
-create_forest_plot_old <- function(x, pnames) {
-  if (is.null(pnames)) {
-    posterior.plot <- bayesplot::mcmc_intervals(x)
-  } else {
-    posterior.plot <- bayesplot::mcmc_intervals(x) + scale_y_discrete(labels = pnames)
-  }
-  posterior.plot <- posterior.plot + scale_x_continuous(breaks = generate_my_breaks(0.2)) +
-    labs(title="Effects sizes of variables on Hb prediction",
-         x="Regression coefficient")
-  return(posterior.plot)
-}
+
+# create_forest_plot_old <- function(x, pnames) {
+#   if (is.null(pnames)) {
+#     posterior.plot <- bayesplot::mcmc_intervals(x)
+#   } else {
+#     posterior.plot <- bayesplot::mcmc_intervals(x) + scale_y_discrete(labels = pnames)
+#   }
+#   posterior.plot <- posterior.plot + scale_x_continuous(breaks = generate_my_breaks(0.2)) +
+#     labs(title="Effects sizes of variables on Hb prediction",
+#          x="Regression coefficient")
+#   return(posterior.plot)
+# }
 
 create_forest_plot <- function(posterior, variables) {
   for (i in seq_along(posterior)) {
@@ -238,6 +213,8 @@ create_forest_plot <- function(posterior, variables) {
     theme_classic()
   return(list(plot=plot, cis=cis))
 }
+
+
 
 # Creates ROC, and Precision-recall plots, and puts them side-by-side.
 # Input should be a tibble (or data.frame) that contains the following columns:
@@ -308,6 +285,8 @@ create_scatter_confusion_plots <- function(df, Hb_cutoff,
   }
   scatter_confusion
 }
+
+
 
 validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, params, pnames = NULL, metric = "mean", 
                          cat.plot = TRUE,
