@@ -35,7 +35,7 @@ get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
 
 
 
-create_roc_new <- function(labels, scores) {
+create_roc_new <- function(labels, scores, boot.n=2000) {
   
   roc <- pROC::roc(response = labels,
                         predictor = scores,
@@ -48,6 +48,7 @@ create_roc_new <- function(labels, scores) {
                         ci=TRUE, 
                         conf.level=0.95, 
                         boot.stratified=TRUE,
+                        boot.n=boot.n,
                         # arguments for plot
                         plot=FALSE, #plot=TRUE, 
                         main="Receiver operating characteric",
@@ -77,8 +78,8 @@ create_roc_new <- function(labels, scores) {
 
 # It seems that the number of replicates must be at least as high as the number of rows in the dataframe
 # https://stat.ethz.ch/pipermail/r-help/2011-February/269006.html
-# n is the number of replications, by default as many as there are rows in the dataframe
-precision_recall_ci <- function(df, method="basic", n=NULL) {
+# boot.n is the number of bootstrap replications, if null use as many replications as there are rows in the dataframe
+precision_recall_ci <- function(df, method="norm", boot.n=NULL) {
   get_aupr <- function(df, indices) {
     df2 <- df[indices,]
     pb$tick()  # update progress bar
@@ -87,38 +88,26 @@ precision_recall_ci <- function(df, method="basic", n=NULL) {
   }
     
   df <- df %>% select(labels, scores)
-  if (is.null(n)) {
-    n <- nrow(df)
+  if (is.null(boot.n)) {
+    boot.n <- nrow(df)
   }
   
-  pb <- progress::progress_bar$new(total = n+1)# init progress bar
+  pb <- progress::progress_bar$new(total = boot.n+1)# init progress bar
   pb$tick(0)
   #p <- progress_estimated(n+1)  # init progress bar
-  b <- boot(df, statistic = get_aupr, R=n, sim="ordinary", stype="i", strata=df$labels, parallel="multicore", ncpus=1)
+  b <- boot(df, statistic = get_aupr, R=boot.n, sim="ordinary", stype="i", strata=df$labels, parallel="multicore", ncpus=1)
   result <- boot.ci(b, conf=0.95, type=method)
   cis <- result[[method]][4:5]
   return(list(cis=cis, result=result))
 }
 
-create_precision_recall_new <- function(labels, scores) {
-  #n <- length(labels)
-  #baseline <- names(which.max(table(labels)))   # 0 or 1, which ever is more common
-  #baseline_score <- ifelse(baseline==1, 1.0, 0.0)
-  #baseline_scores <- c(1.0 - baseline_score, rep(baseline_score, n-1))
-  #random_scores <- runif(n, 0, 1)
+create_precision_recall_new <- function(labels, scores, method="norm", boot.n=2000) {
   pr_model     <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
   points <- data.frame(pr_model$curve)
-  #pr_baseline <- PRROC::pr.curve(scores.class0=baseline_scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
-  #pr_random   <- PRROC::pr.curve(scores.class0=random_scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
-  #df <- bind_rows(model=tibble(data.frame(pr_model$curve)), 
-                  #baseline=tibble(data.frame(pr_baseline$curve)), 
-  #                random=tibble(data.frame(pr_random$curve)), .id="Classifier")
   AUPR <- pr_model$auc.davis.goadrich
   df <- tibble(labels=labels, scores=scores)
-  prci <- precision_recall_ci(df, method="basic")$cis
-  #title <- sprintf("Precision-recall (AUC=%.3f)", AUPR) 
+  prci <- precision_recall_ci(df, method=method, boot.n=boot.n)$cis
   title <- "Precision-recall"
-# pr_plot <- ggplot(data.frame(pr$curve),aes(x=X1,y=X2)) +
   m <- mean(labels)
   pr_plot <- ggplot(points, aes(x=X1,y=X2)) +
     geom_hline(aes(yintercept=m), color="lightgray") +   # theoretical PR curve of random classifier
