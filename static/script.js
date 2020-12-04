@@ -3,6 +3,9 @@ document.onreadystatechange = function() {
   if (document.readyState == "complete") {
     console.log("Setting handleButtonPress");
     document.getElementById("submit").onclick = handleButtonPress;
+    document.getElementById("FRCBS").onchange = handle_input_format;
+    document.getElementById("Sanquin").onchange = handle_input_format;
+    document.getElementById("Preprocessed").onchange = handle_input_format;
   }
 
   var httpRequest;
@@ -10,6 +13,34 @@ document.onreadystatechange = function() {
   var time=document.getElementById("time");
   var interval_id;
   
+  function handle_input_format(e) {
+    value = document.querySelector('input[name="input_format"]:checked').value;
+    e1 = document.getElementById("donations_row");
+    e2 = document.getElementById("donors_row");
+    e3 = document.getElementById("donor_specific_row");
+    e4 = document.getElementById("preprocessed_row");
+    if (value == "FRCBS") {
+      e1.style.display = "table-row";
+      e2.style.display = "table-row";
+      e3.style.display = "table-row";
+      e4.style.display = "none";
+    } else if (value == "Sanquin") {
+      e1.style.display = "table-row";
+      e2.style.display = "table-row";
+      e3.style.display = "none";
+      e4.style.display = "none";
+    } else {
+      e1.style.display = "none";
+      e2.style.display = "none";
+      e3.style.display = "none";
+      e4.style.display = "table-row";
+    }
+      
+  
+    console.log("Fieldset clicked: " + value);
+  }
+  
+  // This handles button press on the submit button
   function handleButtonPress(e) {
     console.log("In handleButtonPress");
     e.preventDefault();
@@ -87,7 +118,7 @@ document.onreadystatechange = function() {
         return;
       }
       document.getElementById("info").innerHTML += data.result[0];
-      document.getElementById("table_container").innerHTML = data.errors[0];
+      document.getElementById("table_container").innerHTML = data.summary_table[0];
       
       if (!document.getElementById("random-forest").checked)
         document.getElementById("detail-rf").style.display = "none";

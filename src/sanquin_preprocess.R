@@ -89,13 +89,12 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   input_col_types2 <- list(
     KEY_DONOR = col_character())
   donor <- read_delim(donor.file, delim="|", col_types = input_col_types2)
-  old_donor_names <- c("KEY_DONOR", "KEY_DONOR_SEX", "KEY_DONOR_DOB", "DONOR_DATE_FIRST_DONATION")
-  new_donor_names <- c('donor', 'gender', 'dob',
-                 'date_first_donation'
-                 )
-  temp <- old_donor_names
-  names(temp) <- new_donor_names
-  donor <- donor %>% rename(!!!temp)
+  #old_donor_names <- c("KEY_DONOR", "KEY_DONOR_SEX", "KEY_DONOR_DOB", "DONOR_DATE_FIRST_DONATION")
+  #new_donor_names <- c('donor', 'gender', 'dob', 'date_first_donation')
+  #temp <- old_donor_names
+  conversion <- c(donor="KEY_DONOR", gender="KEY_DONOR_SEX", dob="KEY_DONOR_DOB", date_first_donation="DONOR_DATE_FIRST_DONATION")
+  #names(temp) <- new_donor_names
+  donor <- donor %>% rename(!!!conversion)
   #names(donor) <- new_donor_names
   #1 "9626820"|
   #2 "YYYY XXXX"|
@@ -127,12 +126,21 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   donor <- donor %>%
     mutate(gender = as.factor(gender))
   
+  
+  conversion2 <- c(nb_donat_progesa="DONOR_NB_DONAT_PROGESA", nb_donat_outside="DONOR_NB_DONAT_OUTSIDE")
+  variables <- c("donor", "gender", "dob", "date_first_donation", conversion2)
+  if (length(intersect(conversion2, names(donor))) == 0)  { # numbers of donations not provided
+    donor <- donor %>% mutate(DONOR_NB_DONAT_PROGESA=NA, DONOR_NB_DONAT_OUTSIDE=0)
+    compute_donation_counts <- TRUE;
+  } else {
+    compute_donation_counts <- FALSE;
+  }
+
   donor2 <- donor %>% 
 #    select(donor, gender, dob, date_first_donation, nb_donat_progesa, nb_donat_outside) %>%
-    select(donor, gender, dob, date_first_donation) %>%
+    select(!!!variables) %>%
     filter(donor %in% unique(donation$donor)) #Remove extra donors to get clean join  
   
-  donor2 <- donor2 %>% mutate(nb_donat_progesa=NA, nb_donat_outside=NA)
   
   #Droplevels so that they don't bother you later
   donation <- droplevels(donation)
@@ -149,6 +157,10 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   
   stopifnot(nrow(donation2)==nrow(donation))
   donation <- donation2
+  
+  if (compute_donation_counts) {
+    donation <- donation %>% group_by(donor) %>% mutate(nb_donat_progesa = n()) %>% ungroup()
+  }
   
   print(table(donation$gender))
   #English sex
