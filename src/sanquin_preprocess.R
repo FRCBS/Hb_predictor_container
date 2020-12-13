@@ -60,7 +60,8 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   donation <- donation %>%
     mutate(donat_phleb = as.factor(donat_phleb),
            volume_drawn = as.integer(volume_drawn),
-           Hb = as.numeric(Hb),
+           Hb = as.numeric(Hb) * 10,  # convert g/dL to g/L
+           donat_phleb = recode(donat_phleb, `Whole blood`="K"),
            phleb_start = as.character(phleb_start))
            #donStartTime = as.integer(donStartTime))
 
@@ -458,3 +459,54 @@ sanquin_preprocess_helper <- function(dir, Hb_cutoff_male = 135, Hb_cutoff_femal
   return(data)
 }
 
+sanquin_sample_raw_progesa <- function(donation.file, donor.file, donation.out = donation.file, donor.out = donor.file, ndonor = 1.0) {
+  
+  # In the full dataset there lots of missing values. This causes automatic recognition of column types to fail.
+  # Therefore we give them explicitly here.
+  input_col_types <- list(
+    #X1 = col_character(),
+    KEY_DONOR = col_character(),
+    #X3 = col_character(),
+    KEY_DONAT_INDEX_DATE = col_double(),
+    DONAT_PHLEB_START = col_character(),
+    DONAT_STATUS = col_character(),
+    KEY_DONAT_PHLEB = col_character(),
+    #X8 = col_character(),
+    #½X9 = col_character(),
+    DONAT_VOL_DRAWN = col_character(),
+    #X11 = col_double(),
+    DONAT_RESULT_CODE = col_double()
+  )
+  
+  
+  donation <- read_delim(donation.file, col_names=TRUE, delim='|', col_types=input_col_types)
+
+  cat(sprintf("Read %i rows from file %s\n", nrow(donation), donation.file))
+    
+  input_col_types2 <- list(
+    KEY_DONOR = col_character())
+  donor <- read_delim(donor.file, col_names=TRUE, delim="|", col_types = input_col_types2)
+
+
+  cat(sprintf("Read %i rows from file %s\n", nrow(donor), donor.file))
+  
+  if (ndonor != 1.0) {
+    cat(sprintf("Sampling to %f\n", ndonor))
+    if (ndonor > 1.0) {   # is a count instead of proportion?
+      donor <- slice_sample(donor, n=ndonor)
+    } else {
+      donor <- slice_sample(donor, prop=ndonor)
+    }
+    donor_ids <- donor$KEY_DONOR
+    
+    donation <- donation %>% filter(KEY_DONOR %in% donor_ids)  
+    
+    #if (!file.exists(donation.out)) {
+    write_delim(donation, donation.out, delim="|", col_names = TRUE)
+    #}
+    #if (!file.exists(donor.out)) {
+    write_delim(donor, donor.out, delim="|", col_names = TRUE)
+    #}
+  }
+  return(list(donation=donation, donor=donor))
+}

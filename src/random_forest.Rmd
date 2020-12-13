@@ -23,6 +23,10 @@ params:
   dev: "cairo_pdf"  
 ---
 
+```{r, echo=FALSE, message=FALSE}
+message(sprintf(">>>>>>>>>> RF %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", params$gender, knitr::opts_chunk$get("dev")))
+```
+
 <!-- <h2> Initialization </h2> -->
 ```{r Setup, setup = TRUE, echo=FALSE, message=FALSE, results="hide"}
 
@@ -42,9 +46,31 @@ suppressPackageStartupMessages(library(furrr))
 suppressPackageStartupMessages(library(sn))
 #library(tidyselect)  # Why is this needed?
 suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(tictoc))
 set.seed(123)
 
-knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, results = "hide")
+
+# This can measure time a chunk took to execute.
+# Add chunk option time_it=TRUE to each chunk your want to measure.
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- lubridate::now()
+    } else {
+      # calculate the time difference after a chunk
+      res <- lubridate::now() - now
+      # return a character string to show the time
+      msg <- paste("Time for this code chunk to run:", as.numeric(res), units(res))
+      message(msg)
+      NULL   # Don't return the message so that it won't be printed to the resulting document.
+    }
+  }
+}))
+
+
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, results = "hide", time_it=TRUE)
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE)
 #options(warn = 1)
 
@@ -55,7 +81,6 @@ if (knitr::opts_chunk$get("dev") == "pdf") {
 message(paste0("Device is ", knitr::opts_chunk$get("dev"), "\n"))
 message(paste0("Current device is ", knitr::opts_current$get("dev"), "\n"))
 use_pdf <- knitr::opts_chunk$get("dev") %in% c("pdf", "cairo_pdf")
-
 
 message("Parameters are:")
 for (name in names(params)) {
@@ -98,7 +123,7 @@ source("enrich_deferrals_rf.R")
 
 ```
 
-```{r, results="asis", echo=FALSE}
+```{r Descriptions, results="asis", echo=FALSE}
 cat(sprintf("# Random forest (%s)\n", params$gender))
 ```
 
@@ -137,11 +162,11 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
                    )
 
 donor_descript <- tibble(
-  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs"),
-  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score"),
-  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric"),
+  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs", "FERRITIN_FIRST", "FERRITIN_LAST"),
+  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score", "FERRITIN_FIRST", "FERRITIN_LAST"),
+  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric", "numeric", "numeric"),
   Explanation = c("Does the person smoke", "Height of the donor", "Weight of the donor", 
-                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin")
+                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin", "FERRITIN_FIRST", "FERRITIN_LAST")
 )
 
 # Converts column names of a dataframe 'df' to pretty format using dataframe 'description'.
@@ -191,10 +216,12 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample siz
 
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
+  findonor_and_snip_and_prs <- load_single(params$donor_specific_file)
+  donor_descript <- donor_descript %>% filter(Variable %in% names(findonor_and_snip_and_prs))
   donor_variables <- donor_descript$Variable
   pretty_donor_variables <- donor_descript$Pretty
   
-  findonor_and_snip_and_prs <- load_single(params$donor_specific_file)
+  
   data <- inner_join(data, findonor_and_snip_and_prs, by="donor")
 } else {
   donor_variables = NULL
@@ -291,9 +318,11 @@ pboth <- data2 %>%
 pboth
 
 if (!is.null(params$donor_specific_file)) {
+  convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
   both_donor_specific <- findonor_and_snip_and_prs %>%
     semi_join(data2, by="donor") %>%
-    mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
+    #mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
+    mutate_at(vars(convert_to_integer), as.integer) %>%
     keep(is.numeric) %>%
     to_pretty(donor_descript) 
   both_donor_specific %>%
@@ -309,32 +338,6 @@ rm(data2, pmale);
 
 
 
-
-```{r Summary plots for females, echo = FALSE, eval=FALSE}
-#Plot distributions for female donors
-
-# data.female2 <- data.female %>%
-#   filter(first_event == FALSE) %>%
-#   select(all_of(descript$Variable)) %>%
-#   mutate(Hb_deferral = as.integer(Hb_deferral),
-#          warm_season = as.integer(warm_season),
-#          previous_Hb_def = as.integer(previous_Hb_def))
-
-# pfemale <- data.female2 %>%
-#           keep(is.numeric) %>%
-#           to_pretty(descript) %>%
-#           gather() %>%
-#           mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
-#           ggplot(aes(value)) +
-#             facet_wrap(~ key, scales = "free") +
-#             geom_histogram(fill = "orange")
-# 
-# pfemale
-
-#rm(data.female2, pfemale);
-```
-
-
 ```{r clean up memory, echo = FALSE}
 #rm(data); invisible(gc())
 rm(data.male, data.female); invisible(gc(reset = TRUE))
@@ -342,7 +345,7 @@ rm(data.male, data.female); invisible(gc(reset = TRUE))
 
 
 
-```{r, echo=FALSE}
+```{r Partition and enrich, echo=FALSE}
 a <- caret::createDataPartition(1:nrow(data), p=0.8, list=FALSE)
 train <- data[a,]
 message("Here")
@@ -361,12 +364,12 @@ enriched %>% ungroup() %>% count()
 Full time series except those removed who only have one event or who's only deferral was the first event.
 -->
 
-```{r}
+```{r, eval=FALSE}
 test %>% ungroup() %>% count()
 ```
 
 
-```{r}
+```{r, eval=FALSE}
 enriched %>% group_by(donor) %>% arrange(desc(dateonly)) %>% 
   dplyr::slice(1) %>% 
   ungroup() %>% group_by(Hb_deferral) %>% count()
@@ -375,7 +378,7 @@ enriched %>% group_by(donor) %>% arrange(desc(dateonly)) %>%
 Enriched to 50:50 balance.
 -->
 
-```{r}
+```{r, eval=FALSE}
 test %>% group_by(donor) %>% arrange(desc(dateonly)) %>% 
   dplyr::slice(1) %>% 
   ungroup() %>% group_by(Hb_deferral) %>% count()
@@ -405,17 +408,13 @@ ggplot(temp) + geom_line(aes(x=nb_donat,y=pdef,color=gender)) +xlim(0,50) + ylim
 
 ```
 
-```{r, eval=FALSE}
-#temp<- temp %>% group_by(nb_donat) %>% summarise(def=sum(def),
- #                                         acc=sum(acc)) 
-ggplot(temp) + geom_line(aes(x=nb_donat,y=def,color=gender,linetype='Deferral')) +geom_line(aes(x=nb_donat,y=acc,color=gender,linetype='Accepted')) + ylab("Count")
-```
+
 <!--
 Yes, women have a lower deferral percentage in first event so removing the first event makes the overall deferral percentage in the data set bigger.
 
 Take only last events and do come cleaning
 -->
-```{r}
+```{r Process train and validate sets}
 #Train
 train <- enriched %>% group_by(donor) %>% 
   arrange(desc(dateonly)) %>% 
@@ -478,68 +477,10 @@ validate <- validate %>% ungroup() %>%   select(all_of(variables))
 
 
 ```
-<!--
-Is there any NAs left?
--->
-```{r}
-train %>% ungroup() %>%   summarise_all(list(~sum(is.na(.)))) %>% t()
-```
-
-```{r}
-validate %>% ungroup() %>%   summarise_all(list(~sum(is.na(.)))) %>% t()
-```
-
-<!--
-No
-
-## Summarise
-
-How do the donation carreers seem on the last event?
--->
-```{r}
-train %>% 
-  group_by(Hb_deferral,gender) %>% 
-  summarise(Ntot=n(),max=max(nb_donat),min=min(nb_donat),mean=mean(nb_donat),median=median(nb_donat)) %>% arrange(gender,Hb_deferral)
-```
-
-```{r}
-validate %>% 
-  group_by(Hb_deferral,gender) %>% 
-  summarise(Ntot=n(),max=max(nb_donat),min=min(nb_donat),mean=mean(nb_donat),median=median(nb_donat)) %>% arrange(gender,Hb_deferral)
-```
-
-<!--
-Hmmm, would this require more thought?
--->
-```{r}
-summary(train)
-```
 
 
-```{r}
-summary(validate)
-```
-
-
-```{r}
-train %>% filter(gender=='Men') %>% summary()
-```
-
-```{r}
-validate %>% filter(gender=='Men') %>% summary()
-```
-
-
-
-```{r}
-train %>% filter(gender=='Women') %>% summary()
-```
-
-```{r}
-validate %>% filter(gender=='Women') %>% summary()
-```
-
-```{r}
+```{r Train random forest, message=TRUE}
+tic("Training random forest")
 rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
                  method = "ranger", 
                  #mtry = 4,
@@ -559,16 +500,13 @@ rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train,
                 #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
                 #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
                 )
-```
-
-```{r}
-rrfFit_roc
+sink(file=stderr(), type="output"); toc(); sink()
+warning("Varoitus")
 ```
 
 
-```{r}
-#ggplot(rrfFit_roc)
-```
+
+
 
 ## Results
 
@@ -622,16 +560,7 @@ prediction.probs <- predict(rrfFit_roc, newdata = validate, type="prob")
 ```
 
 
-```{r}
-#plot(validate.ROC)
-```
 
-```{r, eval=FALSE}
-histogram(~prediction.probs$Deferred|validate$Hb_deferral,xlab="Probability of Poor Segmentation")
-```
-<!--
-And what does this mean?
--->
 ```{r , warning=FALSE, echo=FALSE}
 source("validate_stan_fit.R")
 width = 180

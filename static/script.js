@@ -128,6 +128,9 @@ document.onreadystatechange = function() {
       }
       
       document.getElementById("results-container").removeAttribute("hidden");  
+      
+      if (document.querySelector('input[name="input_format"]:checked').value == "Preprocessed")
+        document.getElementById("preprocessed").style.display = "none";
     } else if (httpRequest.readyState == 4 && httpRequest.status != 200) {
       console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
       document.getElementsByClassName("lds-spinner")[0].style.display = "none";

@@ -27,6 +27,10 @@ params:
   donor_specific_file: NULL
 ---
 
+```{r, echo=FALSE, message=FALSE}
+message(sprintf(">>>>>>>>>> LMMs %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", params$gender, knitr::opts_chunk$get("dev")))
+```
+
   
 ```{r, results="asis", echo=FALSE}
 cat(sprintf("# Subset analyses (%s)\n", params$gender))
@@ -77,7 +81,7 @@ The goal of this document is to get a feeling which model seems to work best for
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-```{r, echo = FALSE}
+```{r Descriptions, echo = FALSE}
 
 # Variables that are in use
 
@@ -109,11 +113,11 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
                    )
 
 donor_descript <- tibble(
-  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs"),
-  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score"),
-  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric"),
+  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs", "FERRITIN_FIRST", "FERRITIN_LAST"),
+  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score", "FERRITIN_FIRST", "FERRITIN_LAST"),
+  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric", "numeric", "numeric"),
   Explanation = c("Does the person smoke", "Height of the donor", "Weight of the donor", 
-                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin")
+                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin", "FERRITIN_FIRST", "FERRITIN_LAST")
 )
   
 to_pretty <- function(df, description) {
@@ -144,7 +148,27 @@ suppressPackageStartupMessages(library(furrr))
 suppressPackageStartupMessages(library(sn))
 library(tidyselect)
 
-knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
+# This can measure time a chunk took to execute.
+# Add chunk option time_it=TRUE to each chunk your want to measure.
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- lubridate::now()
+    } else {
+      # calculate the time difference after a chunk
+      res <- lubridate::now() - now
+      # return a character string to show the time
+      msg <- paste("Time for this code chunk to run:", as.numeric(res), units(res))
+      message(msg)
+      NULL   # Don't return the message so that it won't be printed to the resulting document.
+    }
+  }
+}))
+
+
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, time_it=TRUE)
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE)
 #options(warn = 1)
 
@@ -248,10 +272,12 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
   #donor_variables <- c("smoking", "bmi", "RNF43_mutant", "prs")
   #donor_variables <- c("smoking", "height", "weight", "RNF43_mutant", "prs")
   #pretty_donor_variables <- c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score")
+  findonor_and_snip_and_prs <- load_single(params$donor_specific_file)
+  donor_descript <- donor_descript %>% filter(Variable %in% names(findonor_and_snip_and_prs))
   donor_variables <- donor_descript$Variable
   pretty_donor_variables <- donor_descript$Pretty
   
-  findonor_and_snip_and_prs <- load_single(params$donor_specific_file)
+  
   data <- inner_join(data, findonor_and_snip_and_prs, by="donor")
 } else {
   donor_variables = NULL
@@ -376,9 +402,11 @@ pmale <- data.male2 %>%
 pmale
 
 if (!is.null(params$donor_specific_file)) {
+  convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
   male_donor_specific <- findonor_and_snip_and_prs %>%
     semi_join(data.male2, by="donor") %>%
-    mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
+    #mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
+    mutate_at(vars(convert_to_integer), as.integer) %>%
     keep(is.numeric) %>%
     to_pretty(donor_descript) 
   pmale2 <- male_donor_specific %>%
@@ -424,9 +452,11 @@ pfemale <- data.female2 %>%
 pfemale
 
 if (!is.null(params$donor_specific_file)) {
+  convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
   female_donor_specific <- findonor_and_snip_and_prs %>%
     semi_join(data.female2, by="donor") %>%
-    mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant))
+    #mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
+    mutate_at(vars(convert_to_integer), as.integer)
   pfemale2 <- female_donor_specific %>%
     keep(is.numeric) %>%
     to_pretty(donor_descript) %>%
@@ -471,6 +501,8 @@ if (skip_train == TRUE) {
             data = stan.lists.male.nofix,
             save_warmup = TRUE,
             iter = params$iterations,
+            open_progress = TRUE,
+            verbose = TRUE,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_male_", fit_id, ".RData", sep = ''))
 }
@@ -573,6 +605,8 @@ if (skip_train == TRUE) {
             data = stan.lists.male.icpfix,
             save_warmup = TRUE,
             iter = params$iterations,
+            open_progress = FALSE,
+            verbose = TRUE,
             control = list(max_treedepth = 12))
   save(fit, file = paste(stanfitpath, "small_model1_male_icp_", fit_id, ".RData", sep = ''))
 }

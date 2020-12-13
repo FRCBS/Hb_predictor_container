@@ -13,6 +13,8 @@ source("sanquin_preprocess.R")
 library(readr)
 library(rjson)
 
+is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+
 # Show metadata about an uploaded file
 get_info <- function(x) {
   v = c("<pre>",
@@ -24,17 +26,28 @@ get_info <- function(x) {
   return(paste(v, collapse="\n"))
 }
 
+check_columns <- function(got, expected) {
+  if (all(expected %in% got)) {
+    return("")
+  } else {
+    msg <- sprintf("Expected columns %s, got columns %s, missing %s", paste(expected, collapse=" "), paste(got, collapse=" "), paste(setdiff(expected, got), collapse=" "))
+  }
+}
+
 #' Read the input form and learn the models, and show the results.
 #' @post /hb-predictor2
 #' @parser multi
 #' @serializer json
 function(req, parametrit){
+  if (Sys.getenv("TZ") == "") {
+    Sys.setenv("TZ"="Europe/Helsinki")
+  }
   #cat("At the start\n")
   cat("Before multipart$parse\n")
   tic("Parsing form data")
   #saveRDS(req, file="~/test_multipart_form_data/request.rds")
   
-  post = Rook::Multipart$parse(req)
+  #post = Rook::Multipart$parse(req)
   
   # Parse uploaded files.
   #separator <- req$postBody[[1]]
@@ -65,8 +78,8 @@ function(req, parametrit){
     error_messages <- c(error_messages, "The Hb cutoff must be a positive integer")
   if ("sample_fraction" %in% names(post)) {
     sf <- as.numeric(post$sample_fraction)
-    if (is.na(sf) || sf < 0.0 || sf > 1.0)
-      error_messages <- c(error_messages, "The sample fraction must be a real number between 0 and 1")
+    if (is.na(sf) || sf < 0.0 || (sf > 1.0 && !is.wholenumber(sf)))
+      error_messages <- c(error_messages, "The sample fraction must be a real number between 0 and 1, or an integer larger than 1")
   }
   if (! "donations_fileUpload" %in% names(post))
     error_messages <- c(error_messages, "Missing donations file")
@@ -97,9 +110,39 @@ function(req, parametrit){
     str(donors_o, nchar.max = 10000)
     upload_info <- c(get_info(donations_o), get_info(donors_o))
     use_col_names <- input_format != "FRCBS"
+    
+    # Check donation dataframe
     donations <- read_delim(donations_o$tempfile, col_names=use_col_names, delim='|')
+    if (input_format == "FRCBS") {
+      if (ncol(donations) != 12) {
+        error_messages <- c(error_messages, sprintf("Expected 12 columns in the donation file, got %i columns", ncol(donations)))
+        return(list(error_messages=error_messages))
+      }
+    } else {
+      msg <- check_columns(names(donations), c("KEY_DONOR", "KEY_DONAT_INDEX_DATE", "DONAT_PHLEB_START", "DONAT_STATUS", "KEY_DONAT_PHLEB", 
+                                              "DONAT_VOL_DRAWN", "DONAT_RESULT_CODE"))
+      if(str_length(msg) > 0) {
+        error_messages <- c(error_messages, sprintf("donation dataframe: %s", msg))
+        return(list(error_messages=error_messages))
+      }
+    }
     donation_info <- sprintf("<p>Donations: filename=%s, rows=%i, columns=%i</p>", donations_o$filename, nrow(donations), ncol(donations))
+    
+    # Check donor dataframe
     donors <- read_delim(donors_o$tempfile, col_names=use_col_names, delim='|')
+    if (input_format == "FRCBS") {
+      if (ncol(donors) != 26) {
+        error_messages <- c(error_messages, sprintf("Expected 26 columns in the donor file, got %i columns", ncol(donors)))
+        return(list(error_messages=error_messages))
+      }
+    } else {
+      msg <- check_columns(names(donors), c("KEY_DONOR", "KEY_DONOR_SEX", "KEY_DONOR_DOB", "DONOR_DATE_FIRST_DONATION"))
+      if(str_length(msg) > 0) {
+        error_messages <- c(error_messages, sprintf("donor dataframe: %s", msg))
+        return(list(error_messages=error_messages))
+      }
+    }
+    donation_info <- sprintf("<p>Donations: filename=%s, rows=%i, columns=%i</p>", donations_o$filename, nrow(donations), ncol(donations))
     donor_info <- sprintf("<p>Donor: filename=%s, rows=%i, columns=%i</p>", donors_o$filename, nrow(donors), ncol(donors))
   } else {
     donation_info <- ""
@@ -128,14 +171,26 @@ function(req, parametrit){
     # Do the preprocessing
     tic("Preprocessing data")
     if (input_format == "FRCBS") {
+      if (sf != 1.0)
+        sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
       fulldata_preprocessed <- preprocess(donations_o$tempfile, donors_o$tempfile,
                                           myparams$Hb_cutoff_male, myparams$Hb_cutoff_female)
     } else {
+      res <- sanquin_sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
       fulldata_preprocessed <- sanquin_preprocess(donations_o$tempfile, donors_o$tempfile,
                                                   myparams$Hb_cutoff_male, myparams$Hb_cutoff_female)
+      if (all(c("FERRITIN_FIRST", "FERRITIN_LAST") %in% names(res$donor))) {
+        donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST, FERRITIN_LAST)
+        donor_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
+        save(donor_specific, file = donor_specific_filename)
+      } else {
+        cat("No ferritin information found.")
+      }
     }
+    post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
-    data_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
+    #data_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
+    data_filename <- "../output/preprocessed.rdata"
     save(fulldata_preprocessed, file=data_filename)
     toc()
     cat(sprintf("Saved preprocessed data to file %s\n", data_filename))
@@ -196,7 +251,7 @@ function(req, parametrit){
       params = myparams)
     summary_tables[["ml"]] <- read_csv(filename)
   }
-  unlink(data_filename)
+  #unlink(data_filename)
   if (!is.null(donor_specific_filename))
     unlink(donor_specific_filename)
   
@@ -235,6 +290,7 @@ function(req){
   </head>
   
   <body>
+  <div id="version">Version 0.13</div> 
   <div id="container">
   
     <div id="logos">
@@ -273,7 +329,7 @@ function(req){
         <tr><td>Hb cutoff (male)</td>       <td><input name="Hb_cutoff_male" value="135" maxlength="5" size="5"><span id="male_unit">g/L</span></td> </tr>
         <tr><td>Hb cutoff (female)</td>     <td><input name="Hb_cutoff_female" value="125" maxlength="5" size="5"><span id="female_unit">g/L</span></td> </tr>
         <tr><td>Minimum donations</td>      <td><input name="hlen" value="1" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
-        <tr><td>Sample fraction</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
+        <tr><td>Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
         <!--<tr><td>Progress</td>               <td><progress id="progress" value="0" /></td></tr>-->
         </table>
       
@@ -326,6 +382,7 @@ function(req){
         <h3>Summary</h3>
         <div id="table_container"></div>
         <p>Load the summary table in CSV form from <a href="/output/summary.csv">here.</a></p>
+        <p id="preprocessed">Load the preprocessed data from <a href="/output/preprocessed.rdata">here.</a></p>
         
         <h3>Detailed result pages</h3>
         <table id="detailed-results" class="table table-condensed">

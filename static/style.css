@@ -55,6 +55,24 @@ fieldset {
   display: none;  
 }
 
+/*
+#error_messages {
+  width: 100em;
+}
+*/
+
+#version {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100px;
+  height: 20px;
+  color: red;
+  text-align: right;
+  padding-right: 5px;
+  /*border: 3px solid #73AD21; */
+}
+
 #error_messages p {
   color: red;
 }

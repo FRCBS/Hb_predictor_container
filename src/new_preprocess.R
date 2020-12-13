@@ -500,3 +500,61 @@ preprocess_helper <- function(dir, Hb_cutoff_male = 135, Hb_cutoff_female = 125)
   return(data)
 }
 
+sample_raw_progesa <- function(donation.file, donor.file, donation.out = donation.file, donor.out = donor.file, ndonor = 1.0) {
+  
+  # In the full dataset there lots of missing values. This causes automatic recognition of column types to fail.
+  # Therefore we give them explicitly here.
+  input_col_types <- list(
+    X1 = col_character(),
+    X2 = col_character(),
+    X3 = col_character(),
+    X4 = col_double(),
+    X5 = col_character(),
+    X6 = col_character(),
+    X7 = col_character(),
+    X8 = col_character(),
+    X9 = col_character(),
+    X10 = col_character(),
+    X11 = col_double(),
+    X12 = col_double()
+  )
+  
+  donation <- read_delim(donation.file, col_names=FALSE, delim='|', col_types=input_col_types)
+  names(donation)=c('donation', 'donor', 'site', 'date', 'phleb_start',
+                    'status', 'donat_phleb', 
+                    'directed', 'donStartTime', 'volume_drawn', 'index_test', 
+                    'Hb')
+  cat(sprintf("Read %i rows from file %s\n", nrow(donation), donation.file))
+
+  donor <- read_delim(donor.file, col_names=FALSE, delim="|")
+  names(donor)=c('donor','first','family', 'gender', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
+                 'tel','email', 'mobile',
+                 'notifiable', 'notification_method_1', 'notification_method_2', 'notification_method_3', 
+                 'nb_donations', 'nb_donat_progesa', 'nb_donat_outside', 
+                 'date_first_donation', 'nb_wb', 'nb_pla',
+                 'nb_thr', 'last_donat_phleb', 'last_collect'
+                 
+  )
+  cat(sprintf("Read %i rows from file %s\n", nrow(donor), donor.file))
+  
+  cat(sprintf("Sampling to %f\n", ndonor))
+  if (ndonor > 1.0) {   # is a count instead of proportion?
+    donor <- slice_sample(donor, n=ndonor)
+  } else {
+    donor <- slice_sample(donor, prop=ndonor)
+  }
+  donor_ids <- donor$donor
+  
+  donation <- donation %>% filter(donor %in% donor_ids)  
+  
+  #if (!file.exists(donation.out)) {
+    write_delim(donation, donation.out, delim="|", col_names = FALSE)
+  #}
+  #if (!file.exists(donor.out)) {
+    write_delim(donor, donor.out, delim="|", col_names = FALSE)
+  #}
+  
+  return(list(donation=donation, donor=donor))
+}
+
+
