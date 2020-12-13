@@ -56,17 +56,17 @@ model {
     }
 }
 generated quantities {
-    vector[N] log_lik;
+    //vector[N] log_lik;
     vector[Ntest] y_pred;
 
-    for (i in 1:N) {
-        if (i == first_events[donor[i]]) {
-            log_lik[i] = normal_lpdf(Hb[i] | Z[donor[i]] * ups + theta + donb[donor[i]], sigmaeeta);
-        } 
-        else {
-            log_lik[i] = normal_lpdf(Hb[i] | Q_star[i,] * beta_tilde + donb[donor[i]], sigmaeps);
-        }
-    }
+    // for (i in 1:N) {
+    //     if (i == first_events[donor[i]]) {
+    //         log_lik[i] = normal_lpdf(Hb[i] | Z[donor[i]] * ups + theta + donb[donor[i]], sigmaeeta);
+    //     } 
+    //     else {
+    //         log_lik[i] = normal_lpdf(Hb[i] | Q_star[i,] * beta_tilde + donb[donor[i]], sigmaeps);
+    //     }
+    // }
     // Predict using parameters and test data
     for (i in 1:Ntest) {
         y_pred[i] = normal_rng(x_test[i]*beta + donb[test_donor[i]], sigmaeps);

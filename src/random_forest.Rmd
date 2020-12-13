@@ -54,6 +54,7 @@ if (knitr::opts_chunk$get("dev") == "pdf") {
 }
 message(paste0("Device is ", knitr::opts_chunk$get("dev"), "\n"))
 message(paste0("Current device is ", knitr::opts_current$get("dev"), "\n"))
+use_pdf <- knitr::opts_chunk$get("dev") %in% c("pdf", "cairo_pdf")
 
 
 message("Parameters are:")

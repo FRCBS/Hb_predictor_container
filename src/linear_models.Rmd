@@ -160,6 +160,7 @@ if (knitr::opts_chunk$get("dev") == "pdf") {
 }
 message(paste0("Device is ", knitr::opts_chunk$get("dev"), "\n"))
 message(paste0("Current device is ", knitr::opts_current$get("dev"), "\n"))
+use_pdf <- knitr::opts_chunk$get("dev") %in% c("pdf", "cairo_pdf")
 
 # These are used to select which computations to perform,
 # base on params$gender and params$method
@@ -178,8 +179,10 @@ if (!is.null(params$cores)) {
 }
 
 # Set variables to save time knitting the document
-skip_train = params$skip_train
-create_datasets_bool = params$create_datasets_bool
+#skip_train = params$skip_train
+skip_train = use_pdf
+#create_datasets_bool = params$create_datasets_bool
+create_datasets_bool = ! use_pdf
 knit = TRUE
 
 datadir = "../data/rdata/"

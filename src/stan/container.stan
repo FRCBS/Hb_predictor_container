@@ -38,10 +38,10 @@ model {
     Hb ~ normal(Q_star * beta_tilde + donb[donor], sigmaeps);   
 }
 generated quantities {
-    vector[N] log_lik;
+    //vector[N] log_lik;
     vector[Ntest] y_pred;
 
-    for (n in 1:N) log_lik[n] = normal_lpdf(Hb[n] | Q_star[n, ] * beta_tilde + donb[donor[n]], sigmaeps);
+    //for (n in 1:N) log_lik[n] = normal_lpdf(Hb[n] | Q_star[n, ] * beta_tilde + donb[donor[n]], sigmaeps);
 
     // Predict using parameters and test data
     for (i in 1:Ntest) {
