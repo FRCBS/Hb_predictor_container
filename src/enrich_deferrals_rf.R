@@ -36,7 +36,7 @@ trim_time_series <- function(df) {
     filter((sum(Hb_deferral) != 1) | (first(Hb_deferral) != TRUE)) %>%
     ungroup()
   
-  set.seed(56)  # Initialize random number generator
+  set.seed(56)  # Initialize random number generator  
   
   # Drop donors without deferrals
   without_deferrals <- df %>% group_by(donor) %>%

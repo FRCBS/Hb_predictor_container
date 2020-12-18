@@ -120,9 +120,12 @@ document.onreadystatechange = function() {
       document.getElementById("info").innerHTML += data.result[0];
       document.getElementById("table_container").innerHTML = data.summary_table[0];
       
-      if (!document.getElementById("random-forest").checked)
+      if (!document.getElementById("random-forest").checked) {
+        document.getElementById("variable-importance").style.display = "none";
         document.getElementById("detail-rf").style.display = "none";
+      }
       if (!document.getElementById("no-fix").checked && !document.getElementById("icp-fix").checked) {
+        document.getElementById("effect-size").style.display = "none";
         document.getElementById("detail-lmm-male").style.display = "none";
         document.getElementById("detail-lmm-female").style.display = "none";
       }

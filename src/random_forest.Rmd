@@ -11,7 +11,8 @@ params:
   id: NULL
   date: "2020-07-08"
   extra_id: NULL
-  errors_table_file: NULL
+  summary_table_file: NULL
+  effect_size_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
   cores: 4
@@ -163,10 +164,10 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
 
 donor_descript <- tibble(
   Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs", "FERRITIN_FIRST", "FERRITIN_LAST"),
-  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score", "FERRITIN_FIRST", "FERRITIN_LAST"),
+  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score", "First ferritin", "Last ferritin"),
   Type        = c("boolean", "numeric", "numeric", "boolean", "numeric", "numeric", "numeric"),
   Explanation = c("Does the person smoke", "Height of the donor", "Weight of the donor", 
-                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin", "FERRITIN_FIRST", "FERRITIN_LAST")
+                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin", "First measured ferritin", "Last measured ferritin")
 )
 
 # Converts column names of a dataframe 'df' to pretty format using dataframe 'description'.
@@ -183,6 +184,7 @@ to_pretty <- function(df, description) {
 
 ```{r, echo=FALSE}
 data <- load_single(params$input_file) # Forgets the name of the object
+#data <- load_single("~/FRCBS/Hb_predictor_container/output/preprocessed.rdata")
 
 data <- data %>%
   mutate(days_to_previous_fb = as.double(days_to_previous_fb),
@@ -214,9 +216,13 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample siz
   message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
 }
 
+if (sample_fraction != 1.0)
+  data <- data %>% slice_sample(prop = sample_fraction)
+
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
   findonor_and_snip_and_prs <- load_single(params$donor_specific_file)
+  #findonor_and_snip_and_prs <- load_single("/tmp/RtmpRUlZ9Z/preprocessed_data_3fdd430c88b5.rdata")
   donor_descript <- donor_descript %>% filter(Variable %in% names(findonor_and_snip_and_prs))
   donor_variables <- donor_descript$Variable
   pretty_donor_variables <- donor_descript$Pretty
@@ -271,7 +277,7 @@ if (!is.null(donor_variables)) {
 
 
 
-error_rows <- list()  # This is used to construct the error table in the end
+summary_rows <- list()  # This is used to construct the summary table in the end
                    # It has columns Model, MAE, RMSE, AUROC, and AUPR
 
 ```
@@ -347,16 +353,30 @@ rm(data.male, data.female); invisible(gc(reset = TRUE))
 
 ```{r Partition and enrich, echo=FALSE}
 a <- caret::createDataPartition(1:nrow(data), p=0.8, list=FALSE)
-train <- data[a,]
+train_orig <- data[a,]
 message("Here")
-enriched <- enrich_deferrals_rf(train, 0.5)
-rm(train)
-test <- data[-a,]
+sink(file=stderr(), type="output"); summary(train_orig); sink()
+save(train_orig, file="/tmp/pre-enriched.rdata")
+enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
+# Drop donors whose last ferritin is not measured before the last blood donation after the truncation
+save(enriched, file="/tmp/post-enriched.rdata")
+if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
+  enriched <- enriched %>% 
+    group_by(donor) %>% 
+    mutate(last_donation_date = max(dateonly)) %>% 
+    ungroup() %>% 
+    filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
+    select(-last_donation_date)
+}
+save(enriched, file="/tmp/enriched.rdata")
+#enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
+#rm(train_orig)
+test <- data[-a,] # %>% select(-FERRITIN_LAST_DATE)
 message("and here")
 ```
 
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, eval=FALSE}
 enriched %>% ungroup() %>% count()
 ```
 
@@ -420,11 +440,11 @@ train <- enriched %>% group_by(donor) %>%
   arrange(desc(dateonly)) %>% 
   dplyr::slice(1) %>%   
   mutate(
-    nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)
+    nb_donat = sum(nb_donat_progesa, nb_donat_outside, na.rm=TRUE)
   ) %>% 
   ungroup() %>% 
   mutate(
-    Hb_deferral=factor(Hb_deferral,labels = c("Accepted","Deferred"))
+    Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred"))
          ) %>% 
   filter( !nb_donat == '0') %>% #Some spurious mistake in the donation record
   filter(!(days_to_previous_fb < 62 & gender == "Men"))  %>% #Take out people that return faster than they should as we do not really know what they mean
@@ -472,6 +492,9 @@ validate <-test %>% group_by(donor) %>%
 validate <- validate %>% ungroup() %>%   select(all_of(variables))
 
 
+message(sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train)))
+sink(file=stderr(), type="output"); summary(train); sink()
+message(sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate)))
 
 #Total donation count
 
@@ -479,8 +502,17 @@ validate <- validate %>% ungroup() %>%   select(all_of(variables))
 ```
 
 
+```{r, results="asis", echo=FALSE}
+cat(sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train)))
+cat(sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate)))
+```
+
+
+
+
 ```{r Train random forest, message=TRUE}
 tic("Training random forest")
+save(train, file="/tmp/jarkko.rdata")   # remove this
 rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
                  method = "ranger", 
                  #mtry = 4,
@@ -528,6 +560,10 @@ rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "RNF43_mutantTRUE"] <- "RNF43 min
 rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "genderWomen"] <- "Sex"
 rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "nb_donat"] <- "Number of donations"
 
+if (!is.null(params$effect_size_table_file)) {
+  write_csv(rrfFit.varimp, params$effect_size_table_file)   # Pass the table to the web app as well
+}
+
 varimp.plot <- ggplot(rrfFit.varimp) + geom_col(aes(y=Importance, x=reorder(Pretty, Importance)), alpha=0.7) + coord_flip() + xlab("Variable")
 
 #filename="../results/rrfFit_roc_importance.pdf"
@@ -574,37 +610,50 @@ df <- tibble(deferral = ifelse(validate$Hb_deferral == "Deferred", 1, 0),
 
 
 ```{asis, echo=compute_male_decision_tree}
-### Decision tree, male donors
+### Random forest, both genders
 ```
 
 ```{r, echo=FALSE}
 dummy_plots <- function(df) {
+  boot.n = 100
   result <- list()
   result$df <- df
   result$conf_matrix_plot <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
-  result$roc_plot <- create_roc_new(df$deferral, df$scores)
-  result$pr_plot <- create_precision_recall_new(df$deferral, df$scores)
+  result$roc_plot <- create_roc_new(df$deferral, df$scores, boot.n=boot.n)
+  result$pr_plot <- create_precision_recall_new(df$deferral, df$scores, boot.n=boot.n)
+  message("seko1")
+  result$f1_ci <- get_f1_ci(df, boot.n=boot.n)
+  result$f1_ci
+  message("seko2")
+  #result$f1 <- get_f1(tibble(obs = factor(ifelse(df$deferral == 1, "Deferred", "Accepted"), levels=c("Accepted", "Deferred")),
+  #                    Deferred = df$scores))
   return(result)
 }
 ```
 
 ```{r Random forest both, echo=FALSE}
 
-
+message("Here1")
 results_both_random_forest <- dummy_plots(df)
 
+message("Here2")
 results_both_random_forest$conf_matrix_plot
+message("Here3")
 results_both_random_forest$roc_plot 
+message("Here4")
 results_both_random_forest$pr_plot
-
-
-error_rows[[length(error_rows)+1]] <- list(Model="Both, random forest", MAE=NA, RMSE=NA, 
-                                           MAE2=NA, RMSE2=NA, 
-                                           AUROC=results_both_random_forest$roc_plot$roc_auc, 
-                                           AUPR=results_both_random_forest$pr_plot$pr_auc)
-
+message("Here5")
+results_both_random_forest$f1_ci
+message("Here6")
+t <- tibble(Id="both-rf", Model="Both, random forest", MAE=NA, RMSE=NA, 
+            MAE2=NA, RMSE2=NA) 
+message("Here7")
+t <- bind_cols(c(t, results_both_random_forest$roc_plot$roc_ci, results_both_random_forest$pr_plot$pr_ci, results_both_random_forest$f1_ci))
+#print(t)
+message("Here8")
+summary_rows[[length(summary_rows)+1]] <- t
 #save(results_male_random_forest, file = paste0(rawresultdir, "raw_result_male_random_forest_", id, ".rdata"))
-
+message("Here9")
 # Remove unnescessary values to save memory
 #if (knit == TRUE) {rm(results_male_decision_tree); invisible(gc(reset = TRUE))}
 
@@ -626,24 +675,26 @@ error_rows[[length(error_rows)+1]] <- list(Model="Both, random forest", MAE=NA, 
 
 #str(error_rows)
 #df <- do.call(rbind, error_rows)
-for (i in seq_along(error_rows)) {
-  if (i == 1) {
-    errors <- as_tibble(error_rows[[1]])
-  } else {
-    errors <- rbind(errors, error_rows[[i]])
-  }
-}  
+# for (i in seq_along(error_rows)) {
+#   if (i == 1) {
+#     errors <- as_tibble(error_rows[[1]])
+#   } else {
+#     errors <- rbind(errors, error_rows[[i]])
+#   }
+# }  
 #errors <- as_tibble(df)
-errors <- errors %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
+summary_table <- bind_rows(summary_rows)
+summary_table <- summary_table %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
                             "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
 
-write_csv(errors, paste(rawresultdir, "errors_", id, ".csv", sep = ''))
-if (!is.null(params$errors_table_file)) {
-  write_csv(errors, params$errors_table_file)   # Pass the table to the web app as well
+write_csv(summary_table, paste(rawresultdir, "errors_", id, ".csv", sep = ''))
+if (!is.null(params$summary_table_file)) {
+  write_csv(summary_table, params$summary_table_file)   # Pass the table to the web app as well
 }
 
 ```
 
 ```{r, results="markup"}
-kable(errors, digits=3, format.args = list(digits=3))
+cols <- c("Model", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
 ```

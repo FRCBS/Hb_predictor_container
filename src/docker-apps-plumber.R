@@ -179,10 +179,21 @@ function(req, parametrit){
       res <- sanquin_sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
       fulldata_preprocessed <- sanquin_preprocess(donations_o$tempfile, donors_o$tempfile,
                                                   myparams$Hb_cutoff_male, myparams$Hb_cutoff_female)
-      if (all(c("FERRITIN_FIRST", "FERRITIN_LAST") %in% names(res$donor))) {
-        donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST, FERRITIN_LAST)
+      if (all(c("FERRITIN_FIRST", "FERRITIN_LAST", "FERRITIN_LAST_DATE") %in% names(res$donor))) {
+        cat("hep\n")
+        donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST, FERRITIN_LAST, FERRITIN_LAST_DATE)
+        cat("hep2\n")
+        donor_specific <- donor_specific %>% filter(!is.na(FERRITIN_FIRST), !is.na(FERRITIN_LAST), !is.na(FERRITIN_LAST_DATE)) %>%
+          mutate(FERRITIN_LAST_DATE=lubridate::as_date(FERRITIN_LAST_DATE))
+        cat("hep3\n")
+        # Select only donors whose last ferritin is not from the last donation
+        last_donations <- fulldata_preprocessed %>% group_by(donor) %>% slice_max(order_by=dateonly) %>% ungroup() %>% select(donor, dateonly)
+        cat("hep4\n")
+        donor_specific <- donor_specific %>% anti_join(last_donations, by=c("donor"="donor", "FERRITIN_LAST_DATE"="dateonly")) # %>% select(-FERRITIN_LAST_DATE)
+        cat("hep5\n")
         donor_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
         save(donor_specific, file = donor_specific_filename)
+        cat(sprintf("Saved donor specific variables (%ix%i) to file %s", nrow(donor_specific), ncol(donor_specific), donor_specific_filename))
       } else {
         cat("No ferritin information found.")
       }
@@ -193,7 +204,7 @@ function(req, parametrit){
     data_filename <- "../output/preprocessed.rdata"
     save(fulldata_preprocessed, file=data_filename)
     toc()
-    cat(sprintf("Saved preprocessed data to file %s\n", data_filename))
+    message(sprintf("Saved preprocessed data to file %s\n", data_filename))
   }
   
   myparams$input_file <- data_filename
@@ -209,6 +220,7 @@ function(req, parametrit){
   myparams_string <- sprintf("<p>Parameters are:</p>\n <ul>%s\n</ul>\n", myparams_string)
   
   summary_tables <- list()
+  effect_size_tables <- list()
   
   # Run linear models
   methods <- intersect(c("no-fix", "icp-fix"), names(post))
@@ -217,8 +229,10 @@ function(req, parametrit){
     myparams$method <- ifelse (length(methods) == 2, "both", methods[[1]])
     for (gender in c("male", "female")) {
       myparams["gender"] <- gender
-      filename <- sprintf("/tmp/errors-%s.csv", gender)
-      myparams["errors_table_file"] <- filename
+      filename <- sprintf("/tmp/summary-%s.csv", gender)
+      myparams["summary_table_file"] <- filename
+      effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", gender)
+      myparams["effect_size_table_file"] <- effect_size_filename
       rmarkdown::render(
         'linear_models.Rmd',
         output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
@@ -230,6 +244,7 @@ function(req, parametrit){
         output_dir='../output',
         params = myparams)
       summary_tables[[gender]] <- read_csv(filename)
+      effect_size_tables[[gender]] <- read_csv(effect_size_filename)
     }
   }
   
@@ -239,16 +254,24 @@ function(req, parametrit){
     myparams$method <- ifelse (length(methods) == 2, "both", methods[[1]])
     gender <- "both"
     myparams["gender"] <- gender
-    filename <- sprintf("/tmp/errors-%s.csv", "ml")
-    myparams["errors_table_file"] <- filename
-    rmarkdown::render(
-      'random_forest.Rmd',
-      #'template.Rmd',
-      output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
-      output_format=c('html_document', 'pdf_document'),
-      clean=FALSE,
-      output_dir='../output',
-      params = myparams)
+    filename <- sprintf("/tmp/summary-%s.csv", "ml")
+    myparams["summary_table_file"] <- filename
+    effect_size_filename <- sprintf("../output/variable-importance.csv")
+    myparams["effect_size_table_file"] <- effect_size_filename
+    tryCatch(error = function(cnd) {
+      cat("Error in random forest call.\n")
+      cat(cnd$message)
+      stop(cnd)
+    },
+             rmarkdown::render(
+               'random_forest.Rmd',
+               #'template.Rmd',
+               output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
+               output_format=c('html_document', 'pdf_document'),
+               clean=FALSE,
+               output_dir='../output',
+               params = myparams)
+    )
     summary_tables[["ml"]] <- read_csv(filename)
   }
   #unlink(data_filename)
@@ -256,8 +279,11 @@ function(req, parametrit){
     unlink(donor_specific_filename)
   
   summary_table <- bind_rows(summary_tables)
+  effect_size_table <- bind_rows(effect_size_tables)
   write_csv(summary_table, "../output/summary.csv")
-  summary_table_string <- kable(summary_table, format="html", digits=3, 
+  write_csv(effect_size_table, "../output/effect-size.csv")
+  cols <- c("Model", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+  summary_table_string <- kable(summary_table %>% select(!!!cols), format="html", digits=3, 
                          caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE),\
                            area under ROC curve (AUROC), and area under precision-recall curve (AUPR).",
                          align="llllll",
@@ -275,6 +301,8 @@ function(req, parametrit){
   
 }
 
+
+
 #' Show the html page
 #' @get /hb-predictor
 #' @serializer html
@@ -290,7 +318,7 @@ function(req){
   </head>
   
   <body>
-  <div id="version">Version 0.13</div> 
+  <div id="version">Version 0.15</div> 
   <div id="container">
   
     <div id="logos">
@@ -328,7 +356,7 @@ function(req){
         <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type=file name="preprocessed_fileUpload"></td> </tr>
         <tr><td>Hb cutoff (male)</td>       <td><input name="Hb_cutoff_male" value="135" maxlength="5" size="5"><span id="male_unit">g/L</span></td> </tr>
         <tr><td>Hb cutoff (female)</td>     <td><input name="Hb_cutoff_female" value="125" maxlength="5" size="5"><span id="female_unit">g/L</span></td> </tr>
-        <tr><td>Minimum donations</td>      <td><input name="hlen" value="1" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
+        <tr><td>Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td>Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
         <!--<tr><td>Progress</td>               <td><progress id="progress" value="0" /></td></tr>-->
         </table>
@@ -382,6 +410,8 @@ function(req){
         <h3>Summary</h3>
         <div id="table_container"></div>
         <p>Load the summary table in CSV form from <a href="/output/summary.csv">here.</a></p>
+        <p id="effect-size">Load the effect size table in CSV form from <a href="/output/effect-size.csv">here.</a></p>
+        <p id="variable-importance">Load the variable importance table in CSV form from <a href="/output/variable-importance.csv">here.</a></p>
         <p id="preprocessed">Load the preprocessed data from <a href="/output/preprocessed.rdata">here.</a></p>
         
         <h3>Detailed result pages</h3>
