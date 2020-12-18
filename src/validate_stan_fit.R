@@ -1,7 +1,7 @@
 library(rstan)
 library(loo)
 library(caret)
-library(ModelMetrics)
+#library(ModelMetrics)
 library(bayesplot)
 library(ggmcmc)
 library(cutpointr)
@@ -36,38 +36,49 @@ get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
 
 
 create_roc_new <- function(labels, scores, boot.n=2000) {
-  
-  roc <- pROC::roc(response = labels,
-                        predictor = scores,
-                        #smoothed = TRUE,
-                        auc = TRUE,
-                        legacy.axes = TRUE,   # x-axis is False positive rate instead of specificity
-                        xlab = "False Positive Rate", ylab = "True Positive Rate",
-                        #percent = TRUE,
-                        # arguments for ci
-                        ci=TRUE, 
-                        conf.level=0.95, 
-                        boot.stratified=TRUE,
-                        boot.n=boot.n,
-                        # arguments for plot
-                        plot=FALSE, #plot=TRUE, 
-                        main="Receiver operating characteric",
-                        #auc.polygon=TRUE, 
-                        max.auc.polygon=TRUE, 
-                        #grid=TRUE,
-                        print.auc=TRUE 
-                        #show.thres=FALSE
+  message("Computing the ROC curve")
+  tryCatch(error = function(cnd) {
+    t <- table(labels, useNA = "always")
+    #if (is.null(names(t))) {
+      mynames <- c("Accepted (0)", "Deferred (1)")
+    #} else mynames <- names(t)
+    s <- paste(sprintf("%s: %i", mynames, t), collapse=", ")   # Show the distribution of factor levels in the error message
+    cnd$message <- paste("\nThe distribution of response levels is:", s, cnd$message, sep="\n")
+    stop(cnd)
+  },
+           roc <- pROC::roc(response = labels,
+                            predictor = scores,
+                            #smoothed = TRUE,
+                            auc = TRUE,
+                            legacy.axes = TRUE,   # x-axis is False positive rate instead of specificity
+                            xlab = "False Positive Rate", ylab = "True Positive Rate",
+                            #percent = TRUE,
+                            # arguments for ci
+                            ci=TRUE, 
+                            conf.level=0.95, 
+                            boot.stratified=TRUE,
+                            boot.n=boot.n,
+                            # arguments for plot
+                            plot=FALSE, #plot=TRUE, 
+                            main="Receiver operating characteric",
+                            #auc.polygon=TRUE, 
+                            max.auc.polygon=TRUE, 
+                            #grid=TRUE,
+                            print.auc=TRUE 
+                            #show.thres=FALSE
+           )
   )
   AUC <- roc$auc
   #title <- "Receiver operating characteristic"
   title <- "ROC"
   #title <- sprintf("Receiver operating characteristicc (AUC=%.3f)", AUC)
   c <- as.numeric(roc$ci)
+  ci <- tibble("AUROC value"=c[2], "AUROC low"=c[1], "AUROC high"=c[3])
   roc_plot <- ggroc(roc, legacy.axes=TRUE) +
     geom_abline(aes(intercept=0, slope=1), color="lightgray") +
     annotate(geom="text", label=sprintf("AUROC: %.2f (%.2f–%.2f)", c[2], c[1], c[3]), x=0.5, y=0.125) +
     labs(title=title, x = "False positive rate", y = "True positive rate")
-  return(list(roc_plot=roc_plot, roc=roc, roc_auc=AUC))
+  return(list(roc_plot=roc_plot, roc=roc, roc_auc=AUC, roc_ci=ci))
 }
 
 
@@ -80,6 +91,7 @@ create_roc_new <- function(labels, scores, boot.n=2000) {
 # https://stat.ethz.ch/pipermail/r-help/2011-February/269006.html
 # boot.n is the number of bootstrap replications, if null use as many replications as there are rows in the dataframe
 precision_recall_ci <- function(df, method="norm", boot.n=NULL) {
+  
   get_aupr <- function(df, indices) {
     df2 <- df[indices,]
     pb$tick()  # update progress bar
@@ -97,16 +109,18 @@ precision_recall_ci <- function(df, method="norm", boot.n=NULL) {
   #p <- progress_estimated(n+1)  # init progress bar
   b <- boot(df, statistic = get_aupr, R=boot.n, sim="ordinary", stype="i", strata=df$labels, parallel="multicore", ncpus=1)
   result <- boot.ci(b, conf=0.95, type=method)
-  cis <- result[[method]][4:5]
-  return(list(cis=cis, result=result))
+  var <- recode(method, "norm"="normal", "perc"="percent", "stud"="student")  # The name of the output field is stupidly sometimes not the same as the parameter name
+  ci <- if (method=="norm") result[[var]][2:3] else result[[var]][4:5]
+  return(list(ci=ci, result=result))
 }
-
+  
 create_precision_recall_new <- function(labels, scores, method="norm", boot.n=2000) {
+  message("Computing the precision-recall curve")
   pr_model     <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
   points <- data.frame(pr_model$curve)
   AUPR <- pr_model$auc.davis.goadrich
   df <- tibble(labels=labels, scores=scores)
-  prci <- precision_recall_ci(df, method=method, boot.n=boot.n)$cis
+  prci <- precision_recall_ci(df, method=method, boot.n=boot.n)$ci
   title <- "Precision-recall"
   m <- mean(labels)
   pr_plot <- ggplot(points, aes(x=X1,y=X2)) +
@@ -116,9 +130,66 @@ create_precision_recall_new <- function(labels, scores, method="norm", boot.n=20
     annotate(geom="text", label=sprintf("AUPR: %.2f (%.2f–%.2f)", AUPR, prci[1], prci[2]), x=0.5, y=0.875) +
     scale_y_continuous(limits=c(0.0, 1.0)) +
     labs(x="Recall",y="Precision", title=title)
-  return(list(pr_plot=pr_plot, pr=points, pr_auc=AUPR, ci=c(AUPR, prci)))
+  ci <- tibble("AUPR value"=AUPR, "AUPR low"=prci[1], "AUPR high"=prci[2])
+  return(list(pr_plot=pr_plot, pr=points, pr_auc=AUPR, pr_ci=ci))
 }
 
+# Computes the F1 score.
+# The input dataframe 'df' should have two columns:
+# 'deferral': factor with levels "Accepted", "Deferred", where "Deferred" is the positive class.
+# 'scores': a numerical vector. Score (e.g. probability) of deferral.
+get_f1 <- function(df, threshold = 0.5) {
+  pred_class <- factor( ifelse(df$scores >= threshold, "Deferred", "Accepted"), levels=c("Accepted", "Deferred"))
+  obs_class <- factor(ifelse(df$deferral == 1, "Deferred", "Accepted"), levels=c("Accepted", "Deferred"))
+  cm <- caret::confusionMatrix(reference = obs_class, data = pred_class, positive = "Deferred", mode = "prec_recall")
+  f1 <- cm$byClass["F1"]
+  return(f1)   # Returns a single value
+}
+
+get_f1_ci <- function(df, method="norm", boot.n=2000) {
+  #message("Computing the F1 score")
+  f1_helper <- function(df, indices) {
+    df2 <- df[indices,]
+    pb$tick()  # update progress bar
+    f1 <- get_f1(df2)
+    return(f1)
+  }
+  #message("moi1")
+  df <- df %>% select(deferral, scores)
+  #message("moi2")
+  if (is.null(boot.n)) {
+    boot.n <- nrow(df)
+  }
+  #message("moi3")
+  pb <- progress::progress_bar$new(total = boot.n+1)# init progress bar
+  #message("moi4")
+  pb$tick(0)
+  #message("moi5")
+  #p <- progress_estimated(n+1)  # init progress bar
+  b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$deferral, parallel="multicore", ncpus=1)
+  #message("moi6")
+  error_code <- tryCatch(
+    error = function(cnd) -1 # return exit code
+    ,
+    {
+      #message("moi7")
+      result <- boot.ci(b, conf=0.95, type=method)
+      #message("moi8")
+      var <- recode(method, "norm"="normal", "perc"="percent", "stud"="student")  # The name of the output field is stupidly sometimes not the same as the parameter name
+      #message("moi9")
+      cis <- if (method=="norm") result[[var]][2:3] else result[[var]][4:5]
+      #message("moi99")
+      ci <- tibble("F1 value"=result$t0, "F1 low"=cis[1], "F1 high"=cis[2])
+      print(ci)
+    })
+  #message("moi999")
+  if (!is.null(error_code) && error_code == -1) {
+    f1 <- get_f1(df)
+    ci <- tibble("F1 value"=f1, "F1 low"=f1, "F1 high"=f1)
+  }
+  #message("moi10")
+  return(list(ci=ci))
+}
 
 generate_my_breaks <- function(step) {
   # Break between limits at every position that is multiple of 'step' 
@@ -276,7 +347,6 @@ create_scatter_confusion_plots <- function(df, Hb_cutoff,
 }
 
 
-
 validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, params, pnames = NULL, metric = "mean", 
                          cat.plot = TRUE,
                          use_optimal_cutoff=FALSE) {
@@ -354,14 +424,18 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
   }
     
   # Errors
-  mae  <- mae(df$observed, df$predicted)
-  rmse <- rmse(df$observed, df$predicted)
+  mae  <- ModelMetrics::mae(df$observed, df$predicted)
+  rmse <- ModelMetrics::rmse(df$observed, df$predicted)
 
   original_Hb2 <- to_mmol_per_litre(df$observed)
   Hb_predictions2 <- to_mmol_per_litre(df$predicted)
-  mae2  <- mae(original_Hb2, Hb_predictions2)
-  rmse2 <- rmse(original_Hb2, Hb_predictions2)
+  mae2  <- ModelMetrics::mae(original_Hb2, Hb_predictions2)
+  rmse2 <- ModelMetrics::rmse(original_Hb2, Hb_predictions2)
   
+  # F1 score and confidence intervals
+  f1_ci <- get_f1_ci(df)
+  
+
   
   return(c(list(posterior.plot = posterior.plot,
               cat.plot = cat.plot,
@@ -380,7 +454,8 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
               scatter_plot = scatter_plot,
               comp_df = df,
               sd_plot = sd_plot,
-              samples = samples), 
+              samples = samples,
+              f1_ci=f1_ci), 
            roc, 
            pr))
 }
