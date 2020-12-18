@@ -234,25 +234,30 @@ create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=N
     Hb_index <- which(colnames(data)=="Hb")
     stopifnot(Hb_index == 1)
     if (compute_male_nofix) {
-      stan.preprocessed.male.nofix <- stan_preprocess_new(drop_some_fields(smallm$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+      stan.preprocessed.male.nofix <- stan_preprocess_new(drop_some_fields(smallm$train) %>% select(-previous_Hb), 
+                                                          Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
       stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.male.nofix")
     }
     if (compute_female_nofix) {
-      stan.preprocessed.female.nofix <- stan_preprocess_new(drop_some_fields(smallf$train) %>% select(-previous_Hb), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+      stan.preprocessed.female.nofix <- stan_preprocess_new(drop_some_fields(smallf$train) %>% select(-previous_Hb), 
+                                                            Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
       stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.female.nofix")
     }
     if (compute_male_icpfix) {
-      stan.preprocessed.male.icpfix <- stan_preprocess_icp_new(drop_some_fields(smallm$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+      stan.preprocessed.male.icpfix <- stan_preprocess_icp_new(drop_some_fields(smallm$train) %>% select(-Hb_first), 
+                                                               Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
       stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.male.icpfix")
     }
     if (compute_female_icpfix) {
-      stan.preprocessed.female.icpfix <- stan_preprocess_icp_new(drop_some_fields(smallf$train) %>% select(-Hb_first), Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+      stan.preprocessed.female.icpfix <- stan_preprocess_icp_new(drop_some_fields(smallf$train) %>% select(-Hb_first), 
+                                                                 Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
       stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.female.icpfix")
     }
   }
   stan_preprocessed_filename <- paste(rdatadir,"stan_preprocessed_datasets_", id, ".RData", sep = '')
   save(list=stan_preprocessed_objects, file = stan_preprocessed_filename)
   
+  # Create Stan lists
   if (compute_male_nofix) {
     stan.lists.male.nofix <- subset_analyses_create_stan_list(stan.preprocessed.male.nofix)
     save(stan.lists.male.nofix, file = paste(rdatadir,"stan_lists_male_nofix_", id, ".RData", sep = ''))
@@ -277,69 +282,8 @@ create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=N
   }
   gc()
   
-  # # 3.
-  # smallm.sl.2 <- subset_analyses_create_stan_list(smallm.stan, slopevar = "age")
-  # smallf.sl.2 <- subset_analyses_create_stan_list(smallf.stan, slopevar = "age")
-  # save(smallm.sl.2, smallf.sl.2, file = paste(rdatadir,"small_model2_noicp_",date,".RData", sep = ''))
-  # rm(smallm.sl.2, smallf.sl.2)
-  # gc()
-  # 
-  # # 4.
-  # smallm.sl.icp.2 <- subset_analyses_create_stan_list(smallm.stan.icp, slopevar = "age", icpfix = TRUE)
-  # smallf.sl.icp.2 <- subset_analyses_create_stan_list(smallf.stan.icp, slopevar = "age", icpfix = TRUE)
-  # save(smallm.sl.icp.2, smallf.sl.icp.2, file = paste(rdatadir,"small_model2_icp_",date,".RData", sep = ''))
-  # rm(smallm.sl.icp.2, smallf.sl.icp.2)
-  # gc()
-  # 
-  # #5.
-  # smallm.sl.3 <- subset_analyses_create_stan_list(smallm.stan, slopevar = "days_to_previous_fb")
-  # smallf.sl.3 <- subset_analyses_create_stan_list(smallf.stan, slopevar = "days_to_previous_fb")
-  # save(smallm.sl.3, smallf.sl.3, file = paste(rdatadir,"small_model3_noicp_",date,".RData", sep = ''))
-  # rm(smallm.sl.3, smallf.sl.3)
-  # gc()
-  # 
-  # #6.
-  # smallm.sl.icp.3 <- subset_analyses_create_stan_list(smallm.stan.icp, slopevar = "days_to_previous_fb", icpfix = TRUE)
-  # smallf.sl.icp.3 <- subset_analyses_create_stan_list(smallf.stan.icp, slopevar = "days_to_previous_fb", icpfix = TRUE)
-  # save(smallm.sl.icp.3, smallf.sl.icp.3, file = paste(rdatadir,"small_model3_icp_",date,".RData", sep = ''))
-  # rm(smallm.sl.icp.3, smallf.sl.icp.3)
-  # gc()
+
   
-  # Full data sets
-  #datam.stan <- stan_preprocess_le(data.male$general, hlen=hlen)
-  #dataf.stan <- stan_preprocess_le(data.female$general, hlen=hlen)
-  #datam.stan.icp <- stan_preprocess_icp_le(data.male$general, hlen=hlen)
-  #dataf.stan.icp <- stan_preprocess_icp_le(data.female$general, hlen=hlen)
-  
-  
-  # Rdump the icp-fix data
-  #threshold.m <- (Hb_cutoff_male - mean(data.male$general$Hb)) / sd(data.male$general$Hb)
-  #threshold.f <- (Hb_cutoff_female - mean(data.female$general$Hb)) / sd(data.female$general$Hb)
-  
-  # 1. Male donors first model no icp
-  #subset_analyses_create_stan_list(datam.stan, filename = "full_model1_male_", rdump = TRUE, dumpdir=dumpdir, threshold = threshold.m, date=date)
-  # 2. Female donors first model no icp
-  #subset_analyses_create_stan_list(dataf.stan, filename = "full_model1_female_", rdump = TRUE, dumpdir=dumpdir, threshold = threshold.f, date=date)
-  # 3. Model 1, icp, male donors
-  #subset_analyses_create_stan_list(datam.stan.icp, filename = "full_model1_male_icp_", icpfix = TRUE, rdump = TRUE, dumpdir=dumpdir, threshold = threshold.m, date=date)
-  # 4. Model 1, icp, female donors
-  #subset_analyses_create_stan_list(dataf.stan.icp, filename = "full_model1_female_icp_", icpfix = TRUE, rdump = TRUE, dumpdir=dumpdir, threshold = threshold.f, date=date)
-  
-  # 5. Model 2, no icp, male donors
-  #subset_analyses_create_stan_list(datam.stan, filename = "full_model2_male_", rdump = TRUE, slopevar = "age", threshold = threshold.m)
-  # 6. Model 2, no icp, female donors
-  #subset_analyses_create_stan_list(dataf.stan, filename = "full_model2_female_", rdump = TRUE, slopevar = "age", threshold = threshold.f)
-  # 7. Model 2, icp, male donors
-  #subset_analyses_create_stan_list(datam.stan.icp, filename = "full_model2_male_icp_", icpfix = TRUE, rdump = TRUE, slopevar = "age", threshold = threshold.m)
-  # 8. Model 2, icp, female donors
-  #subset_analyses_create_stan_list(dataf.stan.icp, filename = "full_model2_female_icp_", icpfix = TRUE, rdump = TRUE, slopevar = "age", threshold = threshold.f)
-  # 9. Model 3, no icp, male donors
-  #subset_analyses_create_stan_list(datam.stan, filename = "full_model3_male_", rdump = TRUE, slopevar = "days_to_previous_fb", threshold = threshold.m)
-  # 10. Model 3, no icp, female donors
-  #subset_analyses_create_stan_list(dataf.stan, filename = "full_model3_female_", rdump = TRUE, slopevar = "days_to_previous_fb", threshold = threshold.f)
-  # 11. Model 3, icp-fix, male donors
-  #subset_analyses_create_stan_list(datam.stan.icp, filename = "full_model3_male_icp_", icpfix = TRUE, rdump = TRUE, slopevar = "days_to_previous_fb", threshold = threshold.m)
-  # 12. Model 3, icp-fix, female donors
-  #subset_analyses_create_stan_list(dataf.stan.icp, filename = "full_model3_female_icp_", icpfix = TRUE, rdump = TRUE, slopevar = "days_to_previous_fb", threshold = threshold.f)
+
   return(list(small.data.male=smallm$train, small.data.female=smallf$train))  
 }
