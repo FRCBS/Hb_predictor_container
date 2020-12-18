@@ -978,15 +978,15 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
   # donor_variables: Character vector of variables that should be grouped for each donor
   # output in a separate data frame
   
-  message(sprintf("Number of donors is %i", ndonor(df)))
+  message(sprintf("Number of donors (1) is %i", ndonor(df)))
   df <- df %>% filter(first_event == FALSE)
-  message(sprintf("Number of donors is %i", ndonor(df)))                      
+  message(sprintf("Number of donors (2) is %i", ndonor(df)))                      
   df2 <- df %>% filter(is.na(Hb_first) | is.na(days_to_previous_fb) |
                       is.na(Hb) | first_event == TRUE |
                       !(donat_phleb == 'K' | donat_phleb == '*') |
                       is.na(previous_Hb_def))
   stopifnot(nrow(df2) == 0)
-  message(sprintf("Number of donors is %i", ndonor(df)))
+  message(sprintf("Number of donors (3) is %i", ndonor(df)))
   # Filter donors with 1 or <= 2 events
   if (!is.null(tolag)) {
     df <- df %>%
@@ -1005,19 +1005,19 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
       filter(n() != 1) %>%
       ungroup()
   }
-  message(sprintf("Number of donors is %i", ndonor(df)))
+  message(sprintf("Number of donors (4) is %i", ndonor(df)))
   if (!is.null(hlen) && hlen != 0) {
     hlen <- ifelse(hlen > 0, hlen - 1, hlen + 1)      # Because we dropped the first event
   }
   df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
-  message(sprintf("Number of donors is %i", ndonor(df)))
+  message(sprintf("Number of donors (5) is %i", ndonor(df)))
   # Change donor into integer
   df <- df  %>% 
     mutate(donor = as.factor(donor)) %>%
     droplevels() %>% 
     mutate(donor = as.integer(donor)) %>% 
     arrange(donor, dateonly)
-  message(sprintf("Number of donors is %i", ndonor(df)))
+  message(sprintf("Number of donors (6) is %i", ndonor(df)))
   if (!is.null(donor_variables)) {
     C <- df %>%
       select(donor, donor_variables) %>% 
@@ -1041,7 +1041,7 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
   } else {
     train_set <- df
   }
-  message(sprintf("Number of donors is %i", ndonor(df)))
+  message(sprintf("Number of donors (7) is %i", ndonor(df)))
   # Get the mean and sd parameters used for standardization from train data:
   # https://stats.stackexchange.com/questions/174823/how-to-apply-standardization-normalization-to-train-and-testset-if-prediction-i
   par_means <- colMeans(train_set[which(check_numeric(train_set))])
@@ -1310,7 +1310,7 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
   # e.g., hlen = 5, keep donors with 5 or more events
   # e.g., hlen = -10, keep donors with 10 or less events
   # Take into account that the last event is used for prediction and the first event is dropped
-  message(sprintf("Number of icp-donors is %i", ndonor(df)))
+  message(sprintf("Number of icp-donors (1) is %i", ndonor(df)))
   if (!is.null(tolag)) {
     df <- df %>%
       droplevels() %>%
@@ -1327,17 +1327,17 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
       filter(n() != 1) %>%
       ungroup()
   }
-  message(sprintf("Number of icp-donors is %i", ndonor(df)))
+  message(sprintf("Number of icp-donors (2) is %i", ndonor(df)))
   
   df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
-  message(sprintf("Number of icp-donors is %i", ndonor(df)))
+  message(sprintf("Number of icp-donors (3) is %i", ndonor(df)))
   # Change donor into integer
   df <- df  %>% 
     mutate(donor = as.factor(donor)) %>%
     droplevels() %>% 
     mutate(donor = as.integer(donor)) %>% 
     arrange(donor, dateonly)
-  message(sprintf("Number of icp-donors is %i", ndonor(df)))
+  message(sprintf("Number of icp-donors (4) is %i", ndonor(df)))
   if (!is.null(donor_variables)) {
     C <- df %>%
       select(donor, donor_variables) %>% 
@@ -1347,7 +1347,7 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
   } else {
     C = NULL
   }
-  message(sprintf("Number of icp-donors is %i", ndonor(df)))
+  message(sprintf("Number of icp-donors (5) is %i", ndonor(df)))
   
   #df <- df %>% 
   #  mutate(donor = as.factor(donor)) %>%
