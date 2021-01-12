@@ -31,7 +31,7 @@ nextline(char* begin, char* end)
   return nullptr;
 }
 
-std::string
+std::pair<std::string, size_t>
 save_file(char* begin, int param_size)
 {
   char filename[] = "/tmp/jarkkoXXXXXX";
@@ -47,8 +47,8 @@ save_file(char* begin, int param_size)
   }
   size_t n = fwrite(begin, 1, param_size, f);
   fclose(f);
-  printf("Wrote %zu bytes\n", n);
-  return filename;
+  //printf("Wrote %zu bytes\n", n);
+  return std::make_pair(filename, n);
 }
 
 // Escape the double quotation marks
@@ -71,7 +71,7 @@ myencode(std::string s)
 
 char*
 get_next_parameter(char* begin, char* end, std::string separator,
-		   std::string& result, FILE* f, int counter)
+		   std::string& result, FILE* json_file, int counter)
 {
   separator = std::string("\x0d\x0a") + separator;
   std::string name;
@@ -92,6 +92,7 @@ get_next_parameter(char* begin, char* end, std::string separator,
   line = std::string(current, next - current - 2);
   current = next;
 
+  // Parse the header of the form data
   std::smatch base_match;
   std::regex re1("Content-Disposition: form-data; name=\"(.*)\"; filename=\"(.*)\"");
   std::regex re2("Content-Disposition: form-data; name=\"(.*)\"");
@@ -113,7 +114,7 @@ get_next_parameter(char* begin, char* end, std::string separator,
   } else if (std::regex_match(line, base_match, re2)) {
     name = base_match[1];
   } else {
-    fprintf(stderr, "Severe error\n");
+    fprintf(stderr, "Severe error in parsing the header of the form data!\n");
     exit(1);
   }
 
@@ -128,20 +129,23 @@ get_next_parameter(char* begin, char* end, std::string separator,
       return end;
     } else {
       int param_size = it - current;      
-      if (counter > 0 and f != nullptr)
-	fprintf(f, ",\n");
+      if (counter > 0 and json_file != nullptr)
+        fprintf(json_file, ",\n");
       if (is_file) {
-	std::string temp_filename = save_file(current, param_size);
-	printf("Wrote to file %s\n", temp_filename.c_str());
-	printf("name: %s; size: %i; filename: %s; content_type: %s\n",
-	       name.c_str(), param_size, filename.c_str(), content_type.c_str());
-	fprintf(f, "\"%s\" : { \"filename\":\"%s\", \"tempfile\":\"%s\", \"content_type\":\"%s\", \"head\":\"%s\" }", 
-		name.c_str(), filename.c_str(), temp_filename.c_str(), content_type.c_str(), head.c_str());
+        std::string temp_filename;
+        size_t n;
+        std::tie(temp_filename, n) = save_file(current, param_size);
+        printf("name: %s; size: %i; filename: %s; content_type: %s\n",
+               name.c_str(), param_size, filename.c_str(), content_type.c_str());
+        printf("  Wrote %zu bytes to file %s\n", n, temp_filename.c_str());
+        if (json_file)
+          fprintf(json_file, "\"%s\" : { \"filename\":\"%s\", \"tempfile\":\"%s\", \"content_type\":\"%s\", \"head\":\"%s\" }", 
+                  name.c_str(), filename.c_str(), temp_filename.c_str(), content_type.c_str(), head.c_str());
       } else {
-	std::string param(current, param_size);
-	printf("name: %s; size: %i\n", name.c_str(), param_size);
-	if (f)
-	  fprintf(f, "\"%s\" : \"%s\"", name.c_str(), param.c_str());
+        std::string param(current, param_size);
+        printf("name: %s; size: %i\n", name.c_str(), param_size);
+        if (json_file)
+          fprintf(json_file, "\"%s\" : \"%s\"", name.c_str(), param.c_str());
       }
       return it + separator.length();
     }
@@ -162,7 +166,7 @@ main(int argc, char* argv[])
   if (argc >= 3) {
     separator = argv[2];
   }
-  FILE* f = nullptr;
+  FILE* json_file = nullptr;
   if (argc >= 4) {
     json_filename = argv[3];
   }
@@ -188,7 +192,7 @@ main(int argc, char* argv[])
 
     printf("Managed to open %s\n", filename.c_str());
     if (json_filename.length())
-      f = fopen(json_filename.c_str(), "w");
+      json_file = fopen(json_filename.c_str(), "w");
     char* current = begin;
 
     /*
@@ -218,9 +222,9 @@ main(int argc, char* argv[])
     */
     char* next = nextline(current, end);
     std::string line(current, next - current - 2);
-    printf("The separator is %s\n", separator.c_str());
     if (separator.length() == 0)
       separator = line;
+    printf("The separator is '%s'\n", separator.c_str());
     if (line != separator) {
       printf("Got %s instead of separator line\n", line.c_str());
       exit(1);
@@ -228,19 +232,19 @@ main(int argc, char* argv[])
     std::string result;
     next -= 2;
     // Read the parts from the multipart body
-    if (f)
-      fprintf(f, "{\n");
+    if (json_file)
+      fprintf(json_file, "{\n");
 
     int counter=0;
     while (true) {
-      next = get_next_parameter(next, end, separator, result, f, counter);
+      next = get_next_parameter(next, end, separator, result, json_file, counter);
       ++counter;
       if (next == end)
 	break;
     }
-    if (f) {
-      fprintf(f, "\n}\n");
-      fclose(f);
+    if (json_file) {
+      fprintf(json_file, "\n}\n");
+      fclose(json_file);
     }
   }
   return 0;
