@@ -4,6 +4,8 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
+container_version="0.16"
+
 message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
 source("new_preprocess.R")
@@ -39,6 +41,7 @@ check_columns <- function(got, expected) {
 #' @parser multi
 #' @serializer json
 function(req, parametrit){
+  cat(sprintf("Container version is %s\n", container_version))
   if (Sys.getenv("TZ") == "") {
     Sys.setenv("TZ"="Europe/Helsinki")
   }
@@ -175,7 +178,7 @@ function(req, parametrit){
         sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
       fulldata_preprocessed <- preprocess(donations_o$tempfile, donors_o$tempfile,
                                           myparams$Hb_cutoff_male, myparams$Hb_cutoff_female)
-    } else {
+    } else {  # Sanquin
       res <- sanquin_sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
       fulldata_preprocessed <- sanquin_preprocess(donations_o$tempfile, donors_o$tempfile,
                                                   myparams$Hb_cutoff_male, myparams$Hb_cutoff_female)
@@ -193,9 +196,9 @@ function(req, parametrit){
         cat("hep5\n")
         donor_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
         save(donor_specific, file = donor_specific_filename)
-        cat(sprintf("Saved donor specific variables (%ix%i) to file %s", nrow(donor_specific), ncol(donor_specific), donor_specific_filename))
+        cat(sprintf("Saved donor specific variables (%ix%i) to file %s\n", nrow(donor_specific), ncol(donor_specific), donor_specific_filename))
       } else {
-        cat("No ferritin information found.")
+        cat("No ferritin information found.\n")
       }
     }
     post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
@@ -222,9 +225,11 @@ function(req, parametrit){
   summary_tables <- list()
   effect_size_tables <- list()
   
+  # How much memory is available/used
+  system("free -h")
+  
   # Run linear models
   methods <- intersect(c("no-fix", "icp-fix"), names(post))
-  
   if (length(methods) > 0) {
     myparams$method <- ifelse (length(methods) == 2, "both", methods[[1]])
     for (gender in c("male", "female")) {
@@ -307,7 +312,7 @@ function(req, parametrit){
 #' @get /hb-predictor
 #' @serializer html
 function(req){
-  response = '
+  response = sprintf('
   <html>
   
   <head>
@@ -318,7 +323,7 @@ function(req){
   </head>
   
   <body>
-  <div id="version">Version 0.15</div> 
+  <div id="version">Version %s</div> 
   <div id="container">
   
     <div id="logos">
@@ -428,7 +433,7 @@ function(req){
   </div>
   </body>
   </html>
-  '
+  ', container_version)
 
   response
 }
