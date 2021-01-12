@@ -56,22 +56,23 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   temp <- old_names
   names(temp) <- new_names
   donation <- donation %>% rename(!!!temp)
-  print(head(donation))
+  #print(head(donation))
+  print(summary(donation))
   donation <- donation %>%
     mutate(donat_phleb = as.factor(donat_phleb),
            volume_drawn = as.integer(volume_drawn),
            Hb = as.numeric(Hb) * 10,  # convert g/dL to g/L
            donat_phleb = recode(donat_phleb, `Whole blood`="K"),
-           phleb_start = as.character(phleb_start))
+           phleb_start = as.numeric(phleb_start))
            #donStartTime = as.integer(donStartTime))
 
   
 
-  mytemp <- ymd_hm(paste0(as.character(donation$date)," ",donation$phleb_start))
+  mytemp <- ymd_hm(sprintf("%s %04i", as.character(donation$date), donation$phleb_start))
   mm <- is.na(mytemp)
   cat("Failed to parse dates:", sum(mm), "\n")
   if (sum(mm) > 0) {
-      print(donation %>% filter(mm) %>% head(20))
+      print(donation %>% filter(mm) %>% summary)
   }
   donation$date <- mytemp
   
