@@ -186,14 +186,25 @@ function(req, parametrit){
         cat("hep\n")
         donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST, FERRITIN_LAST, FERRITIN_LAST_DATE)
         cat("hep2\n")
-        donor_specific <- donor_specific %>% filter(!is.na(FERRITIN_FIRST), !is.na(FERRITIN_LAST), !is.na(FERRITIN_LAST_DATE)) %>%
+        old_count <- nrow(donor_specific)
+        donor_specific <- donor_specific %>% 
+          filter(!is.na(FERRITIN_FIRST), !is.na(FERRITIN_LAST), !is.na(FERRITIN_LAST_DATE)) %>%
           mutate(FERRITIN_LAST_DATE=lubridate::as_date(FERRITIN_LAST_DATE))
-        cat("hep3\n")
+        cat(sprintf("Dropped %i / %i donors due to FERRITIN_FIRST/LAST/LAST_DATE being NA\n", 
+                    old_count - nrow(donor_specific), old_count))
+        
         # Select only donors whose last ferritin is not from the last donation
         last_donations <- fulldata_preprocessed %>% group_by(donor) %>% slice_max(order_by=dateonly) %>% ungroup() %>% select(donor, dateonly)
-        cat("hep4\n")
+        old_count <- nrow(donor_specific)
         donor_specific <- donor_specific %>% anti_join(last_donations, by=c("donor"="donor", "FERRITIN_LAST_DATE"="dateonly")) # %>% select(-FERRITIN_LAST_DATE)
-        cat("hep5\n")
+        cat(sprintf("Dropped %i / %i donors due to FERRITIN_LAST_DATE being equal to last donation date\n", 
+                    old_count - nrow(donor_specific), old_count))
+        
+        old_count <- nrow(donor_specific)
+        donor_specific <- donor_specific %>% semi_join(fulldata_preprocessed, by="donor") # make sure these were not preprocessed away
+        cat(sprintf("Dropped %i / %i donors due to joining with preprocessed data\n", 
+                    old_count - nrow(donor_specific), old_count))
+        
         donor_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
         save(donor_specific, file = donor_specific_filename)
         cat(sprintf("Saved donor specific variables (%ix%i) to file %s\n", nrow(donor_specific), ncol(donor_specific), donor_specific_filename))
@@ -228,6 +239,9 @@ function(req, parametrit){
   # How much memory is available/used
   system("free -h")
   
+  # How many cores are available
+  cat(sprintf("Number of available cores: %i\n", parallel::detectCores()))
+  
   # Run linear models
   methods <- intersect(c("no-fix", "icp-fix"), names(post))
   if (length(methods) > 0) {
@@ -238,16 +252,29 @@ function(req, parametrit){
       myparams["summary_table_file"] <- filename
       effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", gender)
       myparams["effect_size_table_file"] <- effect_size_filename
-      rmarkdown::render(
-        'linear_models.Rmd',
-        output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
-        #output_file=sprintf('results-%s', gender),   # One for each output format: html and pdf 
-        output_format=c('html_document', 'pdf_document'),
-        #output_format=list('html_document', pdf_document(dev="pdf_cairo")),
-        #output_format=c('html_document'),
-        clean=FALSE,
-        output_dir='../output',
-        params = myparams)
+      error_messages <- tryCatch(
+        error = function(cnd) {
+          error_messages <- c(sprintf("Error in %s with sex %s.\n", "linear mixed model", gender), cnd$message)
+          return(error_messages)
+        },
+        {
+          rmarkdown::render(
+            'linear_models.Rmd',
+            output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
+            #output_file=sprintf('results-%s', gender),   # One for each output format: html and pdf 
+            output_format=c('html_document', 'pdf_document'),
+            #output_format=list('html_document', pdf_document(dev="pdf_cairo")),
+            #output_format=c('html_document'),
+            clean=FALSE,
+            output_dir='../output',
+            params = myparams)
+          NULL
+        }
+      )
+      if (!is.null(error_messages)) {
+        cat(paste0(error_messages))
+        return(list(error_messages=error_messages))
+      }      
       summary_tables[[gender]] <- read_csv(filename)
       effect_size_tables[[gender]] <- read_csv(effect_size_filename)
     }
@@ -263,20 +290,27 @@ function(req, parametrit){
     myparams["summary_table_file"] <- filename
     effect_size_filename <- sprintf("../output/variable-importance.csv")
     myparams["effect_size_table_file"] <- effect_size_filename
-    tryCatch(error = function(cnd) {
-      cat("Error in random forest call.\n")
-      cat(cnd$message)
-      stop(cnd)
-    },
-             rmarkdown::render(
-               'random_forest.Rmd',
-               #'template.Rmd',
-               output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
-               output_format=c('html_document', 'pdf_document'),
-               clean=FALSE,
-               output_dir='../output',
-               params = myparams)
+    error_messages <- tryCatch(
+      error = function(cnd) {
+        error_messages <- c("Error in random forest call.\n", cnd$message)
+        return(error_messages)
+      },
+      {
+        rmarkdown::render(
+          'random_forest.Rmd',
+          #'template.Rmd',
+          output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
+          output_format=c('html_document', 'pdf_document'),
+          clean=FALSE,
+          output_dir='../output',
+          params = myparams)
+        NULL
+      }
     )
+    if (!is.null(error_messages)) {
+      cat(paste0(error_messages))
+      return(list(error_messages=error_messages))
+    }
     summary_tables[["ml"]] <- read_csv(filename)
   }
   #unlink(data_filename)
