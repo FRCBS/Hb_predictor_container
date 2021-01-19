@@ -216,8 +216,10 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample siz
   message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
 }
 
-if (sample_fraction != 1.0)
-  data <- data %>% slice_sample(prop = sample_fraction)
+if (sample_fraction != 1.0) {
+  stop("This needs to be implemented correctly!")
+  data <- data %>% slice_sample(prop = sample_fraction)    # TÄSSÄKÄÄN EI JAETA DONOREITA VAAN DONATIONSEJA, KORJAA!!!
+}
 
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
@@ -352,14 +354,20 @@ rm(data.male, data.female); invisible(gc(reset = TRUE))
 
 
 ```{r Partition and enrich, echo=FALSE}
-a <- caret::createDataPartition(1:nrow(data), p=0.8, list=FALSE)
-train_orig <- data[a,]
+debug <- TRUE
+donors <- unique(data$donor)
+message(donors)
+message(sprintf("Number of donors is %i\n", length(donors)))
+a <- caret::createDataPartition(1:length(donors), p=0.8, list=FALSE)
+train_orig <- data %>%
+  filter(donor %in% donors[a])
 message("Here")
 sink(file=stderr(), type="output"); summary(train_orig); sink()
-save(train_orig, file="/tmp/pre-enriched.rdata")
+#message(summary(train_orig))
+if (debug) save(train_orig, file="/tmp/pre-enriched.rdata")
 enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
 # Drop donors whose last ferritin is not measured before the last blood donation after the truncation
-save(enriched, file="/tmp/post-enriched.rdata")
+if (debug) save(enriched, file="/tmp/post-enriched.rdata")
 if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
   enriched <- enriched %>% 
     group_by(donor) %>% 
@@ -368,10 +376,13 @@ if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
     filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
     select(-last_donation_date)
 }
-save(enriched, file="/tmp/enriched.rdata")
+sink(file=stderr(), type="output"); summary(enriched); sink()
+if (debug) save(enriched, file="/tmp/enriched.rdata")
 #enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
 #rm(train_orig)
-test <- data[-a,] # %>% select(-FERRITIN_LAST_DATE)
+test <- data %>% 
+  filter(donor %in% donors[-a])
+
 message("and here")
 ```
 
