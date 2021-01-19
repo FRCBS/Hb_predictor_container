@@ -36,26 +36,37 @@ trim_time_series <- function(df) {
     filter((sum(Hb_deferral) != 1) | (first(Hb_deferral) != TRUE)) %>%
     ungroup()
   
+  if (nrow(df) == 0) return(df)
+  
   set.seed(56)  # Initialize random number generator  
   
-  # Drop donors without deferrals
-  without_deferrals <- df %>% group_by(donor) %>%
-    filter(max(Hb_deferral)==0) %>%
+  # Get donors without deferrals
+  without_deferrals <- df %>% 
+    group_by(donor) %>%
+    filter(max(Hb_deferral)==0) %>%   # TOIMIIKO TÄMÄ OIKEIN?
     ungroup()
   
   # Trim accepted donations from the time series
-  with_deferrals <- df %>% arrange(donor, dateonly) %>%
+  with_deferrals <- df %>% 
+    arrange(donor, dateonly) %>%
     group_by(donor) %>%
     filter(max(Hb_deferral) > 0) %>%
-    slice(1:max(which(Hb_deferral))) %>%
     ungroup()
-  
+  if (nrow(with_deferrals) > 0) {
+    with_deferrals <- with_deferrals %>% 
+      arrange(donor, dateonly) %>%
+      slice(1:max(which(Hb_deferral))) %>%
+      ungroup()
+  }
+
   df <- rbind(without_deferrals, with_deferrals)
   return(df)
 }
 
+# Returns two data frames. First contains those donors that have at least one deferral.
+# The second contains those donors that have never had deferrals.
 get_deferrals <- function(df) {
-  donor <- df %>% group_by(donor) %>% summarise(Hb_deferral_max = max(Hb_deferral))
+  donor <- df %>% group_by(donor) %>% summarise(Hb_deferral_max = max(Hb_deferral))  # does donor have deferrals?
   never_deferred <- donor %>% filter(Hb_deferral_max==0) %>% select(donor)
   sometime_deferred <- donor %>% filter(Hb_deferral_max==1) %>% select(donor)
   
@@ -69,31 +80,38 @@ get_deferrals <- function(df) {
   return(list(sometime_deferred=sometime_deferred, never_deferred=never_deferred))
 }
 
+# Try make the fraction of donors with and without deferrals to be approximately equal to 'target_fraction'.
+# This is achieved to dropping donor.
+# Input is a dataframe and target_fraction is a real number in the range [0, 1].
+# Returns a dataframe.
 balance_classes <- function(df, target_fraction) {
+  stopifnot(typeof(df$donor) == "character")
   lst <- get_deferrals(df)
   sometime_deferred <- lst[["sometime_deferred"]]$donor
   never_deferred <- lst[["never_deferred"]]$donor
   n_sometime_deferred <- length(sometime_deferred)
   n_never_deferred <- length(never_deferred)
-  #print(n_sometime_deferred)
-  #print(n_never_deferred)
-  #print(target_fraction)
-  n <- as.integer(n_sometime_deferred / target_fraction - n_sometime_deferred)
-  message(sprintf("n=%i, nrow(never_deferred)=%i, target_fraction=%f", n, nrow(never_deferred), target_fraction))
-  n <- min(length(never_deferred), n)
-  #print(n)
-  never_deferred <- sample(never_deferred, n)
-  #print(never_deferred)
+  message(sprintf("nrow(sometime_deferred)=%i, nrow(never_deferred)=%i, target_fraction=%f", nrow(sometime_deferred), nrow(never_deferred), target_fraction))
+
+  ratio <- (1 - target_fraction) / target_fraction
+  n <- as.integer(n_sometime_deferred * ratio)
+  if (!is.na(n) && n <= n_never_deferred) {
+    never_deferred <- sample(never_deferred, n)
+    cat(sprintf("Dropping %i random donors with no deferrals:\n", n))
+  } else {
+    n <- as.integer(n_never_deferred / ratio)
+    sometime_deferred <- sample(sometime_deferred, n)
+    cat(sprintf("Dropping %i random donors with deferrals:\n", n))
+  }
   df2 <- df %>% filter(donor %in% c(sometime_deferred, never_deferred))
   
-  cat("After dropping some random donors with no deferrals:\n")
   get_deferrals(df2)
   df2 <- df2 %>% mutate(donor = as.factor(donor))
   return (df2)  
 }
 
 enrich_deferrals_rf <- function(df, target_fraction) {
-  save(df, file="/tmp/taulu.rdata")
+  #save(df, file="/tmp/taulu.rdata")
   df <- trim_time_series(df)
   enriched <- balance_classes(df, target_fraction)
   return(enriched)  
