@@ -506,6 +506,7 @@ validate <- validate %>% ungroup() %>%   select(all_of(variables))
 message(sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train)))
 sink(file=stderr(), type="output"); summary(train); sink()
 message(sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate)))
+sink(file=stderr(), type="output"); summary(validate); sink()
 
 #Total donation count
 
@@ -516,12 +517,27 @@ message(sprintf("The validate set contains %i donations from %i donors.", nrow(v
 ```{r, results="asis", echo=FALSE}
 cat(sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train)))
 cat(sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate)))
+
+train_deferred <- train %>% filter(Hb_deferral == "Deferred")
+validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
+cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
+cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
+rm(train_deferred)
+rm(validate_deferred)
 ```
 
 
 
 
 ```{r Train random forest, message=TRUE}
+number_of_accepted  <- train %>% filter(Hb_deferral=="Accepted") %>% nrow()
+number_of_deferrals <- train %>% filter(Hb_deferral=="Deferred") %>% nrow()
+# stopifnot(number_of_deferrals > 0)
+# stopifnot(number_of_accepted > 0)
+if (number_of_accepted == 0 || number_of_deferrals == 0) {
+  stop(sprintf("Not all classes are present in the train data:\nnumber of deferrals = %i, number of accepted = %i\n", number_of_deferrals,
+               number_of_accepted), call.=FALSE)
+}
 tic("Training random forest")
 save(train, file="/tmp/jarkko.rdata")   # remove this
 rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
@@ -615,6 +631,7 @@ width = 180
 df <- tibble(deferral = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
              predicted_labels = ifelse(prediction.vl == "Deferred", 1, 0), 
              scores=prediction.probs$Deferred)
+sink(file=stderr(), type="output"); summary(df); sink()
 
 ```
 
@@ -626,12 +643,25 @@ df <- tibble(deferral = ifelse(validate$Hb_deferral == "Deferred", 1, 0),
 
 ```{r, echo=FALSE}
 dummy_plots <- function(df) {
-  boot.n = 100
+  #boot.n = 2000
+  boot.n = 100        # KORJAA TÄMÄ!!!!!!
   result <- list()
   result$df <- df
   result$conf_matrix_plot <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
   result$roc_plot <- create_roc_new(df$deferral, df$scores, boot.n=boot.n)
-  result$pr_plot <- create_precision_recall_new(df$deferral, df$scores, boot.n=boot.n)
+  ret <- tryCatch(
+    error =  function(cnd) {
+      return(-1)      
+    },
+    {
+      result$pr_plot <- create_precision_recall_new(df$deferral, df$scores, boot.n=boot.n)
+    })
+  if (!is.null(ret) && ret == -1) {
+    message("taalla")
+    pr_ci <- tibble("AUPR value"=NA, "AUPR low"=NA, "AUPR high"=NA)
+    pr_plot <- list(pr_ci=pr_ci)
+    result$pr_plot <- pr_plot
+  }
   message("seko1")
   result$f1_ci <- get_f1_ci(df, boot.n=boot.n)
   result$f1_ci
@@ -643,6 +673,15 @@ dummy_plots <- function(df) {
 ```
 
 ```{r Random forest both, echo=FALSE}
+
+number_of_deferrals <- validate %>% filter(Hb_deferral=="Accepted") %>% nrow()
+number_of_accepted <- validate %>% filter(Hb_deferral=="Deferred") %>% nrow()
+# stopifnot(number_of_deferrals > 0)
+# stopifnot(number_of_accepted > 0)
+if (number_of_accepted == 0 || number_of_deferrals == 0) {
+  stop(sprintf("Not all classes are present in the validation data:\nnumber of deferrals = %i, number of accepted = %i\n", number_of_deferrals,
+               number_of_accepted), call.=FALSE)
+}
 
 message("Here1")
 results_both_random_forest <- dummy_plots(df)
