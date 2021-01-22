@@ -57,7 +57,7 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   names(temp) <- new_names
   donation <- donation %>% rename(!!!temp)
   #print(head(donation))
-  print(summary(donation))
+  
   donation <- donation %>%
     mutate(donat_phleb = as.factor(donat_phleb),
            volume_drawn = as.integer(volume_drawn),
@@ -75,6 +75,7 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
       print(donation %>% filter(mm) %>% summary)
   }
   donation$date <- mytemp
+  print(summary(donation))
   
   if (FALSE) {
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
@@ -127,7 +128,7 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   #print(head(donor))
   donor <- donor %>%
     mutate(gender = as.factor(gender))
-  
+  print(summary(donor))
   
   conversion2 <- c(nb_donat_progesa="DONOR_NB_DONAT_PROGESA", nb_donat_outside="DONOR_NB_DONAT_OUTSIDE")
   variables <- c("donor", "gender", "dob", "date_first_donation", conversion2)
@@ -263,25 +264,28 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   cat(sprintf("Dropped %i / %i donations (%i / %i donors) because only last try of the day is selected\n", 
               old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
 
-  # If first donation date is not given, then impute it from data.
+  # Select only those donors whose first blood donation is close to the date as progesa's date_first_donation tells
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   donation <- donation %>%
     group_by(donor) %>%
-    mutate(imputed_first = min(dateonly)) %>%
-    mutate(given_first = min(date_first_donation)) %>% # get a single value not vector
-    filter(given_first == imputed_first) %>%
-    ungroup()
+    mutate(imputed_first = min(dateonly),
+           given_first = min(date_first_donation),
+           difference = as.numeric(imputed_first - given_first)) %>% # get a single value not vector
+    filter(0 <= difference, difference <= 60 ) %>%
+    ungroup() %>% 
+    select(-difference)
   cat(sprintf("Dropped %i / %i donations (%i / %i donors) because the given date_first_donation was not the oldest donation for that donor\n", 
               old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
   
   donation <- donation %>%
-    mutate(first_event = dateonly==date_first_donation)
+    mutate(first_event = dateonly==imputed_first)
+    #mutate(first_event = dateonly==date_first_donation)
   
   # Drop donors whose first Hb is NA
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   bad_donors <- donation %>%
     filter(first_event==TRUE & is.na(Hb)) %>%
-    .$donor
+    pull(donor)
   donation <- donation %>%
     filter(!(donor %in% bad_donors))
   cat(sprintf("Dropped %i / %i donations (%i / %i donors) whose first Hb is NA\n", 

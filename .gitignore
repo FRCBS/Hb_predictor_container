@@ -1,0 +1,22 @@
+# Ignore all data inside data folder
+data/
+
+
+# Ignore markdown outputs
+src/*.html
+src/*.pdf
+
+output/*.html
+output/*.pdf
+# Standard output, error and timing of runs
+output/
+#output/*.out
+#output/*.err
+#output/*.time
+
+*.knit.md
+*.utf8.md
+
+.Rhistory
+
+src/stan/*.rds
