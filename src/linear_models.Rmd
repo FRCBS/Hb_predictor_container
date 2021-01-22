@@ -199,10 +199,14 @@ compute_male_icpfix <- compute_male && compute_icpfix
 compute_female_icpfix <- compute_female && compute_icpfix 
 
 set.seed(123)
+number_of_cores <- parallel::detectCores()
 if (!is.null(params$cores)) {
-  options(mc.cores = params$cores)
+  options(mc.cores = min(4, params$cores, number_of_cores))  # Only four chains used by stan by default
+  options(boot.ncpus = min(params$cores, number_of_cores))   # For bootstrapping
+} else {
+  options(mc.cores = min(4, number_of_cores))  # Only four chains used by stan by default
+  options(boot.ncpus = number_of_cores)
 }
-
 rstan_options(auto_write = TRUE)
 
 # Set variables to save time knitting the document

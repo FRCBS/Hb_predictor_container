@@ -100,10 +100,15 @@ compute_male_random_forest <- compute_male && compute_random_forest
 compute_female_random_forest <- compute_female && compute_random_forest
 
 set.seed(123)
+number_of_cores <- parallel::detectCores()
 if (!is.null(params$cores)) {
-  options(mc.cores = params$cores)   # This option is in package parallel
+  options(mc.cores = min(params$cores, number_of_cores))   # This option is in package parallel
+  options(boot.ncpus = min(params$cores, number_of_cores))   # For bootstrapping
+} else {
+  options(mc.cores = number_of_cores)
+  options(boot.ncpus = number_of_cores)
 }
-
+rstan_options(auto_write = TRUE) # To avoid recompilation of unchanged Stan programs, we recommend calling
 
 datadir = "../data/rdata/"
 rawresultdir = "../data/raw_results/"   # I store plot objects and tables in this directory
@@ -215,10 +220,13 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample siz
   sample_fraction <- sample_fraction / n
   message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
 }
+stopifnot(sample_fraction <= 1.0)
 
-if (sample_fraction != 1.0) {
-  stop("This needs to be implemented correctly!")
-  data <- data %>% slice_sample(prop = sample_fraction)    # TÄSSÄKÄÄN EI JAETA DONOREITA VAAN DONATIONSEJA, KORJAA!!!
+if (sample_fraction < 1.0) {
+  donors <- unique(data$donor)
+  a <- caret::createDataPartition(1:length(donors), p=sample_fraction, list=FALSE)
+  data <- data %>%
+    filter(donor %in% donors[a])
 }
 
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
@@ -307,6 +315,12 @@ if (!is.null(params$donor_specific_file)) {
 ```{r Summary plots for both genders, echo = FALSE, eval=TRUE}
 #Plot distributions for all donors
 
+# Find out do donors have at least one deferral
+at_least_one_deferral <- data %>% 
+  group_by(donor) %>% 
+  summarise(value=max(Hb_deferral)) %>% 
+  select(value) %>% 
+  mutate(key=factor("At least one deferral"))
 
 data2 <- data %>%
   filter(first_event == FALSE) %>%
@@ -315,11 +329,13 @@ data2 <- data %>%
          warm_season = as.integer(warm_season),
          previous_Hb_def = as.integer(previous_Hb_def))
 
+
 pboth <- data2 %>%
   keep(is.numeric) %>%
   to_pretty(descript) %>%
   gather() %>%
   mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
+  add_row(at_least_one_deferral) %>%
   ggplot(aes(value)) +
   facet_wrap(~ key, scales = "free") +
   geom_histogram(fill = "blue")
@@ -355,26 +371,41 @@ rm(data.male, data.female); invisible(gc(reset = TRUE))
 
 ```{r Partition and enrich, echo=FALSE}
 debug <- TRUE
+
+# Split the data into train and test sets
 donors <- unique(data$donor)
-message(donors)
+#message(donors)
 message(sprintf("Number of donors is %i\n", length(donors)))
 a <- caret::createDataPartition(1:length(donors), p=0.8, list=FALSE)
 train_orig <- data %>%
   filter(donor %in% donors[a])
 message("Here")
 sink(file=stderr(), type="output"); summary(train_orig); sink()
+n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+message(sprintf("%i donors have at least one deferral\n", n))
 #message(summary(train_orig))
 if (debug) save(train_orig, file="/tmp/pre-enriched.rdata")
+
+# enrich the data so that 50% of the donors have deferral as their last donation attempt
+old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
+#sink(file=stderr(), type="output")
 enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
-# Drop donors whose last ferritin is not measured before the last blood donation after the truncation
+#sink()
+message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+              old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
 if (debug) save(enriched, file="/tmp/post-enriched.rdata")
+
+# Drop donors whose last ferritin is not measured before the last blood donation after the truncation
 if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
+  old_count <- nrow(enriched); old_count2 <- ndonor(enriched)
   enriched <- enriched %>% 
     group_by(donor) %>% 
     mutate(last_donation_date = max(dateonly)) %>% 
     ungroup() %>% 
     filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
     select(-last_donation_date)
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
+              old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
 }
 sink(file=stderr(), type="output"); summary(enriched); sink()
 if (debug) save(enriched, file="/tmp/enriched.rdata")
@@ -387,64 +418,7 @@ message("and here")
 ```
 
 
-```{r, echo=FALSE, eval=FALSE}
-enriched %>% ungroup() %>% count()
-```
 
-<!--
-Full time series except those removed who only have one event or who's only deferral was the first event.
--->
-
-```{r, eval=FALSE}
-test %>% ungroup() %>% count()
-```
-
-
-```{r, eval=FALSE}
-enriched %>% group_by(donor) %>% arrange(desc(dateonly)) %>% 
-  dplyr::slice(1) %>% 
-  ungroup() %>% group_by(Hb_deferral) %>% count()
-```
-<!--
-Enriched to 50:50 balance.
--->
-
-```{r, eval=FALSE}
-test %>% group_by(donor) %>% arrange(desc(dateonly)) %>% 
-  dplyr::slice(1) %>% 
-  ungroup() %>% group_by(Hb_deferral) %>% count()
-```
-<!--
-Quite unbalanced as it should be.
-
-Does the deferral percentage depend some how on donation carreer length
--->
-```{r , warning=FALSE, echo=FALSE, eval=FALSE}
-
-temp <-test %>% ungroup() %>% 
-  replace_na(list(nb_donat_progesa = 0,nb_donat_outside = 0)) %>% 
-  group_by(donor) %>%
-  arrange(donor,dateonly) %>% 
-  mutate(nb_donat_run = row_number()) %>% 
-  rowwise() %>% 
-  mutate(
-    nb_donat = sum( nb_donat_run, nb_donat_outside)) %>% 
-      ungroup() %>% 
-   select(Hb_deferral, nb_donat,gender) %>% 
-  group_by(gender,nb_donat) %>% summarise(def = sum(Hb_deferral == 1),
-                                          acc = sum(Hb_deferral == 0),
-                                          pdef = def /(acc+def)
-                                          ) 
-ggplot(temp) + geom_line(aes(x=nb_donat,y=pdef,color=gender)) +xlim(0,50) + ylim(0,0.1)
-
-```
-
-
-<!--
-Yes, women have a lower deferral percentage in first event so removing the first event makes the overall deferral percentage in the data set bigger.
-
-Take only last events and do come cleaning
--->
 ```{r Process train and validate sets}
 #Train
 train <- enriched %>% group_by(donor) %>% 
@@ -644,17 +618,19 @@ sink(file=stderr(), type="output"); summary(df); sink()
 ```{r, echo=FALSE}
 dummy_plots <- function(df) {
   #boot.n = 2000
-  boot.n = 100        # KORJAA TÄMÄ!!!!!!
+  #boot.n = 100        # KORJAA TÄMÄ!!!!!!
   result <- list()
   result$df <- df
   result$conf_matrix_plot <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
-  result$roc_plot <- create_roc_new(df$deferral, df$scores, boot.n=boot.n)
+  result$roc_plot <- create_roc_new(df$deferral, df$scores) #, boot.n=boot.n)
   ret <- tryCatch(
     error =  function(cnd) {
+      message(paste("in error handler, possibly the deferral score is constant", cnd))
       return(-1)      
     },
     {
-      result$pr_plot <- create_precision_recall_new(df$deferral, df$scores, boot.n=boot.n)
+      result$pr_plot <- create_precision_recall_new(df$deferral, df$scores)#, boot.n=boot.n)
+      NULL
     })
   if (!is.null(ret) && ret == -1) {
     message("taalla")
@@ -663,7 +639,7 @@ dummy_plots <- function(df) {
     result$pr_plot <- pr_plot
   }
   message("seko1")
-  result$f1_ci <- get_f1_ci(df, boot.n=boot.n)
+  result$f1_ci <- get_f1_ci(df)#, boot.n=boot.n)
   result$f1_ci
   message("seko2")
   #result$f1 <- get_f1(tibble(obs = factor(ifelse(df$deferral == 1, "Deferred", "Accepted"), levels=c("Accepted", "Deferred")),

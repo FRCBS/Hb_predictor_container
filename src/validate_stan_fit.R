@@ -107,22 +107,36 @@ precision_recall_ci <- function(df, method="norm", boot.n=NULL) {
   pb <- progress::progress_bar$new(total = boot.n+1)# init progress bar
   pb$tick(0)
   #p <- progress_estimated(n+1)  # init progress bar
-  b <- boot(df, statistic = get_aupr, R=boot.n, sim="ordinary", stype="i", strata=df$labels, parallel="multicore", ncpus=1)
-  result <- boot.ci(b, conf=0.95, type=method)
-  var <- recode(method, "norm"="normal", "perc"="percent", "stud"="student")  # The name of the output field is stupidly sometimes not the same as the parameter name
-  ci <- if (method=="norm") result[[var]][2:3] else result[[var]][4:5]
+  b <- boot(df, statistic = get_aupr, R=boot.n, sim="ordinary", stype="i", strata=df$labels, parallel="multicore")#, ncpus=1)
+  ret <- tryCatch(
+    error = function(cnd) return(-1),
+    {
+      result <- boot.ci(b, conf=0.95, type=method)
+      var <- recode(method, "norm"="normal", "perc"="percent", "stud"="student")  # The name of the output field is stupidly sometimes not the same as the parameter name
+      ci <- if (method=="norm") result[[var]][2:3] else result[[var]][4:5]
+      NULL
+    })
+  if (!is.null(ret) && ret == -1) {
+    ci <- C(NA, NA)
+  }
   return(list(ci=ci, result=result))
 }
   
 create_precision_recall_new <- function(labels, scores, method="norm", boot.n=2000) {
+  debug <- TRUE
   message("Computing the precision-recall curve")
   pr_model     <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
+  if (debug) message("hep1")
   points <- data.frame(pr_model$curve)
+  if (debug) message("hep2")
   AUPR <- pr_model$auc.davis.goadrich
   df <- tibble(labels=labels, scores=scores)
+  if (debug) message("hep3")
   prci <- precision_recall_ci(df, method=method, boot.n=boot.n)$ci
+  if (debug) message("tassa1")
   title <- "Precision-recall"
   m <- mean(labels)
+  if (debug) message("tassa2")
   pr_plot <- ggplot(points, aes(x=X1,y=X2)) +
     geom_hline(aes(yintercept=m), color="lightgray") +   # theoretical PR curve of random classifier
     annotate(geom="text", label=sprintf("y=%.2f", m), x=0.25, y=m, vjust=-1) +
@@ -130,7 +144,9 @@ create_precision_recall_new <- function(labels, scores, method="norm", boot.n=20
     annotate(geom="text", label=sprintf("AUPR: %.2f (%.2f–%.2f)", AUPR, prci[1], prci[2]), x=0.5, y=0.875) +
     scale_y_continuous(limits=c(0.0, 1.0)) +
     labs(x="Recall",y="Precision", title=title)
+  if (debug) message("tassa3")
   ci <- tibble("AUPR value"=AUPR, "AUPR low"=prci[1], "AUPR high"=prci[2])
+  if (debug) message("tassa4")
   return(list(pr_plot=pr_plot, pr=points, pr_auc=AUPR, pr_ci=ci))
 }
 
@@ -166,7 +182,7 @@ get_f1_ci <- function(df, method="norm", boot.n=2000) {
   pb$tick(0)
   #message("moi5")
   #p <- progress_estimated(n+1)  # init progress bar
-  b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$deferral, parallel="multicore", ncpus=1)
+  b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$deferral, parallel="multicore")
   #message("moi6")
   error_code <- tryCatch(
     error = function(cnd) -1 # return exit code

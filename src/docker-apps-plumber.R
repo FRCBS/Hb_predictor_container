@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.16"
+container_version="0.17"
 
 message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
