@@ -19,21 +19,26 @@ document.onreadystatechange = function() {
     e2 = document.getElementById("donors_row");
     e3 = document.getElementById("donor_specific_row");
     e4 = document.getElementById("preprocessed_row");
+    e5 = document.getElementById("max_diff_date_first_donation_row");
+    
     if (value == "FRCBS") {
       e1.style.display = "table-row";
       e2.style.display = "table-row";
       e3.style.display = "table-row";
       e4.style.display = "none";
+      e5.style.display = "none";
     } else if (value == "Sanquin") {
       e1.style.display = "table-row";
       e2.style.display = "table-row";
       e3.style.display = "none";
       e4.style.display = "none";
+      e5.style.display = "table-row";
     } else {
       e1.style.display = "none";
       e2.style.display = "none";
       e3.style.display = "none";
       e4.style.display = "table-row";
+      e5.style.display = "none";
     }
       
   

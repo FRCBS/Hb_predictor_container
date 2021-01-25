@@ -5,8 +5,9 @@ suppressPackageStartupMessages(library(tictoc, quietly = TRUE))
 
 source("helper_functions.R")  # For hours_to_numeric
 
-
-sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female)
+# max_diff_date_first_donation is a non-negative integer, which specifies the maximum allowed difference
+# between min(KEY_DONAT_INDEX_DATE) and DONOR_DATE_FIRST_DONATION
+sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation)
 {
   
   
@@ -271,12 +272,11 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
     mutate(imputed_first = min(dateonly),
            given_first = min(date_first_donation),
            difference = as.numeric(imputed_first - given_first)) %>% # get a single value not vector
-    filter(0 <= difference, difference <= 60 ) %>%
+    filter(0 <= difference, difference <= max_diff_date_first_donation ) %>%
     ungroup() %>% 
     select(-difference)
   cat(sprintf("Dropped %i / %i donations (%i / %i donors) because the given date_first_donation was not the oldest donation for that donor\n", 
               old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
-  
   donation <- donation %>%
     mutate(first_event = dateonly==imputed_first)
     #mutate(first_event = dateonly==date_first_donation)
@@ -438,10 +438,10 @@ sanquin_decorate_data <- function(data) {
   return(data)
 }
 
-sanquin_preprocess <- function(donation.file, donor.file, Hb_cutoff_male = 135, Hb_cutoff_female = 125) {
+sanquin_preprocess <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation) {
   tic()
   tic()
-  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female)
+  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation)
   toc()
   tic()
   data <- sanquin_decorate_data(data)
@@ -450,12 +450,12 @@ sanquin_preprocess <- function(donation.file, donor.file, Hb_cutoff_male = 135, 
   return(data)
 }
 
-sanquin_preprocess_helper <- function(dir, Hb_cutoff_male = 135, Hb_cutoff_female = 125) {
+sanquin_preprocess_helper <- function(dir, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation) {
   tic()
   tic()
   donation.file <- paste0(dir,"/FRC.DW_DONATION.dat")
   donor.file <- paste0(dir,"/FRC.DW_DONOR.dat")
-  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female)
+  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation)
   toc()
   tic()
   data <- sanquin_decorate_data(data)

@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.17"
+container_version="0.18"
 
 message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
@@ -14,6 +14,11 @@ source("sanquin_preprocess.R")
 
 library(readr)
 library(rjson)
+
+# default values for parameters
+default_max_diff_date_first_donation <- 60
+default_Hb_cutoff_male   <- 135
+default_Hb_cutoff_female <- 125
 
 is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
 
@@ -69,7 +74,7 @@ function(req, parametrit){
   str(post, nchar.max = 10000)
 
 
-  
+  # Check correctness of form parameters
   error_messages=c()
   if (!("donations_fileUpload" %in% names(post)))
     error_messages <- c(error_messages, "You did not upload the donations file!")
@@ -84,9 +89,10 @@ function(req, parametrit){
     if (is.na(sf) || sf < 0.0 || (sf > 1.0 && !is.wholenumber(sf)))
       error_messages <- c(error_messages, "The sample fraction must be a real number between 0 and 1, or an integer larger than 1")
   }
+  if ("max_diff_date_first_donation" %in% names(post) && as.integer(post$max_diff_date_first_donation) < 0)
+    error_messages <- c(error_messages, "The max tolerance in DONOR_DATE_FIRST_DONATION must be a non-negative integer")
   if (! "donations_fileUpload" %in% names(post))
     error_messages <- c(error_messages, "Missing donations file")
-    
   if (! "donors_fileUpload" %in% names(post))
     error_messages <- c(error_messages, "Missing donors file")
     
@@ -108,6 +114,7 @@ function(req, parametrit){
     return(list(error_messages=error_messages))
   
   cat(sprintf("The input format is %s\n", input_format))
+  
   
   if (input_format != "Preprocessed") {
     str(donors_o, nchar.max = 10000)
@@ -151,11 +158,15 @@ function(req, parametrit){
     donation_info <- ""
     donor_info <- ""
   }
+
+  max_diff_date_first_donation <- ifelse ("max_diff_date_first_donation" %in% names(post), 
+                                          as.integer(post$max_diff_date_first_donation), default_max_diff_date_first_donation)
+  cat(sprintf("The parameter max_diff_date_first_donationis %i\n", max_diff_date_first_donation))
   
   # Create the input parameter list for the Rmd files that do the actual prediction    
   myparams <- list()
-  myparams$Hb_cutoff_male   <- ifelse ("Hb_cutoff_male"   %in% names(post), as.integer(post$Hb_cutoff_male),   135)
-  myparams$Hb_cutoff_female <- ifelse ("Hb_cutoff_female" %in% names(post), as.integer(post$Hb_cutoff_female), 125)
+  myparams$Hb_cutoff_male   <- ifelse ("Hb_cutoff_male"   %in% names(post), as.integer(post$Hb_cutoff_male),   default_Hb_cutoff_male)
+  myparams$Hb_cutoff_female <- ifelse ("Hb_cutoff_female" %in% names(post), as.integer(post$Hb_cutoff_female), default_Hb_cutoff_female)
   
   # if (is.na(myparams$Hb_cutoff_male) || myparams$Hb_cutoff_male < 0) {
   #   return("Incorrect value for Hb_cutoff_male\n")
@@ -181,7 +192,8 @@ function(req, parametrit){
     } else {  # Sanquin
       res <- sanquin_sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
       fulldata_preprocessed <- sanquin_preprocess(donations_o$tempfile, donors_o$tempfile,
-                                                  myparams$Hb_cutoff_male, myparams$Hb_cutoff_female)
+                                                  myparams$Hb_cutoff_male, myparams$Hb_cutoff_female,
+                                                  max_diff_date_first_donation)
       if (all(c("FERRITIN_FIRST", "FERRITIN_LAST", "FERRITIN_LAST_DATE") %in% names(res$donor))) {
         cat("hep\n")
         donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST, FERRITIN_LAST, FERRITIN_LAST_DATE)
@@ -393,10 +405,11 @@ function(req){
         <tr id="donors_row"><td>Upload donors file:</td>    <td><input type=file name="donors_fileUpload"></td> </tr>
         <tr id="donor_specific_row" style="display: none"><td>Upload donor specific file:</td>    <td><input type=file name="donor_specific_fileUpload"></td> </tr>
         <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type=file name="preprocessed_fileUpload"></td> </tr>
-        <tr><td>Hb cutoff (male)</td>       <td><input name="Hb_cutoff_male" value="135" maxlength="5" size="5"><span id="male_unit">g/L</span></td> </tr>
-        <tr><td>Hb cutoff (female)</td>     <td><input name="Hb_cutoff_female" value="125" maxlength="5" size="5"><span id="female_unit">g/L</span></td> </tr>
+        <tr><td>Hb cutoff (male)</td>       <td><input name="Hb_cutoff_male" value="%i" maxlength="5" size="5"><span id="male_unit">g/L</span></td> </tr>
+        <tr><td>Hb cutoff (female)</td>     <td><input name="Hb_cutoff_female" value="%i" maxlength="5" size="5"><span id="female_unit">g/L</span></td> </tr>
         <tr><td>Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td>Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
+        <tr id="max_diff_date_first_donation_row"><td>Max tolerance in DONOR_DATE_FIRST_DONATION</td>        <td><input name="max_diff_date_first_donation" value="%i" maxlength="5" size="5"></td> </tr>
         <!--<tr><td>Progress</td>               <td><progress id="progress" value="0" /></td></tr>-->
         </table>
       
@@ -467,7 +480,7 @@ function(req){
   </div>
   </body>
   </html>
-  ', container_version)
+  ', container_version, default_Hb_cutoff_male, default_Hb_cutoff_female, default_max_diff_date_first_donation)
 
   response
 }
