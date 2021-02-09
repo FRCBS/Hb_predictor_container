@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.18"
+container_version="0.19"
 
 message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
@@ -158,10 +158,15 @@ function(req, parametrit){
     donation_info <- ""
     donor_info <- ""
   }
-
+  use_only_first_ferritin <- FALSE
+  if ("use-only-first-ferritin" %in% names(post))
+    use_only_first_ferritin <- TRUE
+  cat(sprintf("The parameter use_only_first_ferritin is %s\n", as.character(use_only_first_ferritin)))
+  
+  
   max_diff_date_first_donation <- ifelse ("max_diff_date_first_donation" %in% names(post), 
                                           as.integer(post$max_diff_date_first_donation), default_max_diff_date_first_donation)
-  cat(sprintf("The parameter max_diff_date_first_donationis %i\n", max_diff_date_first_donation))
+  cat(sprintf("The parameter max_diff_date_first_donation is %i\n", max_diff_date_first_donation))
   
   # Create the input parameter list for the Rmd files that do the actual prediction    
   myparams <- list()
@@ -194,24 +199,34 @@ function(req, parametrit){
       fulldata_preprocessed <- sanquin_preprocess(donations_o$tempfile, donors_o$tempfile,
                                                   myparams$Hb_cutoff_male, myparams$Hb_cutoff_female,
                                                   max_diff_date_first_donation)
-      if (all(c("FERRITIN_FIRST", "FERRITIN_LAST", "FERRITIN_LAST_DATE") %in% names(res$donor))) {
+      if ("FERRITIN_FIRST" %in% names(res$donor)) {
         cat("hep\n")
-        donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST, FERRITIN_LAST, FERRITIN_LAST_DATE)
-        cat("hep2\n")
-        old_count <- nrow(donor_specific)
-        donor_specific <- donor_specific %>% 
-          filter(!is.na(FERRITIN_FIRST), !is.na(FERRITIN_LAST), !is.na(FERRITIN_LAST_DATE)) %>%
-          mutate(FERRITIN_LAST_DATE=lubridate::as_date(FERRITIN_LAST_DATE))
-        cat(sprintf("Dropped %i / %i donors due to FERRITIN_FIRST/LAST/LAST_DATE being NA\n", 
-                    old_count - nrow(donor_specific), old_count))
-        
-        # Select only donors whose last ferritin is not from the last donation
-        last_donations <- fulldata_preprocessed %>% group_by(donor) %>% slice_max(order_by=dateonly) %>% ungroup() %>% select(donor, dateonly)
-        old_count <- nrow(donor_specific)
-        donor_specific <- donor_specific %>% anti_join(last_donations, by=c("donor"="donor", "FERRITIN_LAST_DATE"="dateonly")) # %>% select(-FERRITIN_LAST_DATE)
-        cat(sprintf("Dropped %i / %i donors due to FERRITIN_LAST_DATE being equal to last donation date\n", 
-                    old_count - nrow(donor_specific), old_count))
-        
+        if (use_only_first_ferritin) {
+          donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST)
+          cat("hep2\n")
+          old_count <- nrow(donor_specific)
+          donor_specific <- donor_specific %>% 
+            filter(!is.na(FERRITIN_FIRST))
+          cat(sprintf("Dropped %i / %i donors due to FERRITIN_FIRST being NA\n", 
+                      old_count - nrow(donor_specific), old_count))
+        } else {
+          stopifnot(all(c("FERRITIN_FIRST", "FERRITIN_LAST", "FERRITIN_LAST_DATE") %in% names(res$donor)))
+          donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST, FERRITIN_LAST, FERRITIN_LAST_DATE)
+          cat("hep2\n")
+          old_count <- nrow(donor_specific)
+          donor_specific <- donor_specific %>% 
+            filter(!is.na(FERRITIN_FIRST), !is.na(FERRITIN_LAST), !is.na(FERRITIN_LAST_DATE)) %>%
+            mutate(FERRITIN_LAST_DATE=lubridate::as_date(FERRITIN_LAST_DATE))
+          cat(sprintf("Dropped %i / %i donors due to FERRITIN_FIRST/LAST/LAST_DATE being NA\n", 
+                      old_count - nrow(donor_specific), old_count))
+          
+          # Select only donors whose last ferritin is not from the last donation
+          last_donations <- fulldata_preprocessed %>% group_by(donor) %>% slice_max(order_by=dateonly) %>% ungroup() %>% select(donor, dateonly)
+          old_count <- nrow(donor_specific)
+          donor_specific <- donor_specific %>% anti_join(last_donations, by=c("donor"="donor", "FERRITIN_LAST_DATE"="dateonly")) # %>% select(-FERRITIN_LAST_DATE)
+          cat(sprintf("Dropped %i / %i donors due to FERRITIN_LAST_DATE being equal to last donation date\n", 
+                      old_count - nrow(donor_specific), old_count))
+        }
         old_count <- nrow(donor_specific)
         donor_specific <- donor_specific %>% semi_join(fulldata_preprocessed, by="donor") # make sure these were not preprocessed away
         cat(sprintf("Dropped %i / %i donors due to joining with preprocessed data\n", 
@@ -410,9 +425,21 @@ function(req){
         <tr><td>Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td>Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
         <tr id="max_diff_date_first_donation_row"><td>Max tolerance in DONOR_DATE_FIRST_DONATION</td>        <td><input name="max_diff_date_first_donation" value="%i" maxlength="5" size="5"></td> </tr>
+        <tr id="use_only_first_ferritin_row"><td>Use only first ferritin value</td>
+            <td>
+            <input type="checkbox" value="on", id="use-only-first-ferritin" name="use-only-first-ferritin" />
+            </td>
+        </tr>
+        </label>
         <!--<tr><td>Progress</td>               <td><progress id="progress" value="0" /></td></tr>-->
         </table>
-      
+        <!--
+        <label for="use-only-first-ferritin">
+            <input type="checkbox" value="on", id="use-only-first-ferritin" name="use-only-first-ferritin" />
+            Use only first ferritin value
+        </label>
+        --> 
+        
         <fieldset>
           <legend>Which prediction model to use?</legend>
           <label for="no-fix">
