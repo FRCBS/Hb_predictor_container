@@ -80,8 +80,19 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
   }
   #x_train <- x_train %>% select(-don_id, -gender)
   # All models use QR-reparametrizarion so it will be done here
-  qr0 <- qr_decomposition(x_train)
-  
+  tryCatch(
+    error = function(cnd) {
+      s <- capture.output(summary(x_train))
+      s <- paste(s, collapse="\n")
+      message(s)
+      cnd$message <- paste("\nError in qr_decomposition of x_train matrix:", cnd$message, sep="\n")
+      stop(cnd)
+    },
+    {
+      qr0 <- qr_decomposition(x_train)
+    }
+  )
+
   
   stanlist <- list(N = nrow(x_train),
                    K = ncol(x_train),
