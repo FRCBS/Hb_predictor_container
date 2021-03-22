@@ -993,28 +993,35 @@ plot_param_cis <- function(df, params = NULL) {
 }
 
 stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL,
-                                donor_variables = NULL, test_data = TRUE, hlen = NULL, hlen_exactly = FALSE) {
+                                donor_variables = NULL, test_data = TRUE, hlen_orig = NULL, hlen_exactly = FALSE) {
+  hlen <- hlen_orig
   # Preprocessing for combined dataset
   # tolag variable defines which variables should be lagged
   # (whether we should use previous or "current" measurements)
   # donor_variables: Character vector of variables that should be grouped for each donor
   # output in a separate data frame
   
-  message(sprintf("Number of donors (1) is %i", ndonor(df)))
-  df <- df %>% filter(first_event == FALSE)
-  message(sprintf("Number of donors (2) is %i", ndonor(df)))                      
+  #message(sprintf("Number of donors (1) is %i", ndonor(df)))
+  old_count <- nrow(df); old_count2 <- ndonor(df)
+  df <- df %>% filter(first_event == FALSE)    # Drop the first donation events
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) because dropping those donations with first_event==TRUE\n", 
+              old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2))
+  
+  #message(sprintf("Number of donors (2) is %i", ndonor(df)))                      
   df2 <- df %>% filter(is.na(Hb_first) | is.na(days_to_previous_fb) |
                       is.na(Hb) | first_event == TRUE |
-                      !(donat_phleb == 'K' | donat_phleb == '*') |
+                      #!(donat_phleb == 'K' | donat_phleb == '*') |
                       is.na(previous_Hb_def))
   stopifnot(nrow(df2) == 0)
-  message(sprintf("Number of donors (3) is %i", ndonor(df)))
+  
+  #message(sprintf("Number of donors (3) is %i", ndonor(df)))
+  old_count <- nrow(df); old_count2 <- ndonor(df)
   # Filter donors with 1 or <= 2 events
   if (!is.null(tolag)) {
     df <- df %>%
       droplevels() %>%
       group_by(donor) %>%
-      filter(n() > 2) %>% 
+      filter(n() >= 3) %>% 
       ungroup()
     df <- df  %>% 
       group_by(donor) %>% 
@@ -1024,28 +1031,34 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
   } else {
     df <- df %>%
       group_by(donor) %>%
-      filter(n() != 1) %>%
+      filter(n() >= 2) %>%   # Note that we already dropped the donations with first_event == TRUE
       ungroup()
   }
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) because dropping those donors with only at most two donations (or at most 3 donations if we have lagged variables.\n", 
+                  old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2))
+
   message(sprintf("Number of donors (4) is %i", ndonor(df)))
+  old_count <- nrow(df); old_count2 <- ndonor(df)
   if (!is.null(hlen) && hlen != 0) {
-    hlen <- ifelse(hlen > 0, hlen - 1, hlen + 1)      # Because we dropped the first event
+    hlen <- ifelse(hlen > 0, hlen - 1, hlen + 1)      # Because we already dropped the first event
   }
   df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
-  message(sprintf("Number of donors (5) is %i", ndonor(df)))
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) because we use time series with length at least %i.\n", 
+                  old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2, hlen_orig))
+  #message(sprintf("Number of donors (5) is %i", ndonor(df)))
   # Change donor into integer
   df <- df  %>% 
     mutate(donor = as.factor(donor)) %>%
     droplevels() %>% 
     mutate(donor = as.integer(donor)) %>% 
     arrange(donor, dateonly)
-  message(sprintf("Number of donors (6) is %i", ndonor(df)))
+  #message(sprintf("Number of donors (6) is %i", ndonor(df)))
   if (!is.null(donor_variables)) {
     C <- df %>%
-      select(donor, donor_variables) %>% 
+      select(donor, all_of(donor_variables)) %>% 
       distinct()
     df <- df %>% 
-      select(-donor_variables)
+      select(-all_of(donor_variables))
   } else {
     C = NULL
   }
@@ -1063,7 +1076,7 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
   } else {
     train_set <- df
   }
-  message(sprintf("Number of donors (7) is %i", ndonor(df)))
+  #message(sprintf("Number of donors (7) is %i", ndonor(df)))
   # Get the mean and sd parameters used for standardization from train data:
   # https://stats.stackexchange.com/questions/174823/how-to-apply-standardization-normalization-to-train-and-testset-if-prediction-i
   par_means <- colMeans(train_set[which(check_numeric(train_set))])
@@ -1081,13 +1094,13 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
     y_test <- test_set %>% 
       pull(Hb_index)
     x_test <- test_set %>% 
-      select(-Hb_index)
+      select(-all_of(Hb_index))
   }
   
   y_train <- train_set %>% 
     pull(Hb_index)
   x_train <- train_set %>% 
-    select(-Hb_index)
+    select(-all_of(Hb_index))
   
   # Normalize all non-binary yet numeric variables
   if (normalize) {
@@ -1332,12 +1345,13 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
   # e.g., hlen = 5, keep donors with 5 or more events
   # e.g., hlen = -10, keep donors with 10 or less events
   # Take into account that the last event is used for prediction and the first event is dropped
-  message(sprintf("Number of icp-donors (1) is %i", ndonor(df)))
+  #message(sprintf("Number of icp-donors (1) is %i", ndonor(df)))
+  old_count <- nrow(df); old_count2 <- ndonor(df)
   if (!is.null(tolag)) {
     df <- df %>%
       droplevels() %>%
       group_by(donor) %>%
-      filter(n() > 2) %>% 
+      filter(n() >= 3) %>% 
       arrange(dateonly) %>% 
       mutate_at(tolag, lag) %>%
       ungroup() #%>% 
@@ -1346,30 +1360,35 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
     df <- df %>%
       droplevels() %>%
       group_by(donor) %>%
-      filter(n() != 1) %>%
+      filter(n() >= 2) %>%
       ungroup()
   }
-  message(sprintf("Number of icp-donors (2) is %i", ndonor(df)))
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) because we dropped time series with length at most 1\n", 
+                  old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2))
+  #message(sprintf("Number of icp-donors (2) is %i", ndonor(df)))
   
+  old_count <- nrow(df); old_count2 <- ndonor(df)
   df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
-  message(sprintf("Number of icp-donors (3) is %i", ndonor(df)))
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) because we are using time series with length at least %s\n", 
+                  old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2, hlen))
+  #message(sprintf("Number of icp-donors (3) is %i", ndonor(df)))
   # Change donor into integer
   df <- df  %>% 
     mutate(donor = as.factor(donor)) %>%
     droplevels() %>% 
     mutate(donor = as.integer(donor)) %>% 
     arrange(donor, dateonly)
-  message(sprintf("Number of icp-donors (4) is %i", ndonor(df)))
+  #message(sprintf("Number of icp-donors (4) is %i", ndonor(df)))
   if (!is.null(donor_variables)) {
     C <- df %>%
-      select(donor, donor_variables) %>% 
+      select(donor, all_of(donor_variables)) %>% 
       distinct()
     df <- df %>% 
-      select(-donor_variables)
+      select(-all_of(donor_variables))
   } else {
     C = NULL
   }
-  message(sprintf("Number of icp-donors (5) is %i", ndonor(df)))
+  #message(sprintf("Number of icp-donors (5) is %i", ndonor(df)))
   
   #df <- df %>% 
   #  mutate(donor = as.factor(donor)) %>%
@@ -1414,12 +1433,12 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
     y_test <- test_set %>% 
       pull(Hb_index)
     x_test <- test_set %>% 
-      select(-Hb_index)
+      select(-all_of(Hb_index))
   }
   y_train <- train_set %>% 
     pull(Hb_index)
   x_train <- train_set %>% 
-    select(-Hb_index)
+    select(-all_of(Hb_index))
   
   # Normalize all non-binary yet numeric variables
   if (normalize) {
