@@ -1,3 +1,36 @@
+var old_unit = "gperl";
+
+function convert_hb_unit(from, to, hb) {
+  hb = parseFloat(hb);
+    console.log(`In convert_hb_unit: from="${from}" to="${to}"" hb="${hb}"`);
+    if (from=="gperl" && to=="gperdl") {
+      return(hb/10.0);
+    }  else if (from=="gperl" && to == "mmolperl") {
+      return(hb * 0.01551 * 4);
+    }  else if (from=="gperdl" && to == "gperl") {
+      return(hb*10.0);
+    }  else if (from=="gperdl" && to == "mmolperl") {
+      return(hb * 10.0 * 0.01551 * 4);
+    }  else if (from=="mmolperl" && to == "gperl") {
+      return(hb / (0.01551 * 4));
+    }  else if (from=="mmolperl" && to == "gperdl") {
+      return(hb / (0.01551 * 4) / 10.0);
+    } else {
+      console.log("Unsupported units");
+    }
+}
+
+function handle_hb_unit(e) {
+  v = e.srcElement.value;
+  console.log("Hb unit changed from " + old_unit + " to " + v);
+  em = document.getElementById("Hb_cutoff_male");
+  ef = document.getElementById("Hb_cutoff_female");
+  em.value = convert_hb_unit(old_unit, v, em.value);
+  ef.value = convert_hb_unit(old_unit, v, ef.value);
+  old_unit = v;
+}
+
+
 document.onreadystatechange = function() {
   console.log("Executing Javascript");
   if (document.readyState == "complete") {
@@ -6,6 +39,7 @@ document.onreadystatechange = function() {
     document.getElementById("FRCBS").onchange = handle_input_format;
     document.getElementById("Sanquin").onchange = handle_input_format;
     document.getElementById("Preprocessed").onchange = handle_input_format;
+    document.getElementById("unit").onchange = handle_hb_unit;
   }
 
   var httpRequest;

@@ -7,7 +7,7 @@ source("helper_functions.R")  # For hours_to_numeric
 
 # max_diff_date_first_donation is a non-negative integer, which specifies the maximum allowed difference
 # between min(KEY_DONAT_INDEX_DATE) and DONOR_DATE_FIRST_DONATION
-sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation)
+sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
 {
   
   
@@ -62,7 +62,8 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   donation <- donation %>%
     mutate(donat_phleb = as.factor(donat_phleb),
            volume_drawn = as.integer(volume_drawn),
-           Hb = as.numeric(Hb) * 10,  # convert g/dL to g/L
+           #Hb = as.numeric(Hb) * 10,  # convert g/dL to g/L
+           Hb = convert_hb_unit(Hb_input_unit, "gperl", as.numeric(Hb)),  # convert to g/L
            donat_phleb = recode(donat_phleb, `Whole blood`="K"),
            phleb_start = as.numeric(phleb_start))
            #donStartTime = as.integer(donStartTime))
@@ -73,10 +74,10 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   mm <- is.na(mytemp)
   cat("Failed to parse dates:", sum(mm), "\n")
   if (sum(mm) > 0) {
-      print(donation %>% filter(mm) %>% summary)
+      print(donation %>% filter(mm) %>% summary %>% mutate_at("status", as.factor))
   }
   donation$date <- mytemp
-  print(summary(donation))
+  print(summary(donation %>% mutate_at("status", as.factor)))
   
   if (FALSE) {
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
@@ -411,8 +412,9 @@ sanquin_decorate_data <- function(data) {
               old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
+  print(data %>% filter(!(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))) %>% select(days_to_previous_fb, Hb), n=Inf)
   data <- data %>%
-    filter(!(first_event==FALSE & (is.na(days_to_previous_fb) | is.na(Hb))))
+    filter(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))
   cat(sprintf("Dropped %i / %i donations (%i / %i donors) because Hb or days_to_previous_fb was NA for a non-first donation\n", 
               old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
   
@@ -438,10 +440,10 @@ sanquin_decorate_data <- function(data) {
   return(data)
 }
 
-sanquin_preprocess <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation) {
+sanquin_preprocess <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation) {
   tic()
   tic()
-  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation)
+  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
   toc()
   tic()
   data <- sanquin_decorate_data(data)
@@ -450,12 +452,12 @@ sanquin_preprocess <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cut
   return(data)
 }
 
-sanquin_preprocess_helper <- function(dir, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation) {
+sanquin_preprocess_helper <- function(dir, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation) {
   tic()
   tic()
   donation.file <- paste0(dir,"/FRC.DW_DONATION.dat")
   donor.file <- paste0(dir,"/FRC.DW_DONOR.dat")
-  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, max_diff_date_first_donation)
+  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
   toc()
   tic()
   data <- sanquin_decorate_data(data)
@@ -526,4 +528,38 @@ sanquin_sample_raw_progesa <- function(donation.file, donor.file, donation.out =
     #}
 #  }
   return(list(donation=donation, donor=donor))
+}
+
+sanquin_preprocess_donor_specific <- function(donor, fulldata_preprocessed, use_only_first_ferritin) {
+  if (use_only_first_ferritin) {
+    donor_specific <- donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST)
+    cat("hep2\n")
+    old_count <- nrow(donor_specific)
+    donor_specific <- donor_specific %>% 
+      filter(!is.na(FERRITIN_FIRST))
+    cat(sprintf("Dropped %i / %i donors due to FERRITIN_FIRST being NA\n", 
+                old_count - nrow(donor_specific), old_count))
+  } else {
+    stopifnot(all(c("FERRITIN_FIRST", "FERRITIN_LAST", "FERRITIN_LAST_DATE") %in% names(donor)))
+    donor_specific <- donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST, FERRITIN_LAST, FERRITIN_LAST_DATE)
+    cat("hep2\n")
+    old_count <- nrow(donor_specific)
+    donor_specific <- donor_specific %>% 
+      filter(!is.na(FERRITIN_FIRST), !is.na(FERRITIN_LAST), !is.na(FERRITIN_LAST_DATE)) %>%
+      mutate(FERRITIN_LAST_DATE=lubridate::as_date(FERRITIN_LAST_DATE))
+    cat(sprintf("Dropped %i / %i donors due to FERRITIN_FIRST/LAST/LAST_DATE being NA\n", 
+                old_count - nrow(donor_specific), old_count))
+    
+    # Select only donors whose last ferritin is not from the last donation
+    last_donations <- fulldata_preprocessed %>% group_by(donor) %>% slice_max(order_by=dateonly) %>% ungroup() %>% select(donor, dateonly)
+    old_count <- nrow(donor_specific)
+    donor_specific <- donor_specific %>% anti_join(last_donations, by=c("donor"="donor", "FERRITIN_LAST_DATE"="dateonly")) # %>% select(-FERRITIN_LAST_DATE)
+    cat(sprintf("Dropped %i / %i donors due to FERRITIN_LAST_DATE being equal to last donation date\n", 
+                old_count - nrow(donor_specific), old_count))
+  }
+  old_count <- nrow(donor_specific)
+  donor_specific <- donor_specific %>% semi_join(fulldata_preprocessed, by="donor") # make sure these were not preprocessed away
+  cat(sprintf("Dropped %i / %i donors due to joining with preprocessed data\n", 
+              old_count - nrow(donor_specific), old_count))
+  return(donor_specific)
 }

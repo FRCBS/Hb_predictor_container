@@ -19,6 +19,7 @@ library(rjson)
 default_max_diff_date_first_donation <- 60
 default_Hb_cutoff_male   <- 135
 default_Hb_cutoff_female <- 125
+default_Hb_input_unit <- "gperl"
 
 is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
 
@@ -50,40 +51,55 @@ function(req, parametrit){
   if (Sys.getenv("TZ") == "") {
     Sys.setenv("TZ"="Europe/Helsinki")
   }
-  #cat("At the start\n")
+  # How much memory is available/used
+  system("free -h")
+  
+  # How many cores are available
+  cat(sprintf("Number of available cores: %i\n", parallel::detectCores()))
+
+  ################################################
+  #  
+  # Parse uploaded files and other form parameters
+  #
+  ################################################
+
   cat("Before multipart$parse\n")
   tic("Parsing form data")
   #saveRDS(req, file="~/test_multipart_form_data/request.rds")
   
   #post = Rook::Multipart$parse(req)
   
-  # Parse uploaded files.
   #separator <- req$postBody[[1]]
   #readr::write_lines(req$postBody, "/tmp/poista.bin", sep="\r\n")
   separator <- ""
-  writeBin(req$bodyRaw, con="/tmp/poista.bin")
-  command <- sprintf("./parse /tmp/poista.bin \"%s\" /tmp/poista.json", separator)
+  writeBin(req$bodyRaw, con="/tmp/raw_form_data.bin")
+  command <- sprintf("./parse /tmp/raw_form_data.bin \"%s\" /tmp/parsed.json", separator)
   system(command)
-  post <- rjson::fromJSON(file="/tmp/poista.json")
-  unlink("/tmp/poista.bin")
-  unlink("/tmp/poista.json")
+  post <- rjson::fromJSON(file="/tmp/parsed.json")
+  unlink("/tmp/raw_form_data.bin")
+  unlink("/tmp/parsed.json")
   toc()
   
   #saveRDS(post, file="~/test_multipart_form_data/post.rds")
   cat("After multipart$parse\n")
   str(post, nchar.max = 10000)
 
-
+  ######################################
+  #
   # Check correctness of form parameters
+  #
+  ######################################
   error_messages=c()
   if (!("donations_fileUpload" %in% names(post)))
     error_messages <- c(error_messages, "You did not upload the donations file!")
   if (!("donors_fileUpload" %in% names(post)))
     error_messages <- c(error_messages, "You did not upload the donors file!")
-  if ("Hb_cutoff_male" %in% names(post) && as.integer(post$Hb_cutoff_male) <= 0)
-    error_messages <- c(error_messages, "The Hb cutoff must be a positive integer")
-  if ("Hb_cutoff_female" %in% names(post) && as.integer(post$Hb_cutoff_female) <= 0)
-    error_messages <- c(error_messages, "The Hb cutoff must be a positive integer")
+  if ("Hb_cutoff_male" %in% names(post) && as.numeric(post$Hb_cutoff_male) <= 0)
+    error_messages <- c(error_messages, "The Hb cutoff must be a positive number")
+  if ("Hb_cutoff_female" %in% names(post) && as.numeric(post$Hb_cutoff_female) <= 0)
+    error_messages <- c(error_messages, "The Hb cutoff must be a positive number")
+  if ("unit" %in% names(post) && ! post$unit %in% c("gperl", "gperdl", "mmolperl"))
+    error_messages <- c(error_messages, "The Hb unit must be either gperl, gperdl, or mmolperl")
   if ("sample_fraction" %in% names(post)) {
     sf <- as.numeric(post$sample_fraction)
     if (is.na(sf) || sf < 0.0 || (sf > 1.0 && !is.wholenumber(sf)))
@@ -115,6 +131,21 @@ function(req, parametrit){
   
   cat(sprintf("The input format is %s\n", input_format))
   
+  use_only_first_ferritin <- "use-only-first-ferritin" %in% names(post)
+  cat(sprintf("The parameter use_only_first_ferritin is %s\n", as.character(use_only_first_ferritin)))
+  
+  max_diff_date_first_donation <- ifelse ("max_diff_date_first_donation" %in% names(post), 
+                                          as.integer(post$max_diff_date_first_donation), default_max_diff_date_first_donation)
+  cat(sprintf("The parameter max_diff_date_first_donation is %i\n", max_diff_date_first_donation))
+  
+  Hb_input_unit <- ifelse ("unit" %in% names(post), post$unit, default_Hb_input_unit)
+  cat(sprintf("The parameter Hb_input_unit is %s\n", Hb_input_unit))
+  
+  ####################################################################
+  #
+  # Check that the donation and donor dataframes are in correct format
+  #
+  ####################################################################
   
   if (input_format != "Preprocessed") {
     str(donors_o, nchar.max = 10000)
@@ -137,7 +168,7 @@ function(req, parametrit){
       }
     }
     donation_info <- sprintf("<p>Donations: filename=%s, rows=%i, columns=%i</p>", donations_o$filename, nrow(donations), ncol(donations))
-    
+
     # Check donor dataframe
     donors <- read_delim(donors_o$tempfile, col_names=use_col_names, delim='|')
     if (input_format == "FRCBS") {
@@ -152,40 +183,38 @@ function(req, parametrit){
         return(list(error_messages=error_messages))
       }
     }
-    donation_info <- sprintf("<p>Donations: filename=%s, rows=%i, columns=%i</p>", donations_o$filename, nrow(donations), ncol(donations))
     donor_info <- sprintf("<p>Donor: filename=%s, rows=%i, columns=%i</p>", donors_o$filename, nrow(donors), ncol(donors))
   } else {
     donation_info <- ""
     donor_info <- ""
   }
-  use_only_first_ferritin <- FALSE
-  if ("use-only-first-ferritin" %in% names(post))
-    use_only_first_ferritin <- TRUE
-  cat(sprintf("The parameter use_only_first_ferritin is %s\n", as.character(use_only_first_ferritin)))
   
-  
-  max_diff_date_first_donation <- ifelse ("max_diff_date_first_donation" %in% names(post), 
-                                          as.integer(post$max_diff_date_first_donation), default_max_diff_date_first_donation)
-  cat(sprintf("The parameter max_diff_date_first_donation is %i\n", max_diff_date_first_donation))
   
   # Create the input parameter list for the Rmd files that do the actual prediction    
   myparams <- list()
-  myparams$Hb_cutoff_male   <- ifelse ("Hb_cutoff_male"   %in% names(post), as.integer(post$Hb_cutoff_male),   default_Hb_cutoff_male)
-  myparams$Hb_cutoff_female <- ifelse ("Hb_cutoff_female" %in% names(post), as.integer(post$Hb_cutoff_female), default_Hb_cutoff_female)
+  # From now on the cutoffs are in units of g/L
+  myparams$Hb_cutoff_male   <- ifelse ("Hb_cutoff_male"   %in% names(post), 
+                                       convert_hb_unit(Hb_input_unit, "gperl", as.numeric(post$Hb_cutoff_male)),   
+                                       default_Hb_cutoff_male)
+  myparams$Hb_cutoff_female <- ifelse ("Hb_cutoff_female" %in% names(post), 
+                                       convert_hb_unit(Hb_input_unit, "gperl", as.numeric(post$Hb_cutoff_female)), 
+                                       default_Hb_cutoff_female)
   
-  # if (is.na(myparams$Hb_cutoff_male) || myparams$Hb_cutoff_male < 0) {
-  #   return("Incorrect value for Hb_cutoff_male\n")
-  # }
+  
   myparams$skip_train <- FALSE
   myparams$create_datasets_bool <- TRUE
   #    myparams$skip_train <- TRUE
   #    myparams$create_datasets_bool <- FALSE
   
+  ################################
+  #
+  # Do the preprocessing
+  #
+  ################################
   if (input_format == "Preprocessed") {
-    data_filename <- post$preprocessed_fileUpload$tempfile
-    fulldata_preprocessed <- load_single(data_filename)
+    donation_specific_filename <- post$preprocessed_fileUpload$tempfile
+    fulldata_preprocessed <- load_single(donation_specific_filename)
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
-    rm(fulldata_preprocessed)
   } else {
     # Do the preprocessing
     tic("Preprocessing data")
@@ -193,44 +222,16 @@ function(req, parametrit){
       if (sf != 1.0)
         sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
       fulldata_preprocessed <- preprocess(donations_o$tempfile, donors_o$tempfile,
-                                          myparams$Hb_cutoff_male, myparams$Hb_cutoff_female)
+                                          myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit)
     } else {  # Sanquin
       res <- sanquin_sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
       fulldata_preprocessed <- sanquin_preprocess(donations_o$tempfile, donors_o$tempfile,
-                                                  myparams$Hb_cutoff_male, myparams$Hb_cutoff_female,
+                                                  myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit,
                                                   max_diff_date_first_donation)
       if ("FERRITIN_FIRST" %in% names(res$donor)) {
         cat("hep\n")
-        if (use_only_first_ferritin) {
-          donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST)
-          cat("hep2\n")
-          old_count <- nrow(donor_specific)
-          donor_specific <- donor_specific %>% 
-            filter(!is.na(FERRITIN_FIRST))
-          cat(sprintf("Dropped %i / %i donors due to FERRITIN_FIRST being NA\n", 
-                      old_count - nrow(donor_specific), old_count))
-        } else {
-          stopifnot(all(c("FERRITIN_FIRST", "FERRITIN_LAST", "FERRITIN_LAST_DATE") %in% names(res$donor)))
-          donor_specific <- res$donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST, FERRITIN_LAST, FERRITIN_LAST_DATE)
-          cat("hep2\n")
-          old_count <- nrow(donor_specific)
-          donor_specific <- donor_specific %>% 
-            filter(!is.na(FERRITIN_FIRST), !is.na(FERRITIN_LAST), !is.na(FERRITIN_LAST_DATE)) %>%
-            mutate(FERRITIN_LAST_DATE=lubridate::as_date(FERRITIN_LAST_DATE))
-          cat(sprintf("Dropped %i / %i donors due to FERRITIN_FIRST/LAST/LAST_DATE being NA\n", 
-                      old_count - nrow(donor_specific), old_count))
-          
-          # Select only donors whose last ferritin is not from the last donation
-          last_donations <- fulldata_preprocessed %>% group_by(donor) %>% slice_max(order_by=dateonly) %>% ungroup() %>% select(donor, dateonly)
-          old_count <- nrow(donor_specific)
-          donor_specific <- donor_specific %>% anti_join(last_donations, by=c("donor"="donor", "FERRITIN_LAST_DATE"="dateonly")) # %>% select(-FERRITIN_LAST_DATE)
-          cat(sprintf("Dropped %i / %i donors due to FERRITIN_LAST_DATE being equal to last donation date\n", 
-                      old_count - nrow(donor_specific), old_count))
-        }
-        old_count <- nrow(donor_specific)
-        donor_specific <- donor_specific %>% semi_join(fulldata_preprocessed, by="donor") # make sure these were not preprocessed away
-        cat(sprintf("Dropped %i / %i donors due to joining with preprocessed data\n", 
-                    old_count - nrow(donor_specific), old_count))
+
+        donor_specific <- sanquin_preprocess_donor_specific(res$donor, fulldata_preprocessed, use_only_first_ferritin)
         
         donor_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
         save(donor_specific, file = donor_specific_filename)
@@ -241,35 +242,46 @@ function(req, parametrit){
     }
     post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
-    #data_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
-    data_filename <- "../output/preprocessed.rdata"
-    save(fulldata_preprocessed, file=data_filename)
+    #donation_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
+    donation_specific_filename <- "../output/preprocessed.rdata"
+    save(fulldata_preprocessed, file=donation_specific_filename)
     toc()
-    message(sprintf("Saved preprocessed data to file %s\n", data_filename))
+    message(sprintf("Saved preprocessed data to file %s\n", donation_specific_filename))
   }
+  cat("Distribution of time series length\n")
+  print(fulldata_preprocessed %>% count(donor, name="Length") %>% count(Length, name="Count"))
+  rm(fulldata_preprocessed)
   
-  myparams$input_file <- data_filename
+  ################################
+  #
+  # Create parameter list for Rmds
+  #
+  ################################
+  
+  myparams$input_file <- donation_specific_filename
   if ("sample_fraction" %in% names(post))
     myparams$sample_fraction <- as.numeric(post$sample_fraction)
-  if ("hlen" %in% names(post))
+  if ("hlen" %in% names(post))       # Minimum length of time series
     myparams$hlen <- as.integer(post$hlen)
   if (!is.null(donor_specific_filename))
     myparams$donor_specific_file <- donor_specific_filename
   
+  # This debugging information will be sent to the browser
   myparams_string <- paste( map_chr(names(myparams), function (name) sprintf("<li>%s=%s</li>", name, myparams[name])), 
                             collapse="\n")
   myparams_string <- sprintf("<p>Parameters are:</p>\n <ul>%s\n</ul>\n", myparams_string)
   
+  
+  
   summary_tables <- list()
   effect_size_tables <- list()
-  
-  # How much memory is available/used
-  system("free -h")
-  
-  # How many cores are available
-  cat(sprintf("Number of available cores: %i\n", parallel::detectCores()))
-  
+
+  ####################
+  #
   # Run linear models
+  #
+  ####################
+  
   methods <- intersect(c("no-fix", "icp-fix"), names(post))
   if (length(methods) > 0) {
     myparams$method <- ifelse (length(methods) == 2, "both", methods[[1]])
@@ -307,7 +319,12 @@ function(req, parametrit){
     }
   }
   
-  # Run random forest etc
+  ###################
+  #
+  # Run random forest
+  #
+  ###################
+  
   methods <- intersect(c("decision-tree", "random-forest"), names(post))
   if (length(methods) > 0) {
     myparams$method <- ifelse (length(methods) == 2, "both", methods[[1]])
@@ -340,9 +357,15 @@ function(req, parametrit){
     }
     summary_tables[["ml"]] <- read_csv(filename)
   }
-  #unlink(data_filename)
+  #unlink(donation_specific_filename)
   if (!is.null(donor_specific_filename))
     unlink(donor_specific_filename)
+  
+  ####################
+  #
+  # Report the results
+  #
+  ####################
   
   summary_table <- bind_rows(summary_tables)
   effect_size_table <- bind_rows(effect_size_tables)
@@ -420,8 +443,17 @@ function(req){
         <tr id="donors_row"><td>Upload donors file:</td>    <td><input type=file name="donors_fileUpload"></td> </tr>
         <tr id="donor_specific_row" style="display: none"><td>Upload donor specific file:</td>    <td><input type=file name="donor_specific_fileUpload"></td> </tr>
         <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type=file name="preprocessed_fileUpload"></td> </tr>
-        <tr><td>Hb cutoff (male)</td>       <td><input name="Hb_cutoff_male" value="%i" maxlength="5" size="5"><span id="male_unit">g/L</span></td> </tr>
-        <tr><td>Hb cutoff (female)</td>     <td><input name="Hb_cutoff_female" value="%i" maxlength="5" size="5"><span id="female_unit">g/L</span></td> </tr>
+        <tr><td>Hb cutoff (male)</td>       <td><input id="Hb_cutoff_male" name="Hb_cutoff_male" value="%i" maxlength="5" size="5">
+          <!--<span id="male_unit">g/L</span>--></td> </tr>
+        <tr><td>Hb cutoff (female)</td>     <td><input id="Hb_cutoff_female" name="Hb_cutoff_female" value="%i" maxlength="5" size="5">
+        <!--<span id="female_unit">g/L</span>--></td> </tr>
+        <tr><td>Hb unit</td>                <td>
+        <select id="unit" name="unit">
+          <option value="gperl" label="g/L" selected>g/L</option>
+          <option value="gperdl" label="g/dL">g/dL</option>
+          <option value="mmolperl" label="mmol/L">mmol/L</option>
+        </select>
+        </td></tr>
         <tr><td>Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td>Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
         <tr id="max_diff_date_first_donation_row"><td>Max tolerance in DONOR_DATE_FIRST_DONATION</td>        <td><input name="max_diff_date_first_donation" value="%i" maxlength="5" size="5"></td> </tr>

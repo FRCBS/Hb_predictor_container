@@ -6,7 +6,7 @@ suppressPackageStartupMessages(library(tictoc, quietly = TRUE))
 source("helper_functions.R")  # For hours_to_numeric
 
 
-freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female)
+freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
 {
   
   
@@ -37,7 +37,8 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   donation <- donation %>%
     mutate(donat_phleb = as.factor(donat_phleb),
            volume_drawn = as.integer(volume_drawn),
-           Hb = as.numeric(Hb),
+           #Hb = as.numeric(Hb),
+           Hb = convert_hb_unit(Hb_input_unit, "gperl", as.numeric(Hb)),  # convert to g/L
            phleb_start = as.character(phleb_start),
            donStartTime = as.integer(donStartTime))
 
@@ -242,7 +243,7 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   bad_donors <- donation %>%
     filter(first_event==TRUE & is.na(Hb)) %>%
-    .$donor
+    pull(donor)
   donation <- donation %>%
     filter(!(donor %in% bad_donors))
   cat(sprintf("Dropped %i / %i donations (%i / %i donors) whose first Hb is NA\n", 
@@ -369,7 +370,7 @@ decorateData <- function(data) {
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
   data <- data %>%
-    filter(!(first_event==FALSE & (is.na(days_to_previous_fb) | is.na(Hb))))
+    filter(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))
   cat(sprintf("Dropped %i / %i donations (%i / %i donors) because Hb or days_to_previous_fb was NA for a non-first donation\n", 
               old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
   
@@ -474,10 +475,10 @@ myjoin <- function(df1, df2, by="donation", values=NULL) {
 
 
 
-preprocess <- function(donation.file, donor.file, Hb_cutoff_male = 135, Hb_cutoff_female = 125) {
+preprocess <- function(donation.file, donor.file, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl") {
   tic()
   tic()
-  data <- freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female)
+  data <- freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
   toc()
   tic()
   data <- decorateData(data)
@@ -486,12 +487,12 @@ preprocess <- function(donation.file, donor.file, Hb_cutoff_male = 135, Hb_cutof
   return(data)
 }
 
-preprocess_helper <- function(dir, Hb_cutoff_male = 135, Hb_cutoff_female = 125) {
+preprocess_helper <- function(dir, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit) {
   tic()
   tic()
   donation.file <- paste0(dir,"/FRC.DW_DONATION.dat")
   donor.file <- paste0(dir,"/FRC.DW_DONOR.dat")
-  data <- freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female)
+  data <- freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
   toc()
   tic()
   data <- decorateData(data)

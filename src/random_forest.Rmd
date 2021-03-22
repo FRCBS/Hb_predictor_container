@@ -636,7 +636,7 @@ width = 180
 df <- tibble(deferral = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
              predicted_labels = ifelse(prediction.vl == "Deferred", 1, 0), 
              scores=prediction.probs$Deferred)
-sink(file=stderr(), type="output"); summary(df); sink()
+sink(file=stderr(), type="output"); summary(df %>% mutate_at(c("deferral", "predicted_labels"), as.factor)); sink()
 
 ```
 

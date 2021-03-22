@@ -414,7 +414,7 @@ if (!is.null(params$donor_specific_file)) {
   male_donor_specific <- findonor_and_snip_and_prs %>%
     semi_join(data.male2, by="donor") %>%
     #mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
-    mutate_at(vars(convert_to_integer), as.integer) %>%
+    mutate(across(convert_to_integer, as.integer)) %>%
     keep(is.numeric) %>%
     to_pretty(donor_descript) 
   pmale2 <- male_donor_specific %>%
