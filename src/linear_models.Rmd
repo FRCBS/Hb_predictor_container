@@ -292,28 +292,36 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
   donor_variables = NULL
 }
 
-# Stan parameter names
-pars1 <- sprintf("beta[%i]", 1:10)
-pars1.icp <- c(pars1,
-               sprintf("ups[%i]", 1:4))
-if (!is.null(donor_variables)) {
-  donor_pars <- sprintf("phi[%i]", 1:length(donor_variables))
-  pars1 <- c(pars1, donor_pars)
-  pars1.icp <- c(pars1.icp, donor_pars)
-}
+basic_prediction_variables <- setdiff(descript$Variable, c("donor", "Hb", "Hb_deferral")) 
+
+# Modify this if you want to use a subset of variables for predicting
+#basic_prediction_variables <- setdiff(basic_prediction_variables, c("previous_Hb_def", "consecutive_deferrals", "recent_deferrals"))
+
+basic_variables <- setdiff(basic_prediction_variables, "previous_Hb")
+basic_variables_icp <- setdiff(basic_prediction_variables, "Hb_first")
 
 # Pretty names for parameters
-vars1 <- descript %>% filter(!Variable %in% c("donor", "Hb", "previous_Hb", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
-
-vars1.icp <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
-vars1.icp <- c(vars1.icp,                    
-                   c("First age", "First year", "First warm season", "First hour"))
+pretty_variables <- descript %>% filter(Variable %in% basic_variables) %>% pull(Pretty)   # Convert to pretty names
+pretty_variables_icp <- descript %>% filter(Variable %in%  basic_variables_icp) %>% pull(Pretty)   # Convert to pretty names
+first_variables <- c("First age", "First year", "First warm season", "First hour")
+#pretty_variables <- basic_vars
+pretty_variables_icp <- c(pretty_variables_icp, first_variables)
 if (!is.null(donor_variables)) {
-  vars1     <- c(vars1, pretty_donor_variables)
-  vars1.icp <- c(vars1.icp, pretty_donor_variables)
+  pretty_variables     <- c(pretty_variables, pretty_donor_variables)
+  pretty_variables_icp <- c(pretty_variables_icp, pretty_donor_variables)
 }
 
-# Make sure the columns in data are in the same order as in the vars and pars lists
+# Stan parameter names
+stan_parameters <- sprintf("beta[%i]", 1:length(basic_variables))
+stan_parameters_icp <- c(stan_parameters,
+               sprintf("ups[%i]", 1:length(first_variables)))
+if (!is.null(donor_variables)) {
+  donor_pars <- sprintf("phi[%i]", 1:length(donor_variables))
+  stan_parameters <- c(stan_parameters, donor_pars)
+  stan_parameters_icp <- c(stan_parameters_icp, donor_pars)
+}
+
+# Make sure the columns in data are in the same order as in the descript table (and in the vars and pars lists)
 variables_in_order <- setdiff(descript$Variable, "donor")
 if (!is.null(donor_variables)) {
   data <- data %>% select(all_of(variables_in_order),
@@ -326,7 +334,8 @@ if (create_datasets_bool) {
   source("jarkko_create_datasets.R")
   lst <- create_datasets(data, datadir, dumpdir, data_id, sample_fraction, hlen=params$hlen, params$hlen_exactly,
                          Hb_cutoff_male = params$Hb_cutoff_male,
-                         Hb_cutoff_female = params$Hb_cutoff_female, donor_variables=donor_variables,
+                         Hb_cutoff_female = params$Hb_cutoff_female, 
+                         basic_variables=basic_variables, basic_variables_icp=basic_variables_icp, donor_variables=donor_variables,
                          compute_male_nofix, compute_female_nofix, compute_male_icpfix, compute_female_icpfix)
   
   data.male <- lst$small.data.male
@@ -387,17 +396,14 @@ kable(donor_descript)
 ```{r Summary plots for males, echo = FALSE, eval=compute_male}
 #Plot distributions for male donors
 
-
+convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
 data.male2 <- data.male %>%
   filter(first_event == FALSE) %>%
-#         !is.na(Hb_first), !is.na(days_to_previous_fb),
-#         !is.na(previous_Hb), 
-#         donat_phleb == 'K' | donat_phleb == '*' | donat_phleb == 'T',
-#         !is.na(previous_Hb_def)) %>%
   select(all_of(descript$Variable)) %>%
-  mutate(Hb_deferral = as.integer(Hb_deferral),
-         warm_season = as.integer(warm_season),
-         previous_Hb_def = as.integer(previous_Hb_def))
+  mutate(across(convert_to_integer, as.integer))
+  # mutate(Hb_deferral = as.integer(Hb_deferral),
+  #        warm_season = as.integer(warm_season),
+  #        previous_Hb_def = as.integer(previous_Hb_def))
 
 pmale <- data.male2 %>%
   keep(is.numeric) %>%
@@ -413,7 +419,6 @@ if (!is.null(params$donor_specific_file)) {
   convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
   male_donor_specific <- findonor_and_snip_and_prs %>%
     semi_join(data.male2, by="donor") %>%
-    #mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
     mutate(across(convert_to_integer, as.integer)) %>%
     keep(is.numeric) %>%
     to_pretty(donor_descript) 
@@ -437,16 +442,14 @@ rm(data.male2);
 ```{r Summary plots for females, echo = FALSE, eval=compute_female}
 #Plot distributions for female donors
 
+convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
 data.female2 <- data.female %>%
   filter(first_event == FALSE) %>%
-#         !is.na(Hb_first), !is.na(days_to_previous_fb),
-#         !is.na(previous_Hb), 
-#         donat_phleb == 'K' | donat_phleb == '*' | donat_phleb == 'T',
-#         !is.na(previous_Hb_def)) %>%
   select(all_of(descript$Variable)) %>%
-  mutate(Hb_deferral = as.integer(Hb_deferral),
-         warm_season = as.integer(warm_season),
-         previous_Hb_def = as.integer(previous_Hb_def))
+  mutate(across(convert_to_integer, as.integer))
+  # mutate(Hb_deferral = as.integer(Hb_deferral),
+  #        warm_season = as.integer(warm_season),
+  #        previous_Hb_def = as.integer(previous_Hb_def))
 
 pfemale <- data.female2 %>%
           keep(is.numeric) %>%
@@ -463,7 +466,6 @@ if (!is.null(params$donor_specific_file)) {
   convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
   female_donor_specific <- findonor_and_snip_and_prs %>%
     semi_join(data.female2, by="donor") %>%
-    #mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
     mutate_at(vars(convert_to_integer), as.integer)
   pfemale2 <- female_donor_specific %>%
     keep(is.numeric) %>%
@@ -528,7 +530,7 @@ test_labels <- ifelse(original_Hb < params$Hb_cutoff_male, 1, 0)
 
 val1.m <- validate_fit(fit, 
                        original_Hb, test_labels, params$Hb_cutoff_male, scores=scores,
-                       pars1, vars1, metric = "mean", cat.plot = FALSE)
+                       stan_parameters, pretty_variables, metric = "mean", cat.plot = FALSE)
 #val1.m
 
 val1.m$posterior.plot
@@ -583,7 +585,7 @@ test_labels <- ifelse(original_Hb >= params$Hb_cutoff_female, 0, 1)
 
 val1.f <- validate_fit(fit,  
                        original_Hb, test_labels, params$Hb_cutoff_female, scores,
-                       pars1, vars1, metric = "mean", cat.plot = FALSE)
+                       stan_parameters, pretty_variables, metric = "mean", cat.plot = FALSE)
 
 val1.f$posterior.plot
 val1.f$scatter_plot
@@ -639,7 +641,7 @@ test_labels <- ifelse(original_Hb >= params$Hb_cutoff_male, 0, 1)
 
 val1.m.icp <- validate_fit(fit, 
                            original_Hb, test_labels, params$Hb_cutoff_male, scores,
-                           pars1.icp, vars1.icp, metric = "mean", cat.plot = FALSE)
+                           stan_parameters_icp, pretty_variables_icp, metric = "mean", cat.plot = FALSE)
 
 val1.m.icp$posterior.plot
 val1.m.icp$scatter_plot
@@ -691,7 +693,7 @@ test_labels <- ifelse(original_Hb >= params$Hb_cutoff_female, 0, 1)
 
 val1.f.icp <- validate_fit(fit, 
                            original_Hb, test_labels, params$Hb_cutoff_female, scores,
-                           pars1.icp, vars1.icp, metric = "mean", cat.plot = FALSE)
+                           stan_parameters_icp, pretty_variables_icp, metric = "mean", cat.plot = FALSE)
 
 val1.f.icp$posterior.plot
 val1.f.icp$scatter_plot

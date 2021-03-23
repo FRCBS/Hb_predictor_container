@@ -992,9 +992,9 @@ plot_param_cis <- function(df, params = NULL) {
     geom_boxplot(aes(fill = variable)) + geom_hline(yintercept = 0) + coord_flip()
 }
 
-stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL,
-                                donor_variables = NULL, test_data = TRUE, hlen_orig = NULL, hlen_exactly = FALSE) {
-  hlen <- hlen_orig
+stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL, basic_variables = NULL,
+                                donor_variables = NULL, test_data = TRUE, hlen = NULL, hlen_exactly = FALSE) {
+  hlen_orig <- hlen
   # Preprocessing for combined dataset
   # tolag variable defines which variables should be lagged
   # (whether we should use previous or "current" measurements)
@@ -1126,11 +1126,22 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
     C <- C %>% arrange(donor) %>% select(-donor)
   }
   
+  message(sprintf("Basic variables are %s\n", paste(basic_variables, collapse=" ")))
+  
   # Filter unwanted variables
-  x_train <- x_train %>% select(-matches("first_event|Hb_deferral|donat_phleb|dateonly"))
+  #x_train <- x_train %>% select(-matches("first_event|Hb_deferral|donat_phleb|dateonly"))
+  tryCatch(
+    error = function(cnd){
+      message(sprintf("Basic variables are %s\n", paste(basic_variables, collapse=" ")))
+    },
+    {
+      x_train <- x_train %>% select(all_of(basic_variables))
+    }
+  )
   
   if (test_data) {
-    x_test <- x_test %>% select(-matches("first_event|Hb_deferral|donat_phleb|dateonly"))
+    #x_test <- x_test %>% select(-matches("first_event|Hb_deferral|donat_phleb|dateonly"))
+    x_test <- x_test %>% select(all_of(basic_variables))
   } else {
     x_test = NULL
     y_test = NULL
@@ -1331,7 +1342,7 @@ stan_preprocess_deltamodel <- function(df, normalize = TRUE, Hb_index = 1, tolag
 }  
 
 stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = TRUE, hlen = NULL, hlen_exactly=FALSE,
-                                    tolag = NULL, donor_variables = NULL, test_data = TRUE) {
+                                    tolag = NULL, basic_variables, donor_variables = NULL, test_data = TRUE) {
   # Does mostly same thing as normal stan-preprocessing function.
   # Main exception is that this returns first Hb-values so that first events can be used
   # with Initial conditions problem fix
@@ -1472,24 +1483,32 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
 
   # Convert NA values in days_to_previoys, previous_Hb_def and previous_Hb to 0
   # And select predictor variables
-  x_train <- x_train %>% mutate(days_to_previous_fb = ifelse(is.na(days_to_previous_fb), 0, days_to_previous_fb),
-                                previous_Hb_def = ifelse(is.na(previous_Hb_def), 0, previous_Hb_def),
-                                previous_Hb = ifelse(is.na(previous_Hb), 0, previous_Hb)) %>% 
+  vars_to_replace_na <- c("days_to_previous_fb", "previous_Hb_def", "previous_Hb")
+  x_train <- x_train %>% 
+    # mutate(days_to_previous_fb = ifelse(is.na(days_to_previous_fb), 0, days_to_previous_fb),
+    #        previous_Hb_def = ifelse(is.na(previous_Hb_def), 0, previous_Hb_def),
+    #        previous_Hb = ifelse(is.na(previous_Hb), 0, previous_Hb)) %>% 
+    mutate_at(vars_to_replace_na, replace_na, 0) %>%
     mutate_at(tolag, replace_na, 0) %>% 
-    select(-matches("first_event|Hb_deferral|donat_phleb|dateonly"))
+    select(all_of(basic_variables))
+    #select(-matches("first_event|Hb_deferral|donat_phleb|dateonly"))
     #select(days_to_previous_fb, age, previous_Hb_def, year, warm_season, previous_Hb,
     #                            consecutive_deferrals, recent_donations, recent_deferrals, hour)
   if (test_data) {
-  x_test <- x_test %>% mutate(days_to_previous_fb = ifelse(is.na(days_to_previous_fb), 0, days_to_previous_fb),
-                                previous_Hb_def = ifelse(is.na(previous_Hb_def), 0, previous_Hb_def),
-                                previous_Hb = ifelse(is.na(previous_Hb), 0, previous_Hb)) %>% 
+  x_test <- x_test %>% 
+    # mutate(days_to_previous_fb = ifelse(is.na(days_to_previous_fb), 0, days_to_previous_fb),
+    #        previous_Hb_def = ifelse(is.na(previous_Hb_def), 0, previous_Hb_def),
+    #        previous_Hb = ifelse(is.na(previous_Hb), 0, previous_Hb)) %>% 
+    mutate_at(vars_to_replace_na, replace_na, 0) %>%
     mutate_at(tolag, replace_na, 0) %>% 
-    select(-matches("first_event|Hb_deferral|donat_phleb|dateonly"))
+    select(all_of(basic_variables))
+    #select(-matches("first_event|Hb_deferral|donat_phleb|dateonly"))
   } else {
     x_test = NULL
     y_test = NULL
     test_donors = NULL
   }
+  
   return(list(train_donors = train_donors,
               test_donors = test_donors,
               x_train = x_train,

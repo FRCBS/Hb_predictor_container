@@ -176,7 +176,9 @@ drop_some_fields <- function(df) {
 }
 
 
-create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=NULL, hlen_exactly=FALSE, Hb_cutoff_male = 135, Hb_cutoff_female = 125, donor_variables=NULL,
+create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=NULL, hlen_exactly=FALSE, Hb_cutoff_male = 135, Hb_cutoff_female = 125, 
+                            basic_variables, basic_variables_icp,
+                            donor_variables=NULL,
                             compute_male_nofix, compute_female_nofix, compute_male_icpfix, compute_female_icpfix) {
   # Set the directory where the files will be saved:
   #dumpdir = "~/FRCBS/interval_prediction/data/rdump/"
@@ -195,8 +197,11 @@ create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=N
   
   set.seed(123)
   message(sprintf("Full dataset size: %i", ndonor(data)))
-  data <- data %>% 
-    filter(!is.na(Hb))
+
+  temp <- data %>% 
+    filter(is.na(Hb))   # There should not be any of these left
+  stopifnot(nrow(temp) == 0)
+  
   data <- data %>% select("Hb", everything())  # Move Hb to first column, because Yrjo's Hb_index stuff does not work
   data <- data %>% select(-nb_donat_progesa, -nb_donat_outside)  # Drop these as they contain NAs
   # Testing if this helps stop qr_decomposition from complaining
@@ -246,22 +251,26 @@ create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=N
     stopifnot(Hb_index == 1)
     if (compute_male_nofix) {
       stan.preprocessed.male.nofix <- stan_preprocess_new(drop_some_fields(smallm$train) %>% select(-previous_Hb), 
-                                                          Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+                                                          Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
+                                                          basic_variables=basic_variables, donor_variables = donor_variables)
       stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.male.nofix")
     }
     if (compute_female_nofix) {
       stan.preprocessed.female.nofix <- stan_preprocess_new(drop_some_fields(smallf$train) %>% select(-previous_Hb), 
-                                                            Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+                                                            Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
+                                                            basic_variables=basic_variables, donor_variables = donor_variables)
       stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.female.nofix")
     }
     if (compute_male_icpfix) {
       stan.preprocessed.male.icpfix <- stan_preprocess_icp_new(drop_some_fields(smallm$train) %>% select(-Hb_first), 
-                                                               Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+                                                               Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
+                                                               basic_variables=basic_variables_icp, donor_variables = donor_variables)
       stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.male.icpfix")
     }
     if (compute_female_icpfix) {
       stan.preprocessed.female.icpfix <- stan_preprocess_icp_new(drop_some_fields(smallf$train) %>% select(-Hb_first), 
-                                                                 Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, donor_variables = donor_variables)
+                                                                 Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
+                                                                 basic_variables=basic_variables_icp, donor_variables = donor_variables)
       stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.female.icpfix")
     }
   }
