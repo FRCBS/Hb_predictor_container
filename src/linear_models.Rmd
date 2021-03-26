@@ -295,7 +295,7 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
 basic_prediction_variables <- setdiff(descript$Variable, c("donor", "Hb", "Hb_deferral")) 
 
 # Modify this if you want to use a subset of variables for predicting
-#basic_prediction_variables <- setdiff(basic_prediction_variables, c("previous_Hb_def", "consecutive_deferrals", "recent_deferrals"))
+basic_prediction_variables <- setdiff(basic_prediction_variables, c("previous_Hb_def", "consecutive_deferrals", "recent_deferrals"))
 
 basic_variables <- setdiff(basic_prediction_variables, "previous_Hb")
 basic_variables_icp <- setdiff(basic_prediction_variables, "Hb_first")
@@ -393,41 +393,41 @@ kable(donor_descript)
 ### Summary plots of variables (male)
 ```
 
+```{r}
+summary_plotter <- function(df, variable_descriptions, color) {
+  g <- df %>%
+    mutate(across(where(is.logical), as.integer)) %>%
+    keep(is.numeric) %>%
+    to_pretty(variable_descriptions) %>%
+    gather() %>%
+    mutate(key = factor(key, levels=variable_descriptions$Pretty))  %>% # Don't sort alphabetically
+    ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram(fill = color)
+  return(g)
+}
+```
+
 ```{r Summary plots for males, echo = FALSE, eval=compute_male}
 #Plot distributions for male donors
 
 convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
-data.male2 <- data.male %>%
-  filter(first_event == FALSE) %>%
-  select(all_of(descript$Variable)) %>%
-  mutate(across(convert_to_integer, as.integer))
-  # mutate(Hb_deferral = as.integer(Hb_deferral),
-  #        warm_season = as.integer(warm_season),
-  #        previous_Hb_def = as.integer(previous_Hb_def))
+temp_donors <- data.male$donor
 
-pmale <- data.male2 %>%
-  keep(is.numeric) %>%
-  to_pretty(descript) %>%
-  gather() %>%
-  mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
-  ggplot(aes(value)) +
-  facet_wrap(~ key, scales = "free") +
-  geom_histogram(fill = "blue")
+pmale <- data.male %>%
+  filter(first_event == FALSE) %>%
+  select(all_of(descript$Variable))
+  #mutate(across(convert_to_integer, as.integer))
+
+pmale <- summary_plotter(pmale, descript, "blue")  
 pmale
 
 if (!is.null(params$donor_specific_file)) {
-  convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
-  male_donor_specific <- findonor_and_snip_and_prs %>%
-    semi_join(data.male2, by="donor") %>%
-    mutate(across(convert_to_integer, as.integer)) %>%
-    keep(is.numeric) %>%
-    to_pretty(donor_descript) 
-  pmale2 <- male_donor_specific %>%
-    gather() %>%
-    mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
-    ggplot(aes(value)) +
-    facet_wrap(~ key, scales = "free") +
-    geom_histogram(fill = "blue")
+  #convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
+  pmale2 <- findonor_and_snip_and_prs %>%
+    filter(donor %in% temp_donors) # %>%
+    #mutate(across(convert_to_integer, as.integer)) %>%
+  pmale2 <- summary_plotter(pmale2, donor_descript, "blue")
   pmale2
 }
 rm(data.male2);
@@ -442,39 +442,41 @@ rm(data.male2);
 ```{r Summary plots for females, echo = FALSE, eval=compute_female}
 #Plot distributions for female donors
 
+temp_donors <- data.female$donor
+
 convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
-data.female2 <- data.female %>%
+pfemale <- data.female %>%
   filter(first_event == FALSE) %>%
-  select(all_of(descript$Variable)) %>%
-  mutate(across(convert_to_integer, as.integer))
-  # mutate(Hb_deferral = as.integer(Hb_deferral),
-  #        warm_season = as.integer(warm_season),
-  #        previous_Hb_def = as.integer(previous_Hb_def))
+  select(all_of(descript$Variable)) #%>%
+  #mutate(across(convert_to_integer, as.integer))
 
-pfemale <- data.female2 %>%
-          keep(is.numeric) %>%
-          to_pretty(descript) %>%
-          gather() %>%
-          mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
-          ggplot(aes(value)) +
-            facet_wrap(~ key, scales = "free") +
-            geom_histogram(fill = "orange")
-
+pfemale <- summary_plotter(pfemale, descript, "orange")
 pfemale
 
+# pfemale <- data.female2 %>%
+#           keep(is.numeric) %>%
+#           to_pretty(descript) %>%
+#           gather() %>%
+#           mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
+#           ggplot(aes(value)) +
+#             facet_wrap(~ key, scales = "free") +
+#             geom_histogram(fill = "orange")
+
+
 if (!is.null(params$donor_specific_file)) {
-  convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
-  female_donor_specific <- findonor_and_snip_and_prs %>%
-    semi_join(data.female2, by="donor") %>%
-    mutate_at(vars(convert_to_integer), as.integer)
-  pfemale2 <- female_donor_specific %>%
-    keep(is.numeric) %>%
-    to_pretty(donor_descript) %>%
-    gather() %>%
-    mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
-    ggplot(aes(value)) +
-    facet_wrap(~ key, scales = "free") +
-    geom_histogram(fill = "orange")
+  #convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
+  pfemale2 <- findonor_and_snip_and_prs %>%
+    filter(donor %in% temp_donors) #%>%
+  pfemale2 <- summary_plotter(pfemale2, donor_descript, "orange")
+    #mutate_at(vars(convert_to_integer), as.integer)
+  # pfemale2 <- female_donor_specific %>%
+  #   keep(is.numeric) %>%
+  #   to_pretty(donor_descript) %>%
+  #   gather() %>%
+  #   mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
+  #   ggplot(aes(value)) +
+  #   facet_wrap(~ key, scales = "free") +
+  #   geom_histogram(fill = "orange")
   pfemale2
 }
 rm(data.female2);
