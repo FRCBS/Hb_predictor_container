@@ -30,23 +30,6 @@ function handle_hb_unit(e) {
   old_unit = v;
 }
 
-
-document.onreadystatechange = function() {
-  console.log("Executing Javascript");
-  if (document.readyState == "complete") {
-    console.log("Setting handleButtonPress");
-    document.getElementById("submit").onclick = handleButtonPress;
-    document.getElementById("FRCBS").onchange = handle_input_format;
-    document.getElementById("Sanquin").onchange = handle_input_format;
-    document.getElementById("Preprocessed").onchange = handle_input_format;
-    document.getElementById("unit").onchange = handle_hb_unit;
-  }
-
-  var httpRequest;
-  var start_time;
-  var time=document.getElementById("time");
-  var interval_id;
-  
   function handle_input_format(e) {
     value = document.querySelector('input[name="input_format"]:checked').value;
     e1 = document.getElementById("donations_row");
@@ -75,9 +58,29 @@ document.onreadystatechange = function() {
       e5.style.display = "none";
     }
       
-  
     console.log("Fieldset clicked: " + value);
   }
+  
+document.onreadystatechange = function() {
+  console.log("Executing Javascript");
+  if (document.readyState == "complete") {
+    console.log("Setting handleButtonPress");
+    document.getElementById("submit").onclick = handleButtonPress;
+    document.getElementById("FRCBS").onchange = handle_input_format;
+    document.getElementById("Sanquin").onchange = handle_input_format;
+    document.getElementById("Preprocessed").onchange = handle_input_format;
+    document.getElementById("unit").onchange = handle_hb_unit;
+    el = document.getElementById("unit");
+    el.value="gperdl"; // Because Sanquin is the default input format, set this to its unit
+    el.dispatchEvent(new Event('change', { 'bubbles': true }));  // trigger the change event
+  }
+
+  var httpRequest;
+  var start_time;
+  var time=document.getElementById("time");
+  var interval_id;
+  
+
   
   // This handles button press on the submit button
   function handleButtonPress(e) {
@@ -139,7 +142,7 @@ document.onreadystatechange = function() {
 
   function handleResponse() {
     console.log("In handleResponse, readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
-    if (httpRequest.readyState == 4 && httpRequest.status == 200) {
+    if (httpRequest.readyState == 4 && httpRequest.status == 200) {                                   // SUCCESS
       //  httpRequest.overrideMimeType("application/json");
       //document.getElementsByClassName("lds-spinner")[0].setAttribute("hidden", "hidden");
       document.getElementsByClassName("lds-spinner")[0].style.display = "none";
@@ -161,19 +164,31 @@ document.onreadystatechange = function() {
       
       if (!document.getElementById("random-forest").checked) {
         document.getElementById("variable-importance").style.display = "none";
-        document.getElementById("detail-rf").style.display = "none";
+        //document.getElementById("detail-rf").style.display = "none";
       }
-      if (!document.getElementById("no-fix").checked && !document.getElementById("icp-fix").checked) {
+      if (!document.getElementById("lmm").checked && !document.getElementById("dlmm").checked) {
         document.getElementById("effect-size").style.display = "none";
-        document.getElementById("detail-lmm-male").style.display = "none";
-        document.getElementById("detail-lmm-female").style.display = "none";
+        //document.getElementById("detail-lmm-male").style.display = "none";
+        //document.getElementById("detail-lmm-female").style.display = "none";
+      }
+      
+      // Add pointers to separate result pages in the details table
+      console.log(`Details dataframe has ${data.details_df.length} rows`);
+      detailed_results = document.getElementById("detailed-results").firstElementChild;  // get the tbody element under the table element
+      for (i=0; i < data.details_df.length; ++i) {
+        var wrapper= document.createElement('tbody');
+        e = data.details_df[i];
+        t = `<tr id="${e.id}"> <td>${e.pretty}</td> <td>${e.gender}</td> <td><a href="${e.html}" target="_blank" >html</a></td> <td><a href="${e.pdf}" target="_blank" >pdf</a></td> </tr>`;
+        wrapper.innerHTML = t;
+        console.log(t)
+        detailed_results.appendChild(wrapper.firstChild);
       }
       
       document.getElementById("results-container").removeAttribute("hidden");  
       
       if (document.querySelector('input[name="input_format"]:checked').value == "Preprocessed")
         document.getElementById("preprocessed").style.display = "none";
-    } else if (httpRequest.readyState == 4 && httpRequest.status != 200) {
+    } else if (httpRequest.readyState == 4 && httpRequest.status != 200) {                            // FAIL
       console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
       document.getElementsByClassName("lds-spinner")[0].style.display = "none";
       clearInterval(interval_id);  // stop the timer

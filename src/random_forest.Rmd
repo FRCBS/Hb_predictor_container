@@ -126,6 +126,7 @@ source("helper_functions.R")
 source("validate_stan_fit.R")
 #source("ppc.R")
 source("enrich_deferrals_rf.R")
+source("common.R")
 
 ```
 
@@ -138,50 +139,7 @@ cat(sprintf("# Random forest (%s)\n", params$gender))
 
 ```{r, echo = FALSE}
 
-# Variables that are in use
 
-descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
-                                "year", "warm_season", "consecutive_deferrals", "recent_donations",
-                                "recent_deferrals", "hour", 
-                                "previous_Hb", "Hb_first", "Hb_deferral"), 
-                   Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous Hb deferral", 
-                              "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
-                              "Recent deferrals", "Hour", 
-                              "Previous Hb", "First Hb", "Hb deferral"),
-                   Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
-                            "numeric (int)", "boolean", "numeric (int)", "numeric (int)", "numeric (int)", "numeric",
-                            "numeric", "numeric", "boolean"),
-                   Explanation = c("Donor identifier",
-                                   "Amount of Hemoglobin",
-                                   "Time (in days) between Hb measurement and previous full blood donation event",
-                                   "Age of donor",
-                                   "Indicates whether the donor was deferred from blood donation due to low hemoglobin at previous donation event",
-                                   "Year of donation",
-                                   "True if donation was given in April-September",
-                                   "Number of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
-                                   "Number of donations in the last two years",
-                                   "Number of deferrals due to low hemoglobin in the last two years",
-                                   "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
-                                   "Hb value at previous measurement (ICP-model)",
-                                   "Hb value at first donation of this donor (Non ICP-model)",
-                                   "Deferred based on low hemoglogin")
-                   )
-
-donor_descript <- tibble(
-  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs", "FERRITIN_FIRST", "FERRITIN_LAST"),
-  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score", "First ferritin", "Last ferritin"),
-  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric", "numeric", "numeric"),
-  Explanation = c("Does the person smoke", "Height of the donor", "Weight of the donor", 
-                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin", "First measured ferritin", "Last measured ferritin")
-)
-
-# Converts column names of a dataframe 'df' to pretty format using dataframe 'description'.
-to_pretty <- function(df, description) {
-  old_names <- colnames(df)
-  new_names <- description %>% filter(Variable %in% all_of(old_names)) %>% pull(Pretty)
-  colnames(df) <- new_names
-  df
-}
 
 ```
 
@@ -236,7 +194,6 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
   donor_descript <- donor_descript %>% filter(Variable %in% names(findonor_and_snip_and_prs))
   donor_variables <- donor_descript$Variable
   pretty_donor_variables <- donor_descript$Pretty
-  
   
   data <- inner_join(data, findonor_and_snip_and_prs, by="donor")
 } else {
@@ -315,48 +272,40 @@ if (!is.null(params$donor_specific_file)) {
 ```{r Summary plots for both genders, echo = FALSE, eval=TRUE}
 #Plot distributions for all donors
 
+g <- params$gender
+color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "black")
+
+temp_donors <- data$donor
+
 # Find out do donors have at least one deferral
 at_least_one_deferral <- data %>% 
   group_by(donor) %>% 
-  summarise(value=max(Hb_deferral)) %>% 
-  select(value) %>% 
-  mutate(key=factor("At least one deferral"))
+  summarise(one_deferral=max(Hb_deferral))
 
-data2 <- data %>%
+
+pboth <- data %>%
   filter(first_event == FALSE) %>%
-  select(all_of(descript$Variable)) %>%
-  mutate(Hb_deferral = as.integer(Hb_deferral),
-         warm_season = as.integer(warm_season),
-         previous_Hb_def = as.integer(previous_Hb_def))
+  select(all_of(descript$Variable))
 
-
-pboth <- data2 %>%
-  keep(is.numeric) %>%
-  to_pretty(descript) %>%
-  gather() %>%
-  mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
-  add_row(at_least_one_deferral) %>%
-  ggplot(aes(value)) +
-  facet_wrap(~ key, scales = "free") +
-  geom_histogram(fill = "blue")
+pboth <- summary_plotter(pboth, descript, color)
 pboth
 
+
+temp_donor_specific <- at_least_one_deferral
+tr <- tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
 if (!is.null(params$donor_specific_file)) {
-  convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
-  both_donor_specific <- findonor_and_snip_and_prs %>%
-    semi_join(data2, by="donor") %>%
-    #mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
-    mutate_at(vars(convert_to_integer), as.integer) %>%
-    keep(is.numeric) %>%
-    to_pretty(donor_descript) 
-  both_donor_specific %>%
-    gather() %>%
-    mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
-    ggplot(aes(value)) +
-    facet_wrap(~ key, scales = "free") +
-    geom_histogram(fill = "blue")
+  temp_donor_specific <- findonor_and_snip_and_prs %>% 
+    inner_join(at_least_one_deferral)
 }
-rm(data2, pmale);
+
+pdata2 <- temp_donor_specific %>%
+  filter(donor %in% temp_donors)
+pdata2 <- summary_plotter(pdata2, 
+                          donor_descript %>% add_row(tr), 
+                          color)
+pdata2
+
+rm(pboth, pdata2, temp_donor_specific);
 ```
 
 
@@ -702,8 +651,8 @@ results_both_random_forest$pr_plot
 message("Here5")
 results_both_random_forest$f1_ci
 message("Here6")
-t <- tibble(Id="both-rf", Model="Both, random forest", MAE=NA, RMSE=NA, 
-            MAE2=NA, RMSE2=NA) 
+t <- tibble(Id="both-rf", Model="Random forest", Gender=params$gender, 
+            MAE=NA, RMSE=NA, MAE2=NA, RMSE2=NA) 
 message("Here7")
 t <- bind_cols(c(t, results_both_random_forest$roc_plot$roc_ci, results_both_random_forest$pr_plot$pr_ci, results_both_random_forest$f1_ci))
 #print(t)
@@ -726,7 +675,7 @@ message("Here9")
 
 
 
-### Errors
+### Summary
 
 ```{r Errors, results="markup"}
 
@@ -752,6 +701,6 @@ if (!is.null(params$summary_table_file)) {
 ```
 
 ```{r, results="markup"}
-cols <- c("Model", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
 ```

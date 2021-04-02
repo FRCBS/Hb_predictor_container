@@ -84,49 +84,7 @@ suppressPackageStartupMessages(library(tidyverse))
 
 ```{r Descriptions, echo = FALSE}
 
-# Variables that are in use
-
-descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
-                                "year", "warm_season", "consecutive_deferrals", "recent_donations",
-                                "recent_deferrals", "hour", 
-                                "previous_Hb", "Hb_first", "Hb_deferral"), 
-                   Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous Hb deferral", 
-                              "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
-                              "Recent deferrals", "Hour", 
-                              "Previous Hb", "First Hb", "Hb deferral"),
-                   Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
-                            "numeric (int)", "boolean", "numeric (int)", "numeric (int)", "numeric (int)", "numeric",
-                            "numeric", "numeric", "boolean"),
-                   Explanation = c("Donor identifier",
-                                   "Amount of Hemoglobin",
-                                   "Time (in days) between Hb measurement and previous full blood donation event",
-                                   "Age of donor",
-                                   "Indicates whether the donor was deferred from blood donation due to low hemoglobin at previous donation event",
-                                   "Year of donation",
-                                   "True if donation was given in April-September",
-                                   "Number of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
-                                   "Number of donations in the last two years",
-                                   "Number of deferrals due to low hemoglobin in the last two years",
-                                   "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
-                                   "Hb value at previous measurement (ICP-model)",
-                                   "Hb value at first donation of this donor (Non ICP-model)",
-                                   "Deferred based on low hemoglogin")
-                   )
-
-donor_descript <- tibble(
-  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs", "FERRITIN_FIRST", "FERRITIN_LAST"),
-  Pretty      = c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score", "First ferritin", "Last ferritin"),
-  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric", "numeric", "numeric"),
-  Explanation = c("Does the person smoke", "Height of the donor", "Weight of the donor", 
-                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin", "First measured ferritin value", "Last measured ferritin value")
-)
-  
-to_pretty <- function(df, description) {
-  old_names <- colnames(df)
-  new_names <- description %>% filter(Variable %in% all_of(old_names)) %>% pull(Pretty)
-  colnames(df) <- new_names
-  df
-}
+source("common.R")
 
 ```
 
@@ -394,18 +352,7 @@ kable(donor_descript)
 ```
 
 ```{r}
-summary_plotter <- function(df, variable_descriptions, color) {
-  g <- df %>%
-    mutate(across(where(is.logical), as.integer)) %>%
-    keep(is.numeric) %>%
-    to_pretty(variable_descriptions) %>%
-    gather() %>%
-    mutate(key = factor(key, levels=variable_descriptions$Pretty))  %>% # Don't sort alphabetically
-    ggplot(aes(value)) +
-    facet_wrap(~ key, scales = "free") +
-    geom_histogram(fill = color)
-  return(g)
-}
+
 ```
 
 ```{r Summary plots for males, echo = FALSE, eval=compute_male}
@@ -541,7 +488,8 @@ val1.m$conf.matrix.plot
 val1.m$roc_plot
 val1.m$pr_plot
 
-t <- tibble(Id="male-lmm", Model="Male, linear mixed model", MAE=val1.m$mae, RMSE=val1.m$rmse, 
+t <- tibble(Id="male-lmm", Model="Linear mixed model", Gender=params$gender, 
+            MAE=val1.m$mae, RMSE=val1.m$rmse, 
             MAE2=val1.m$mae2, RMSE2=val1.m$rmse2)
 t <- bind_cols(c(t, val1.m$roc_ci, val1.m$pr_ci, val1.m$f1_ci))
 summary_rows[[length(summary_rows)+1]] <- t
@@ -595,8 +543,9 @@ val1.f$conf.matrix.plot
 val1.f$roc_plot
 val1.f$pr_plot
 
-t <- tibble(Id="female-lmm", Model="Female, linear mixed model", MAE=val1.f$mae, RMSE=val1.f$rmse, 
-                                        MAE2=val1.f$mae2, RMSE2=val1.f$rmse2)
+t <- tibble(Id="female-lmm", Model="Linear mixed model", Gender=params$gender, 
+            MAE=val1.f$mae, RMSE=val1.f$rmse, 
+            MAE2=val1.f$mae2, RMSE2=val1.f$rmse2)
 t <- bind_cols(c(t, val1.f$roc_ci, val1.f$pr_ci, val1.f$f1_ci))
 summary_rows[[length(summary_rows)+1]] <- t
 effect_size_rows[[length(effect_size_rows)+1]] <- val1.f$posterior.plot$cis %>% mutate(Id="female-lmm")
@@ -651,7 +600,8 @@ val1.m.icp$conf.matrix.plot
 val1.m.icp$roc_plot
 val1.m.icp$pr_plot
 
-t <- tibble(Id="male-dlmm", Model="Male, dynamic linear mixed model", MAE=val1.m.icp$mae, RMSE=val1.m.icp$rmse, 
+t <- tibble(Id="male-dlmm", Model="Dynamic linear mixed model", Gender=params$gender, 
+            MAE=val1.m.icp$mae, RMSE=val1.m.icp$rmse, 
                                         MAE2=val1.m.icp$mae2, RMSE2=val1.m.icp$rmse2)
 t <- bind_cols(c(t, val1.m.icp$roc_ci, val1.m.icp$pr_ci, val1.m.icp$f1_ci))
 summary_rows[[length(summary_rows)+1]] <- t
@@ -703,8 +653,8 @@ val1.f.icp$conf.matrix.plot
 val1.f.icp$roc_plot
 val1.f.icp$pr_plot
 
-t <- tibble(Id="male-dlmm", Model="Female, dynamic linear mixed model", MAE=val1.f.icp$mae, RMSE=val1.f.icp$rmse, 
-            MAE2=val1.f.icp$mae2, RMSE2=val1.f.icp$rmse2)
+t <- tibble(Id="female-dlmm", Model="Dynamic linear mixed model", Gender=params$gender, 
+            MAE=val1.f.icp$mae, RMSE=val1.f.icp$rmse, MAE2=val1.f.icp$mae2, RMSE2=val1.f.icp$rmse2)
 t <- bind_cols(c(t, val1.f.icp$roc_ci, val1.f.icp$pr_ci, val1.f.icp$f1_ci))
 summary_rows[[length(summary_rows)+1]] <- t
 effect_size_rows[[length(effect_size_rows)+1]] <- val1.f.icp$posterior.plot$cis %>% mutate(Id="female-dlmm")
@@ -724,7 +674,7 @@ if (!is.null(params$effect_size_table_file)) {
 ```
 
 
-### Errors
+### Summary
 
 ```{r Errors}
 
@@ -750,7 +700,7 @@ if (!is.null(params$summary_table_file)) {
 ```
 
 ```{r}
-cols <- c("Model", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
 ```
 

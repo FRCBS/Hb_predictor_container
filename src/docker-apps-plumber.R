@@ -133,6 +133,9 @@ function(req, parametrit){
   
   use_only_first_ferritin <- "use-only-first-ferritin" %in% names(post)
   cat(sprintf("The parameter use_only_first_ferritin is %s\n", as.character(use_only_first_ferritin)))
+
+  stratify_by_sex <- "stratify-by-sex" %in% names(post)
+  cat(sprintf("The parameter stratify_by_sex is %s\n", as.character(stratify_by_sex)))
   
   max_diff_date_first_donation <- ifelse ("max_diff_date_first_donation" %in% names(post), 
                                           as.integer(post$max_diff_date_first_donation), default_max_diff_date_first_donation)
@@ -275,16 +278,18 @@ function(req, parametrit){
   
   summary_tables <- list()
   effect_size_tables <- list()
-
+  details_df <- tibble(id=character(0), pretty=character(0), gender=character(0), html=character(0), pdf=character(0))
+  
   ####################
   #
   # Run linear models
   #
   ####################
   
-  methods <- intersect(c("no-fix", "icp-fix"), names(post))
+  methods <- intersect(c("lmm", "dlmm"), names(post))
   if (length(methods) > 0) {
-    myparams$method <- ifelse (length(methods) == 2, "both", methods[[1]])
+    m <- ifelse(length(methods) == 2, "both", methods[[1]])
+    myparams$method <- case_when(m=="lmm" ~ "no-fix", m=="dlmm" ~ "icp-fix", TRUE ~ m)
     for (gender in c("male", "female")) {
       myparams["gender"] <- gender
       filename <- sprintf("/tmp/summary-%s.csv", gender)
@@ -316,6 +321,15 @@ function(req, parametrit){
       }      
       summary_tables[[gender]] <- read_csv(filename)
       effect_size_tables[[gender]] <- read_csv(effect_size_filename)
+      
+      #m <- myparams$method
+      pretty <- case_when(m=="lmm" ~ "Linear mixed model", m=="dlmm" ~ "Dynamic linear mixed model", TRUE ~ "Linear mixed models")
+      details_df <- details_df %>% 
+        add_row(id=sprintf("detail-linear-models-%s", gender), 
+                pretty=pretty,
+                gender=gender,
+                html=sprintf("output/results-%s.html", gender),
+                pdf=sprintf("output/results-%s.pdf", gender))
     }
   }
   
@@ -324,39 +338,61 @@ function(req, parametrit){
   # Run random forest
   #
   ###################
-  
+
+  method_df <- tribble(
+    ~method, ~pretty, ~rmd,
+    "decision-tree", "decision tree", "template.Rmd",
+    "random-forest", "random forest", "random_forest.Rmd",
+  )  
   methods <- intersect(c("decision-tree", "random-forest"), names(post))
-  if (length(methods) > 0) {
-    myparams$method <- ifelse (length(methods) == 2, "both", methods[[1]])
-    gender <- "both"
-    myparams["gender"] <- gender
-    filename <- sprintf("/tmp/summary-%s.csv", "ml")
-    myparams["summary_table_file"] <- filename
-    effect_size_filename <- sprintf("../output/variable-importance.csv")
-    myparams["effect_size_table_file"] <- effect_size_filename
-    error_messages <- tryCatch(
-      error = function(cnd) {
-        error_messages <- c("Error in random forest call.\n", cnd$message)
-        return(error_messages)
-      },
-      {
-        rmarkdown::render(
-          'random_forest.Rmd',
-          #'template.Rmd',
-          output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
-          output_format=c('html_document', 'pdf_document'),
-          clean=FALSE,
-          output_dir='../output',
-          params = myparams)
-        NULL
+  for (m in methods) {
+    cat(sprintf("Running method %s\n", m))
+    myparams$method <- m
+    pretty <- method_df %>% filter(method==m) %>% pull(pretty)
+    rmd <- method_df %>% filter(method==m) %>% pull(rmd)
+    genders <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
+    for (gender in genders) {
+      cat(sprintf("Running gender %s\n", gender))
+      myparams["gender"] <- gender
+      temp_filename <- sprintf("/tmp/summary-%s-%s.csv", m, gender)
+      myparams["summary_table_file"] <- temp_filename
+      temp_effect_size_filename <- sprintf("../output/variable-importance-%s.csv", m)
+      myparams["effect_size_table_file"] <- temp_effect_size_filename
+      error_messages <- tryCatch(
+        error = function(cnd) {
+          error_messages <- c(sprintf("Error in %s call.\n", pretty), cnd$message)
+          return(error_messages)
+        },
+        {
+          rmarkdown::render(
+            rmd,
+            #'template.Rmd',
+            output_file=rep(sprintf('results-%s-%s', m, gender), 2),   # One for each output format: html and pdf 
+            output_format=c('html_document', 'pdf_document'),
+            clean=FALSE,
+            output_dir='../output',
+            params = myparams)
+          NULL
+        }
+      )
+      if (!is.null(error_messages)) {
+        cat(paste0(error_messages))
+        return(list(error_messages=error_messages))
       }
-    )
-    if (!is.null(error_messages)) {
-      cat(paste0(error_messages))
-      return(list(error_messages=error_messages))
+      summary_tables[[paste(m, gender, sep="-")]] <- read_csv(temp_filename)
+      
+      details_df <- details_df %>% 
+        add_row(id=sprintf("detail-%s-%s", m, gender), 
+                pretty=str_to_sentence(pretty),
+                gender=gender,
+                html=sprintf("output/results-%s-%s.html", m, gender),
+                pdf=sprintf("output/results-%s-%s.pdf", m, gender))
+      
+      # should I read here the effect size table?
+      #effect_size_tables[[paste(m, gender, sep="-")]] <- read_csv(temp_effect_size_filename)
     }
-    summary_tables[["ml"]] <- read_csv(filename)
   }
+  
   #unlink(donation_specific_filename)
   if (!is.null(donor_specific_filename))
     unlink(donor_specific_filename)
@@ -371,7 +407,7 @@ function(req, parametrit){
   effect_size_table <- bind_rows(effect_size_tables)
   write_csv(summary_table, "../output/summary.csv")
   write_csv(effect_size_table, "../output/effect-size.csv")
-  cols <- c("Model", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+  cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
   summary_table_string <- kable(summary_table %>% select(!!!cols), format="html", digits=3, 
                          caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE),\
                            area under ROC curve (AUROC), and area under precision-recall curve (AUPR).",
@@ -386,7 +422,7 @@ function(req, parametrit){
   result2 <- paste(result2, collapse="\n")
   
   
-  return(list(result=result2, summary_table=as.character(summary_table_string)))
+  return(list(result=result2, summary_table=as.character(summary_table_string), details_df = purrr::transpose(details_df)))
   
 }
 
@@ -462,6 +498,11 @@ function(req){
             <input type="checkbox" value="on", id="use-only-first-ferritin" name="use-only-first-ferritin" />
             </td>
         </tr>
+        <tr id="stratify_by_sex_row"><td>Stratify by sex</td>
+            <td>
+            <input type="checkbox" value="on", id="stratify-by-sex" name="stratify-by-sex" />
+            </td>
+        </tr>
         </label>
         <!--<tr><td>Progress</td>               <td><progress id="progress" value="0" /></td></tr>-->
         </table>
@@ -474,28 +515,29 @@ function(req){
         
         <fieldset>
           <legend>Which prediction model to use?</legend>
-          <label for="no-fix">
-            <input type="checkbox" value="on", id="no-fix" name="no-fix" />
+          <label for="lmm">
+            <input type="checkbox" value="on", id="lmm" name="lmm" />
             Linear mixed model
           </label>
-          <label for="icp-fix">
-            <input type="checkbox" value="on", id="icp-fix" name="icp-fix" />
+          <label for="dlmm">
+            <input type="checkbox" value="on", id="dlmm" name="dlmm" />
             Dynamic linear mixed model
           </label>
-          <!--
+
           <label for="decision-tree">
-            <input type="checkbox" value="on", id="decision-tree" name="decision-tree" checked/>
+            <input type="checkbox" value="on", id="decision-tree" name="decision-tree" />
             Decision tree
           </label>
-          -->
+          
           <label for="random-forest">
-            <input type="checkbox" value="on", id="random-forest" name="random-forest" checked/>
+            <input type="checkbox" value="on", id="random-forest" name="random-forest" checked />
             Random forest
           </label>
         </fieldset>
     
-        <input id="submit" type="submit" value="Upload the files and start computing" name="submit_button">
-      </div>
+        <input id="submit" type="submit" value="Upload the files and start computing" name="submit_button" />
+        </form>
+      </div> <!-- id="form-container -->
       
 
       <div id="info-container" hidden>
@@ -527,10 +569,13 @@ function(req){
         
         <h3>Detailed result pages</h3>
         <table id="detailed-results" class="table table-condensed">
-        <tr> <th>Model</th> <th>html</th> <th>pdf</th> </tr>
-        <tr id="detail-lmm-male"> <td>LMM (male)</td> <td><a href="output/results-male.html" target="_blank" >html</a></td> <td><a href="output/results-male.pdf" target="_blank" >pdf</a></td> </tr>
-        <tr id="detail-lmm-female"> <td>LMM (female)</td> <td><a href="output/results-female.html" target="_blank" >html</a></td> <td><a href="output/results-female.pdf" target="_blank" >pdf</a></td> </tr>
-        <tr id="detail-rf"> <td>Random forest</td> <td><a href="output/results-both.html" target="_blank" >html</a></td> <td><a href="output/results-both.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr> <th>Model</th> <th>Gender</th> <th>html</th> <th>pdf</th> </tr>
+        <!--
+        <tr id="detail-lmm-male"> <td>LMM (male)</td> <td>male</td> <td><a href="output/results-male.html" target="_blank" >html</a></td> <td><a href="output/results-male.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr id="detail-lmm-female"> <td>LMM (female)</td> <td>female</td> <td><a href="output/results-female.html" target="_blank" >html</a></td> <td><a href="output/results-female.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr id="detail-rf"> <td>Random forest</td> <td>both</td> <td><a href="output/results-random-forest-both.html" target="_blank" >html</a></td> <td><a href="output/results-random-forest-both.pdf" target="_blank" >pdf</a></td> </tr>
+        <tr id="detail-dt"> <td>Decision tree</td> <td>both</td> <td><a href="output/results-decision-tree-both.html" target="_blank" >html</a></td> <td><a href="output/results-decision-tree-both.pdf" target="_blank" >pdf</a></td> </tr>
+        -->
         </table>
       </div>
       
