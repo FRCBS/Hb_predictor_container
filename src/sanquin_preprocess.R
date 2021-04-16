@@ -58,7 +58,10 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   names(temp) <- new_names
   donation <- donation %>% rename(!!!temp)
   #print(head(donation))
-  
+  mean_hb <- mean(donation$Hb)
+  if (!is_hb_value_sane(mean_hb, Hb_input_unit)) {
+    warning(sprintf("The mean Hb value %f does not seem to agree with the Hb unit %s\n", mean_hb, Hb_input_unit))
+  }
   donation <- donation %>%
     mutate(donat_phleb = as.factor(donat_phleb),
            volume_drawn = as.integer(volume_drawn),

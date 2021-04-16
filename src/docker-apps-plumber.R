@@ -42,6 +42,8 @@ check_columns <- function(got, expected) {
   }
 }
 
+
+
 #' Read the input form and learn the models, and show the results.
 #' @post /hb-predictor2
 #' @parser multi
@@ -144,6 +146,8 @@ function(req, parametrit){
   Hb_input_unit <- ifelse ("unit" %in% names(post), post$unit, default_Hb_input_unit)
   cat(sprintf("The parameter Hb_input_unit is %s\n", Hb_input_unit))
   
+
+  
   ####################################################################
   #
   # Check that the donation and donor dataframes are in correct format
@@ -195,14 +199,28 @@ function(req, parametrit){
   
   # Create the input parameter list for the Rmd files that do the actual prediction    
   myparams <- list()
-  # From now on the cutoffs are in units of g/L
-  myparams$Hb_cutoff_male   <- ifelse ("Hb_cutoff_male"   %in% names(post), 
-                                       convert_hb_unit(Hb_input_unit, "gperl", as.numeric(post$Hb_cutoff_male)),   
-                                       default_Hb_cutoff_male)
-  myparams$Hb_cutoff_female <- ifelse ("Hb_cutoff_female" %in% names(post), 
-                                       convert_hb_unit(Hb_input_unit, "gperl", as.numeric(post$Hb_cutoff_female)), 
-                                       default_Hb_cutoff_female)
   
+
+  # From now on the cutoffs are in units of g/L
+  if ("Hb_cutoff_male" %in% names(post)) { 
+    value <- as.numeric(post$Hb_cutoff_male)
+    if (! is_hb_value_sane(value, Hb_input_unit)) {
+      warning(sprintf("The male Hb cutoff value %f does not seem to match its unit\n", value))
+    }
+    myparams$Hb_cutoff_male <- convert_hb_unit(Hb_input_unit, "gperl", value)
+  } else {
+    myparams$Hb_cutoff_male <- default_Hb_cutoff_male
+  }
+  if ("Hb_cutoff_female" %in% names(post)) { 
+    value <- as.numeric(post$Hb_cutoff_female)
+    if (! is_hb_value_sane(value, Hb_input_unit)) {
+      warning(sprintf("The female Hb cutoff value %f does not seem to match its unit\n", value))
+    }
+    myparams$Hb_cutoff_female <- convert_hb_unit(Hb_input_unit, "gperl", value)
+  } else {
+    myparams$Hb_cutoff_female <- default_Hb_cutoff_female
+  }
+
   
   myparams$skip_train <- FALSE
   myparams$create_datasets_bool <- TRUE
@@ -251,6 +269,7 @@ function(req, parametrit){
     toc()
     message(sprintf("Saved preprocessed data to file %s\n", donation_specific_filename))
   }
+  
   cat("Distribution of time series length\n")
   print(fulldata_preprocessed %>% count(donor, name="Length") %>% count(Length, name="Count"))
   rm(fulldata_preprocessed)
@@ -268,6 +287,13 @@ function(req, parametrit){
     myparams$hlen <- as.integer(post$hlen)
   if (!is.null(donor_specific_filename))
     myparams$donor_specific_file <- donor_specific_filename
+  
+  predictive_variables <- c()
+  for (parameter_name in names(post)) {
+    if (str_starts(parameter_name, "dv_")) predictive_variables <- append(predictive_variables, str_remove(parameter_name, "^dv_")) 
+  }
+  print(predictive_variables)
+  myparams$predictive_variables <- paste(predictive_variables, sep=",")
   
   # This debugging information will be sent to the browser
   myparams_string <- paste( map_chr(names(myparams), function (name) sprintf("<li>%s=%s</li>", name, myparams[name])), 
@@ -513,12 +539,18 @@ function(req){
         </label>
         --> 
         
+        <fieldset id="predictive-variables">
+          <legend>Which predictive variables to use?</legend>
+        </fieldset>
+          
         <fieldset>
           <legend>Which prediction model to use?</legend>
+          
           <label for="lmm">
             <input type="checkbox" value="on", id="lmm" name="lmm" />
             Linear mixed model
           </label>
+          
           <label for="dlmm">
             <input type="checkbox" value="on", id="dlmm" name="dlmm" />
             Dynamic linear mixed model
@@ -533,6 +565,7 @@ function(req){
             <input type="checkbox" value="on", id="random-forest" name="random-forest" checked />
             Random forest
           </label>
+          
         </fieldset>
     
         <input id="submit" type="submit" value="Upload the files and start computing" name="submit_button" />

@@ -377,6 +377,9 @@ if (!is.null(params$donor_specific_file)) {
   pmale2 <- summary_plotter(pmale2, donor_descript, "blue")
   pmale2
 }
+
+time_series_length_plotter(data.male)
+  
 rm(data.male2);
 ```
 
@@ -426,6 +429,7 @@ if (!is.null(params$donor_specific_file)) {
   #   geom_histogram(fill = "orange")
   pfemale2
 }
+time_series_length_plotter(data.female)
 rm(data.female2);
 ```
 

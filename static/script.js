@@ -63,7 +63,33 @@ function handle_hb_unit(e) {
   
 document.onreadystatechange = function() {
   console.log("Executing Javascript");
+  
+
+  
+            //<label for="lmm">
+            //<input type="checkbox" value="on", id="lmm" name="lmm" />
+            //Linear mixed model
+          //</label>
   if (document.readyState == "complete") {
+    
+      // Predictive variables
+    dvs = ["days_to_previous_fb", "age", "previous_Hb_def", "year",                 
+      "warm_season", "consecutive_deferrals", "recent_donations", "recent_deferrals",     
+      "hour", "previous_Hb", "Hb_first"]  ;
+    el = document.getElementById("predictive-variables");
+    for (i=0; i < dvs.length; ++i) {
+      l = document.createElement('label');
+      l.setAttribute("for", dvs[i]);
+    inp = document.createElement('input');
+    inp.setAttribute("type", "checkbox");
+    inp.setAttribute("value", "on");
+    inp.setAttribute("id", "id_"+dvs[i]);
+    inp.setAttribute("name", "dv_"+dvs[i]);
+    l.appendChild(inp);
+    l.appendChild(document.createTextNode(dvs[i]));
+    el.appendChild(l);
+  }
+  
     console.log("Setting handleButtonPress");
     document.getElementById("submit").onclick = handleButtonPress;
     document.getElementById("FRCBS").onchange = handle_input_format;

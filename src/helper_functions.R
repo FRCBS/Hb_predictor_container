@@ -26,6 +26,19 @@ ndonor <- function(df) {
   return(length(unique(df$donor)))  
 }
 
+is_hb_value_sane <- function(hb, hb_unit)
+{
+  if (hb_unit=="gperl") {
+    return(hb > 100.0 && hb < 200.0)
+  } else if (hb_unit=="gperdl") {
+    return(hb > 10.0 && hb < 20.0)
+  } else if (hb_unit =="mmolperl") { 
+    return(hb > 10.0 && hb > 0.0)
+  } else {
+    stop(sprintf("Unknown hb unit %s\n", hb_unit))
+  }
+}
+
 convert_hb_unit <- function(from, to, hb) {
   if (from == to)
     return(hb)

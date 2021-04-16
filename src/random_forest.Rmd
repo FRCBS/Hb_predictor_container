@@ -305,6 +305,8 @@ pdata2 <- summary_plotter(pdata2,
                           color)
 pdata2
 
+time_series_length_plotter(data)
+
 rm(pboth, pdata2, temp_donor_specific);
 ```
 
@@ -493,7 +495,10 @@ if (number_of_accepted == 0 || number_of_deferrals == 0) {
                number_of_accepted), call.=FALSE)
 }
 tic("Training random forest")
-save(train, file="/tmp/jarkko.rdata")   # remove this
+#save(train, file="/tmp/jarkko.rdata")   # remove this
+min.node.size = 34
+if (nrow(train) <= min.node.size)
+  message("Warning: There are less points in the train data than what is the min.node.size of the random forest")
 rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
                  method = "ranger", 
                  #mtry = 4,
@@ -506,7 +511,7 @@ rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train,
                  #tuneLength=1,
                  tuneGrid = expand_grid(mtry = 4,
                   splitrule="hellinger",
-                  min.node.size = 34),
+                  min.node.size = min.node.size),
                 #metric="ROC",
                 #should we use Kappa or ROC?
                 importance = "permutation"

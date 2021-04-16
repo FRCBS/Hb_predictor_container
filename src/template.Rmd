@@ -15,6 +15,7 @@ params:
   effect_size_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
+  predictive_variables: NULL
   cores: 4
   iterations: 2000
   skip_train: FALSE
@@ -290,6 +291,8 @@ pdata2
 #     geom_histogram(fill = "blue")
 # }
 # rm(data.male2, pmale);
+
+time_series_length_plotter(data)
 ```
 
 
