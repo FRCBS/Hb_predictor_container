@@ -15,6 +15,7 @@ params:
   effect_size_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
+  predictive_variables: NULL
   cores: 4
   iterations: 2000
   skip_train: FALSE
@@ -273,7 +274,7 @@ if (!is.null(params$donor_specific_file)) {
 #Plot distributions for all donors
 
 g <- params$gender
-color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "black")
+color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "green")
 
 temp_donors <- data$donor
 
@@ -305,7 +306,7 @@ pdata2 <- summary_plotter(pdata2,
                           color)
 pdata2
 
-time_series_length_plotter(data)
+time_series_length_plotter(data, color)
 
 rm(pboth, pdata2, temp_donor_specific);
 ```
@@ -587,10 +588,10 @@ prediction.probs <- predict(rrfFit_roc, newdata = validate, type="prob")
 source("validate_stan_fit.R")
 width = 180
 #create_precision_recall_new <- function(labels, scores) {
-df <- tibble(deferral = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
-             predicted_labels = ifelse(prediction.vl == "Deferred", 1, 0), 
-             scores=prediction.probs$Deferred)
-sink(file=stderr(), type="output"); summary(df %>% mutate_at(c("deferral", "predicted_labels"), as.factor)); sink()
+df <- tibble(original_label = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
+             predicted_label = ifelse(prediction.vl == "Deferred", 1, 0), 
+             score=prediction.probs$Deferred)
+sink(file=stderr(), type="output"); summary(df %>% mutate_at(c("original_label", "predicted_label"), as.factor)); sink()
 
 ```
 
@@ -606,15 +607,15 @@ dummy_plots <- function(df) {
   #boot.n = 100        # KORJAA TÄMÄ!!!!!!
   result <- list()
   result$df <- df
-  result$conf_matrix_plot <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
-  result$roc_plot <- create_roc_new(df$deferral, df$scores) #, boot.n=boot.n)
+  result$confusion_matrix_plot <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
+  result$roc_plot <- create_roc_new(df$original_label, df$score) #, boot.n=boot.n)
   ret <- tryCatch(
     error =  function(cnd) {
       message(paste("in error handler, possibly the deferral score is constant", cnd))
       return(-1)      
     },
     {
-      result$pr_plot <- create_precision_recall_new(df$deferral, df$scores)#, boot.n=boot.n)
+      result$pr_plot <- create_precision_recall_new(df$original_label, df$score)#, boot.n=boot.n)
       NULL
     })
   if (!is.null(ret) && ret == -1) {
@@ -648,7 +649,7 @@ message("Here1")
 results_both_random_forest <- dummy_plots(df)
 
 message("Here2")
-results_both_random_forest$conf_matrix_plot
+results_both_random_forest$confusion_matrix_plot
 message("Here3")
 results_both_random_forest$roc_plot 
 message("Here4")

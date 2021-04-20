@@ -35,7 +35,7 @@ get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
 
 
 
-create_roc_new <- function(labels, scores, boot.n=2000) {
+create_roc_new <- function(labels, score, boot.n=2000) {
   message("Computing the ROC curve")
   tryCatch(error = function(cnd) {
     t <- table(labels, useNA = "always")
@@ -47,7 +47,7 @@ create_roc_new <- function(labels, scores, boot.n=2000) {
     stop(cnd)
   },
            roc <- pROC::roc(response = labels,
-                            predictor = scores,
+                            predictor = score,
                             #smoothed = TRUE,
                             auc = TRUE,
                             legacy.axes = TRUE,   # x-axis is False positive rate instead of specificity
@@ -95,11 +95,11 @@ precision_recall_ci <- function(df, method="norm", boot.n=NULL) {
   get_aupr <- function(df, indices) {
     df2 <- df[indices,]
     pb$tick()  # update progress bar
-    aupr <- PRROC::pr.curve(scores.class0=df2$scores, weights.class0=df2$labels)$auc.davis.goadrich
+    aupr <- PRROC::pr.curve(scores.class0=df2$score, weights.class0=df2$original_label)$auc.davis.goadrich
     return(aupr)
   }
     
-  df <- df %>% select(labels, scores)
+  df <- df %>% select(original_label, score)
   if (is.null(boot.n)) {
     boot.n <- nrow(df)
   }
@@ -107,7 +107,7 @@ precision_recall_ci <- function(df, method="norm", boot.n=NULL) {
   pb <- progress::progress_bar$new(total = boot.n+1)# init progress bar
   pb$tick(0)
   #p <- progress_estimated(n+1)  # init progress bar
-  b <- boot(df, statistic = get_aupr, R=boot.n, sim="ordinary", stype="i", strata=df$labels, parallel="multicore")#, ncpus=1)
+  b <- boot(df, statistic = get_aupr, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="multicore")#, ncpus=1)
   ret <- tryCatch(
     error = function(cnd) return(-1),
     {
@@ -122,20 +122,20 @@ precision_recall_ci <- function(df, method="norm", boot.n=NULL) {
   return(list(ci=ci, result=result))
 }
   
-create_precision_recall_new <- function(labels, scores, method="norm", boot.n=2000) {
+create_precision_recall_new <- function(original_label, score, method="norm", boot.n=2000) {
   debug <- TRUE
   message("Computing the precision-recall curve")
-  pr_model     <- PRROC::pr.curve(scores.class0=scores, weights.class0=labels, curve=TRUE, rand.compute=TRUE)
+  pr_model     <- PRROC::pr.curve(scores.class0=score, weights.class0=original_label, curve=TRUE, rand.compute=TRUE)
   if (debug) message("hep1")
   points <- data.frame(pr_model$curve)
   if (debug) message("hep2")
   AUPR <- pr_model$auc.davis.goadrich
-  df <- tibble(labels=labels, scores=scores)
+  df <- tibble(original_label=original_label, score=score)
   if (debug) message("hep3")
   prci <- precision_recall_ci(df, method=method, boot.n=boot.n)$ci
   if (debug) message("tassa1")
   title <- "Precision-recall"
-  m <- mean(labels)
+  m <- mean(original_label)
   if (debug) message("tassa2")
   pr_plot <- ggplot(points, aes(x=X1,y=X2)) +
     geom_hline(aes(yintercept=m), color="lightgray") +   # theoretical PR curve of random classifier
@@ -152,11 +152,11 @@ create_precision_recall_new <- function(labels, scores, method="norm", boot.n=20
 
 # Computes the F1 score.
 # The input dataframe 'df' should have two columns:
-# 'deferral': factor with levels "Accepted", "Deferred", where "Deferred" is the positive class.
-# 'scores': a numerical vector. Score (e.g. probability) of deferral.
+# 'original_label': factor with levels "Accepted", "Deferred", where "Deferred" is the positive class.
+# 'score': a numerical vector. Score (e.g. probability) of deferral.
 get_f1 <- function(df, threshold = 0.5) {
-  pred_class <- factor( ifelse(df$scores >= threshold, "Deferred", "Accepted"), levels=c("Accepted", "Deferred"))
-  obs_class <- factor(ifelse(df$deferral == 1, "Deferred", "Accepted"), levels=c("Accepted", "Deferred"))
+  pred_class <- factor( ifelse(df$score >= threshold, "Deferred", "Accepted"), levels=c("Accepted", "Deferred"))
+  obs_class <- factor(ifelse(df$original_label == 1, "Deferred", "Accepted"), levels=c("Accepted", "Deferred"))
   cm <- caret::confusionMatrix(reference = obs_class, data = pred_class, positive = "Deferred", mode = "prec_recall")
   f1 <- cm$byClass["F1"]
   return(f1)   # Returns a single value
@@ -171,7 +171,7 @@ get_f1_ci <- function(df, method="norm", boot.n=2000) {
     return(f1)
   }
   #message("moi1")
-  df <- df %>% select(deferral, scores)
+  df <- df %>% select(original_label, score)
   #message("moi2")
   if (is.null(boot.n)) {
     boot.n <- nrow(df)
@@ -182,7 +182,7 @@ get_f1_ci <- function(df, method="norm", boot.n=2000) {
   pb$tick(0)
   #message("moi5")
   #p <- progress_estimated(n+1)  # init progress bar
-  b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$deferral, parallel="multicore")
+  b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="multicore")
   #message("moi6")
   error_code <- tryCatch(
     error = function(cnd) -1 # return exit code
@@ -228,10 +228,10 @@ create_confusion_matrix_plot <- function(orig_labels, pred_labels) {
 }
 
 create_scatter_plot <- function(df, threshold) {
-  xymin <- min(min(df$predicted), min(df$observed))
-  xymax <- max(max(df$predicted), max(df$observed))
+  xymin <- min(min(df$predicted_value), min(df$original_value))
+  xymax <- max(max(df$predicted_value), max(df$original_value))
 
-  scatter_plot <- ggplot(df, aes(x = observed, y=predicted, color = factor(as.integer(deferral)))) +
+  scatter_plot <- ggplot(df, aes(x = original_value, y=predicted_value, color = factor(as.integer(original_label)))) +
     geom_point() +
     #xlim(xymin,xymax) + ylim(xymin,xymax) +
     scale_x_continuous(breaks = generate_my_breaks(20), limits=c(xymin,xymax)) +
@@ -239,7 +239,7 @@ create_scatter_plot <- function(df, threshold) {
     geom_abline(intercept = 0, slope = 1) +
     labs(x = "Observed", y = "Predicted", colour = "Status") +
     scale_colour_discrete(labels=c("Accepted", "Deferred")) +
-    geom_smooth(mapping=aes(x = observed, y=predicted), colour="black", show.legend = FALSE) +
+    geom_smooth(mapping=aes(x = original_value, y=predicted_value), colour="black", show.legend = FALSE) +
     geom_vline(xintercept = threshold, linetype = "dashed") +
     geom_hline(yintercept = threshold, linetype = "dashed") +
     theme(legend.position = "bottom") +
@@ -294,9 +294,9 @@ create_forest_plot <- function(posterior, variables) {
 
 # Creates ROC, and Precision-recall plots, and puts them side-by-side.
 # Input should be a tibble (or data.frame) that contains the following columns:
-# - deferral, boolean or integer (FALSE==0==accepted, TRUE==1==deferred), true labels
-# - predicted_labels, same definition as for above
-# - scores, double, higher score means that deferral is more likely
+# - original_label, boolean or integer (FALSE==0==accepted, TRUE==1==deferred), true labels
+# - predicted_label, same definition as for above
+# - score, double, higher score means that deferral is more likely
 # Returns the combined plot object.
 # If filename if given, then the combined plot is saved to that file.
 # BUG: The plot may look good when saved to a file, but possibly not when the plot object is shown on screen.
@@ -310,9 +310,9 @@ create_performance_plots <- function(df,
   #  theme_gray(base_size = 7.5)
   #)
 
-  roc <- create_roc_new(df$deferral, df$scores)
-  pr <- create_precision_recall_new(df$deferral, df$scores)
-  #cm <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
+  roc <- create_roc_new(df$original_label, df$score)
+  pr <- create_precision_recall_new(df$original_label, df$score)
+  #cm <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
   use_cowplot <- TRUE
   
   if (use_cowplot) {
@@ -332,9 +332,9 @@ create_performance_plots <- function(df,
 
 # Creates scatter and confusion plots, and puts them side-by-side.
 # Input should be a tibble (or data.frame) that contains the following columns:
-# - deferral, boolean or integer (FALSE==0==accepted, TRUE==1==deferred), true labels
-# - predicted_labels, same definition as for above
-# - scores, double, higher score means that deferral is more likely
+# - original_label, boolean or integer (FALSE==0==accepted, TRUE==1==deferred), true labels
+# - predicted_label, same definition as for above
+# - score, double, higher score means that deferral is more likely
 # Returns the combined plot object.
 # If filename if given, then the combined plot is saved to that file.
 # BUG: The plot may look good when saved to a file, but possibly not when the plot object is shown on screen.
@@ -344,7 +344,7 @@ create_scatter_confusion_plots <- function(df, Hb_cutoff,
 ) {
 
   scatter_plot <- create_scatter_plot(df, Hb_cutoff) + coord_fixed() + theme(plot.margin = unit(c(5.5, 5.5, 0, 0), "pt"))
-  cm <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
+  cm <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
   use_cowplot <- TRUE
   
   if (use_cowplot) {
@@ -363,7 +363,7 @@ create_scatter_confusion_plots <- function(df, Hb_cutoff,
 }
 
 
-validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, params, pnames = NULL, metric = "mean", 
+validate_fit <- function(fit, original_value, original_label, Hb_cutoff, score, params, pnames = NULL, metric = "mean", 
                          cat.plot = TRUE,
                          use_optimal_cutoff=FALSE) {
   # Posterior effect sizes
@@ -400,19 +400,19 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
   }
   sds <- apply(pars$y_pred, 2, FUN = sd)
   
-  Hb_predictions <- denormalize(y_pred, original_Hb)
-  pred_labels <- ifelse(Hb_predictions < Hb_cutoff, 1, 0)
+  predicted_value <- denormalize(y_pred, original_value)
+  predicted_label <- ifelse(predicted_value < Hb_cutoff, 1, 0)
 
   
-  df <- tibble(predicted = Hb_predictions, sds=sds, observed = original_Hb, 
-               predicted_labels=pred_labels, deferral = orig_labels, scores=scores)
+  df <- tibble(predicted_value = predicted_value, sds=sds, original_value = original_value, 
+               predicted_label=predicted_label, original_label = original_label, score=score)
   
   scatter_plot <- create_scatter_plot(df, Hb_cutoff)
   
   # Observed vs standard deviation scatter plot
   if (FALSE) {
-    #sd_df <- tibble(sds = sds, observed = original_Hb, deferral = as.factor(orig_labels))
-    sd_plot <- ggplot(df, aes(x = observed, y=sds, color = factor(as.integer(deferral)))) + 
+    #sd_df <- tibble(sds = sds, observed = original_Hb, original_label = as.factor(orig_labels))
+    sd_plot <- ggplot(df, aes(x = original_value, y=sds, color = factor(as.integer(original_label)))) + 
       geom_point() +
       labs(x = "Observed", y = "SDs", colour = "Status") +
       scale_colour_discrete(labels=c("Accepted", "Deferred"))
@@ -420,31 +420,31 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
     sd_plot <- NULL
   }
   
-  roc <- create_roc_new(df$deferral, df$scores)
-  pr <- create_precision_recall_new(df$deferral, df$scores)
+  roc <- create_roc_new(df$original_label, df$score)
+  pr <- create_precision_recall_new(df$original_label, df$score)
   
   # Confusion matrix
-  conf.matrix.plot <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
+  confusion.matrix.plot <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
   # "Optimal" confusion matrix
   if (use_optimal_cutoff) {
-    cp <- cutpointr::cutpointr(df$predicted, df$deferral, 
+    cp <- cutpointr::cutpointr(df$predicted_value, df$original_label, 
                     direction="<=",   # Smaller values mean positive class 
                     method = maximize_metric, metric = sum_sens_spec)
     optimal_cutoff <- cp$optimal_cutpoint
     scatter_plot <- scatter_plot +
       geom_hline(yintercept = optimal_cutoff, linetype = "dashed", color="green")
-    optimal_pred_labels <- ifelse(Hb_predictions < optimal_cutoff, 1, 0)
-    optimal.conf.matrix.plot <- create_confusion_matrix_plot(df$deferral, optimal_pred_labels)
+    optimal_pred_labels <- ifelse(predicted_value < optimal_cutoff, 1, 0)
+    optimal.confusion.matrix.plot <- create_confusion_matrix_plot(df$original_label, optimal_pred_labels)
   } else {
-    optimal.conf.matrix.plot <- NULL
+    optimal.confusion.matrix.plot <- NULL
   }
     
   # Errors
-  mae  <- ModelMetrics::mae(df$observed, df$predicted)
-  rmse <- ModelMetrics::rmse(df$observed, df$predicted)
+  mae  <- ModelMetrics::mae(df$original_value, df$predicted_value)
+  rmse <- ModelMetrics::rmse(df$original_value, df$predicted_value)
 
-  original_Hb2 <- to_mmol_per_litre(df$observed)
-  Hb_predictions2 <- to_mmol_per_litre(df$predicted)
+  original_Hb2 <- to_mmol_per_litre(df$original_value)
+  Hb_predictions2 <- to_mmol_per_litre(df$predicted_value)
   mae2  <- ModelMetrics::mae(original_Hb2, Hb_predictions2)
   rmse2 <- ModelMetrics::rmse(original_Hb2, Hb_predictions2)
   
@@ -457,10 +457,10 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
               cat.plot = cat.plot,
               #loo = loo1,
               #loo.plot = loo.plot,
-              conf.matrix.plot = conf.matrix.plot,
-              optimal.conf.matrix.plot = optimal.conf.matrix.plot,
-              pred_labels = pred_labels,
-              Hb_predictions = Hb_predictions,
+              confusion.matrix.plot = confusion.matrix.plot,
+              optimal.confusion.matrix.plot = optimal.confusion.matrix.plot,
+              predicted_label = predicted_label,
+              predicted_value = predicted_value,
               stan_variable_names = params,
               pretty_variable_names = pnames,
               mae = mae,
@@ -468,7 +468,7 @@ validate_fit <- function(fit, original_Hb, orig_labels, Hb_cutoff, scores, param
               mae2 = mae2,
               rmse2 = rmse2,
               scatter_plot = scatter_plot,
-              comp_df = df,
+              df = df,
               sd_plot = sd_plot,
               samples = samples,
               f1_ci=f1_ci), 

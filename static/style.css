@@ -10,8 +10,17 @@ body {
   padding-right: 70px;
   caption-side: bottom;
 }
+
 fieldset {
   width: 400px;
+}
+
+#predictive-variables input {
+  margin-right: 0.75mm;  
+}
+
+#predictive-variables label {
+  margin-right: 2mm;  
 }
 
 #container {

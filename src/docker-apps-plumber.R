@@ -558,7 +558,7 @@ function(req){
 
           <label for="decision-tree">
             <input type="checkbox" value="on", id="decision-tree" name="decision-tree" />
-            Decision tree
+            Mock decision tree
           </label>
           
           <label for="random-forest">

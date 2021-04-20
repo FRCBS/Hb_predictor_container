@@ -83,6 +83,7 @@ document.onreadystatechange = function() {
     inp = document.createElement('input');
     inp.setAttribute("type", "checkbox");
     inp.setAttribute("value", "on");
+    inp.checked = true;
     inp.setAttribute("id", "id_"+dvs[i]);
     inp.setAttribute("name", "dv_"+dvs[i]);
     l.appendChild(inp);

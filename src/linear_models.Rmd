@@ -20,6 +20,7 @@ params:
   effect_size_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
+  predictive_variables: NULL
   cores: 4
   iterations: 2000
   skip_train: FALSE
@@ -250,10 +251,10 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
   donor_variables = NULL
 }
 
-basic_prediction_variables <- setdiff(descript$Variable, c("donor", "Hb", "Hb_deferral")) 
-
+#basic_prediction_variables <- setdiff(descript$Variable, c("donor", "Hb", "Hb_deferral")) 
 # Modify this if you want to use a subset of variables for predicting
-basic_prediction_variables <- setdiff(basic_prediction_variables, c("previous_Hb_def", "consecutive_deferrals", "recent_deferrals"))
+#basic_prediction_variables <- setdiff(basic_prediction_variables, c("previous_Hb_def", "consecutive_deferrals", "recent_deferrals"))
+basic_prediction_variables <- params$predictive_variables
 
 basic_variables <- setdiff(basic_prediction_variables, "previous_Hb")
 basic_variables_icp <- setdiff(basic_prediction_variables, "Hb_first")
@@ -358,6 +359,8 @@ kable(donor_descript)
 ```{r Summary plots for males, echo = FALSE, eval=compute_male}
 #Plot distributions for male donors
 
+color = "blue"
+
 convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
 temp_donors <- data.male$donor
 
@@ -366,7 +369,7 @@ pmale <- data.male %>%
   select(all_of(descript$Variable))
   #mutate(across(convert_to_integer, as.integer))
 
-pmale <- summary_plotter(pmale, descript, "blue")  
+pmale <- summary_plotter(pmale, descript, color)  
 pmale
 
 if (!is.null(params$donor_specific_file)) {
@@ -374,11 +377,11 @@ if (!is.null(params$donor_specific_file)) {
   pmale2 <- findonor_and_snip_and_prs %>%
     filter(donor %in% temp_donors) # %>%
     #mutate(across(convert_to_integer, as.integer)) %>%
-  pmale2 <- summary_plotter(pmale2, donor_descript, "blue")
+  pmale2 <- summary_plotter(pmale2, donor_descript, color)
   pmale2
 }
 
-time_series_length_plotter(data.male)
+time_series_length_plotter(data.male, color)
   
 rm(data.male2);
 ```
@@ -392,6 +395,8 @@ rm(data.male2);
 ```{r Summary plots for females, echo = FALSE, eval=compute_female}
 #Plot distributions for female donors
 
+color = "orange"
+
 temp_donors <- data.female$donor
 
 convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
@@ -400,7 +405,7 @@ pfemale <- data.female %>%
   select(all_of(descript$Variable)) #%>%
   #mutate(across(convert_to_integer, as.integer))
 
-pfemale <- summary_plotter(pfemale, descript, "orange")
+pfemale <- summary_plotter(pfemale, descript, color)
 pfemale
 
 # pfemale <- data.female2 %>%
@@ -417,7 +422,7 @@ if (!is.null(params$donor_specific_file)) {
   #convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
   pfemale2 <- findonor_and_snip_and_prs %>%
     filter(donor %in% temp_donors) #%>%
-  pfemale2 <- summary_plotter(pfemale2, donor_descript, "orange")
+  pfemale2 <- summary_plotter(pfemale2, donor_descript, color)
     #mutate_at(vars(convert_to_integer), as.integer)
   # pfemale2 <- female_donor_specific %>%
   #   keep(is.numeric) %>%
@@ -429,7 +434,8 @@ if (!is.null(params$donor_specific_file)) {
   #   geom_histogram(fill = "orange")
   pfemale2
 }
-time_series_length_plotter(data.female)
+time_series_length_plotter(data.female, color)
+
 rm(data.female2);
 ```
 
@@ -482,13 +488,13 @@ scores <- get_scores(fit, params$Hb_cutoff_male, stan.preprocessed.male.nofix$pa
 test_labels <- ifelse(original_Hb < params$Hb_cutoff_male, 1, 0)
 
 val1.m <- validate_fit(fit, 
-                       original_Hb, test_labels, params$Hb_cutoff_male, scores=scores,
+                       original_Hb, test_labels, params$Hb_cutoff_male, score=scores,
                        stan_parameters, pretty_variables, metric = "mean", cat.plot = FALSE)
 #val1.m
 
 val1.m$posterior.plot
 val1.m$scatter_plot
-val1.m$conf.matrix.plot
+val1.m$confusion.matrix.plot
 val1.m$roc_plot
 val1.m$pr_plot
 
@@ -543,7 +549,7 @@ val1.f <- validate_fit(fit,
 
 val1.f$posterior.plot
 val1.f$scatter_plot
-val1.f$conf.matrix.plot
+val1.f$confusion.matrix.plot
 val1.f$roc_plot
 val1.f$pr_plot
 
@@ -600,7 +606,7 @@ val1.m.icp <- validate_fit(fit,
 
 val1.m.icp$posterior.plot
 val1.m.icp$scatter_plot
-val1.m.icp$conf.matrix.plot
+val1.m.icp$confusion.matrix.plot
 val1.m.icp$roc_plot
 val1.m.icp$pr_plot
 
@@ -653,7 +659,7 @@ val1.f.icp <- validate_fit(fit,
 
 val1.f.icp$posterior.plot
 val1.f.icp$scatter_plot
-val1.f.icp$conf.matrix.plot
+val1.f.icp$confusion.matrix.plot
 val1.f.icp$roc_plot
 val1.f.icp$pr_plot
 

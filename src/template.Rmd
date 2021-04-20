@@ -208,27 +208,29 @@ summary_rows <- list()  # This is used to construct the summary table in the end
 
 
 
-### Variables used in prediction
+### Donation-specific variables
 
 ```{r, echo=FALSE}
 kable(descript)
+```
+
+### Donor-specific variables
+
+```{r, echo=FALSE}
 kable(donor_descript)
 ```
 
 ```{r, results="asis", echo=FALSE}
-cat(sprintf("# Summary plots of variables (%s)\n", params$gender))
+cat(sprintf("### Summary plots of variables (%s)\n", params$gender))
 ```
 
-```{asis, echo=compute_male}
-### Summary plots of variables (male)
-```
 
 ```{r Summary plots for males, echo = FALSE}
 #Plot distributions for male donors
 
 #color = ifelse(params$gender=="male", "blue", ifelse(params$gender=="female", "orange", "black"))
 g <- params$gender
-color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "black")
+color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "green")
 
 temp_donors <- data$donor
 
@@ -292,7 +294,7 @@ pdata2
 # }
 # rm(data.male2, pmale);
 
-time_series_length_plotter(data)
+time_series_length_plotter(data, color)
 ```
 
 
@@ -319,9 +321,9 @@ rm(data.male); invisible(gc(reset = TRUE))
 ```{r}
 dummy_plots <- function(df) {
   result <- list()
-  result$conf_matrix_plot <- create_confusion_matrix_plot(df$deferral, df$predicted_labels)
-  result$roc_plot <- create_roc_new(df$deferral, df$scores)
-  result$pr_plot <- create_precision_recall_new(df$deferral, df$scores)
+  result$confusion_matrix_plot <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
+  result$roc_plot <- create_roc_new(df$original_label, df$score)
+  result$pr_plot <- create_precision_recall_new(df$original_label, df$score)
   result$f1_ci <- get_f1_ci(df)
   return(result)
 }
@@ -331,18 +333,18 @@ dummy_plots <- function(df) {
 # Load first datasets
 
 n=500   # We create n random rows
-df <- tibble(observed = rnorm(n, 150, 20),
-             predicted = rnorm(n, 150, 20),
-             deferral         = as.integer(observed < params$Hb_cutoff_male),
-             predicted_labels = as.integer(predicted < params$Hb_cutoff_male),
-             scores           = rnorm(n))
+df <- tibble(original_value  = rnorm(n, 150, 20),
+             predicted_value = rnorm(n, 150, 20),
+             original_label  = as.integer(original_value < params$Hb_cutoff_male),
+             predicted_label = as.integer(predicted_value < params$Hb_cutoff_male),
+             score           = rnorm(n))
 
 
 # Create the plots
 results_decision_tree <- dummy_plots(df)
 
 # Show the plots
-results_decision_tree$conf_matrix_plot
+results_decision_tree$confusion_matrix_plot
 results_decision_tree$roc_plot 
 results_decision_tree$pr_plot
 
