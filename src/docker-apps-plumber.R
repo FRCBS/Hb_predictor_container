@@ -48,7 +48,7 @@ check_columns <- function(got, expected) {
 #' @post /hb-predictor2
 #' @parser multi
 #' @serializer json
-function(req, parametrit){
+hb_predictor2 <- function(req){
   cat(sprintf("Container version is %s\n", container_version))
   if (Sys.getenv("TZ") == "") {
     Sys.setenv("TZ"="Europe/Helsinki")
@@ -74,7 +74,23 @@ function(req, parametrit){
   #separator <- req$postBody[[1]]
   #readr::write_lines(req$postBody, "/tmp/poista.bin", sep="\r\n")
   separator <- ""
-  writeBin(req$bodyRaw, con="/tmp/raw_form_data.bin")
+  cat("tassa\n")
+  #  writeBin(req$bodyRaw, con="/tmp/raw_form_data.bin")
+  # Copy binary data from connection req$.bodyData to file "/tmp/raw_form_data.bin"
+  to <- file("/tmp/raw_form_data.bin", "w+b")
+  cat("tassa2\n")
+  while (TRUE) {
+    #cat("tassa3\n")
+    data <- readBin(req$.bodyData, what="raw", 1024)
+    if (length(data) == 0) break
+    writeBin(data, to)
+  }
+  #writeBin(req$.bodyData, con="/tmp/raw_form_data.bin")
+  close(to)
+#   return(NULL)
+# }  
+# 
+# hb_predictor3 <- function() {
   command <- sprintf("./parse /tmp/raw_form_data.bin \"%s\" /tmp/parsed.json", separator)
   system(command)
   post <- rjson::fromJSON(file="/tmp/parsed.json")
@@ -457,7 +473,7 @@ function(req, parametrit){
 #' Show the html page
 #' @get /hb-predictor
 #' @serializer html
-function(req){
+hb_predictor <- function(req){
   response = sprintf('
   <html>
   

@@ -130,6 +130,7 @@ document.onreadystatechange = function() {
     };
     */
     
+//    httpRequest.onreadystatechange = handleResponseForUpload;
     httpRequest.onreadystatechange = handleResponse;
     //httpRequest.timeout = 5000;
     httpRequest.ontimeout = handleTimeout;
@@ -147,7 +148,7 @@ document.onreadystatechange = function() {
     
     start_time=Date.now();
     set_time(0);
-    interval_id = window.setInterval(interval_callback, 1000);
+    interval_id = window.setInterval(interval_callback, 1000);  // Once a second
     document.getElementById("start-time").innerHTML = new Date().toString();//.substr(0, 19);
     document.getElementById("info-container").removeAttribute("hidden");
     
@@ -167,8 +168,8 @@ document.onreadystatechange = function() {
     console.log("Abort");
   }
 
-  function handleResponse() {
-    console.log("In handleResponse, readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
+  function handleResponseForUpload() {
+    console.log("In handleResponseForUpload, readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
     if (httpRequest.readyState == 4 && httpRequest.status == 200) {                                   // SUCCESS
       //  httpRequest.overrideMimeType("application/json");
       //document.getElementsByClassName("lds-spinner")[0].setAttribute("hidden", "hidden");
@@ -186,8 +187,53 @@ document.onreadystatechange = function() {
         document.getElementById("submit").disabled = false;
         return;
       }
-      document.getElementById("info").innerHTML += data.result[0];
-      document.getElementById("table_container").innerHTML = data.summary_table[0];
+      var exampleSocket = new WebSocket("ws://0.0.0.0:8080/");
+      exampleSocket.onmessage = function (event) {
+	      console.log(event.data);
+	      //divi.innerHTML += p("Received: " + event.data);
+      }
+      exampleSocket.onopen = function (event) {
+	      console.log("Websocket opened");
+	      //divi.innerHTML += p("Websocket opened");
+      }
+      exampleSocket.onclose = function (event) {
+	      console.log("Websocket closed");
+	      //divi.innerHTML += p("Websocket closed");
+      }
+      exampleSocket.send("start");
+    } else if (httpRequest.readyState == 4 && httpRequest.status != 200) {                            // FAIL
+      console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
+      stop_waiting(interval_id);
+      //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
+      //clearInterval(interval_id);  // stop the timer
+      el = document.getElementById("error_messages");
+      el.innerHTML = "<p>Server error!  readyState: " + httpRequest.readyState + " status: " + httpRequest.status + "</p>  ";
+    }
+  }
+  
+  function process_json_result(data) {
+          //  httpRequest.overrideMimeType("application/json");
+      //document.getElementsByClassName("lds-spinner")[0].setAttribute("hidden", "hidden");
+      //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
+      //clearInterval(interval_id);  // stop the timer
+      stop_waiting(interval_id);
+      document.getElementById("finish-time-container").style.display = "block";
+      document.getElementById("finish-time").innerHTML = new Date().toString();//.substr(0, 19);
+      
+
+      if ("error_messages" in data && data.error_messages.length > 0) {
+        el = document.getElementById("error_messages");
+        for (i=0; i < data.error_messages.length; ++i) {
+          el.innerHTML += "<p>" + data.error_messages[i] + "</p>";
+        }
+        document.getElementById("submit").disabled = false;
+        return;
+      }
+      
+      // Show information about input and preprocessed dataframes
+      document.getElementById("info").innerHTML += data.result;
+      // Show summary table
+      document.getElementById("table_container").innerHTML = data.summary_table;
       
       if (!document.getElementById("random-forest").checked) {
         document.getElementById("variable-importance").style.display = "none";
@@ -215,15 +261,27 @@ document.onreadystatechange = function() {
       
       if (document.querySelector('input[name="input_format"]:checked').value == "Preprocessed")
         document.getElementById("preprocessed").style.display = "none";
+  }
+  
+  function handleResponse() {
+    console.log("In handleResponse, readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
+    if (httpRequest.readyState == 4 && httpRequest.status == 200) {                                   // SUCCESS
+       var data = JSON.parse(httpRequest.responseText);
+       process_json_result(data);
     } else if (httpRequest.readyState == 4 && httpRequest.status != 200) {                            // FAIL
       console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
-      document.getElementsByClassName("lds-spinner")[0].style.display = "none";
-      clearInterval(interval_id);  // stop the timer
+      //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
+      //clearInterval(interval_id);  // stop the timer
+      stop_waiting(interval_id);
       el = document.getElementById("error_messages");
       el.innerHTML = "<p>Server error!  readyState: " + httpRequest.readyState + " status: " + httpRequest.status + "</p>  ";
     }
   }
   
+  function stop_waiting(interval_id) {
+    document.getElementsByClassName("lds-spinner")[0].style.display = "none";
+    clearInterval(interval_id);  // stop the timer
+  }
   
   function set_time(milliseconds) {
 	  date = new Date(milliseconds).toISOString().substr(11, 8);
