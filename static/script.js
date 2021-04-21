@@ -130,8 +130,8 @@ document.onreadystatechange = function() {
     };
     */
     
-//    httpRequest.onreadystatechange = handleResponseForUpload;
-    httpRequest.onreadystatechange = handleResponse;
+    httpRequest.onreadystatechange = handleResponseForUpload;
+    //httpRequest.onreadystatechange = handleResponse;
     //httpRequest.timeout = 5000;
     httpRequest.ontimeout = handleTimeout;
     httpRequest.onerror = handleError;
@@ -173,10 +173,8 @@ document.onreadystatechange = function() {
     if (httpRequest.readyState == 4 && httpRequest.status == 200) {                                   // SUCCESS
       //  httpRequest.overrideMimeType("application/json");
       //document.getElementsByClassName("lds-spinner")[0].setAttribute("hidden", "hidden");
-      document.getElementsByClassName("lds-spinner")[0].style.display = "none";
-      clearInterval(interval_id);  // stop the timer
-      document.getElementById("finish-time-container").style.display = "block";
-      document.getElementById("finish-time").innerHTML = new Date().toString();//.substr(0, 19);
+      //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
+      //clearInterval(interval_id);  // stop the timer
       var data = JSON.parse(httpRequest.responseText);
 
       if ("error_messages" in data && data.error_messages.length > 0) {
@@ -185,22 +183,28 @@ document.onreadystatechange = function() {
           el.innerHTML += "<p>" + data.error_messages[i] + "</p>";
         }
         document.getElementById("submit").disabled = false;
+        stop_waiting(interval_id);
+        document.getElementById("finish-time-container").style.display = "block";
+        document.getElementById("finish-time").innerHTML = new Date().toString();//.substr(0, 19);
+
         return;
       }
       var exampleSocket = new WebSocket("ws://0.0.0.0:8080/");
       exampleSocket.onmessage = function (event) {
-	      console.log(event.data);
+	      console.log("Got message from server");
+	      process_json_result(JSON.parse(event.data));
 	      //divi.innerHTML += p("Received: " + event.data);
       }
       exampleSocket.onopen = function (event) {
 	      console.log("Websocket opened");
 	      //divi.innerHTML += p("Websocket opened");
+	      exampleSocket.send("start");
       }
       exampleSocket.onclose = function (event) {
 	      console.log("Websocket closed");
 	      //divi.innerHTML += p("Websocket closed");
       }
-      exampleSocket.send("start");
+      
     } else if (httpRequest.readyState == 4 && httpRequest.status != 200) {                            // FAIL
       console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
       stop_waiting(interval_id);
@@ -221,6 +225,7 @@ document.onreadystatechange = function() {
       document.getElementById("finish-time").innerHTML = new Date().toString();//.substr(0, 19);
       
 
+      console.log("Type of data is " + typeof(data))
       if ("error_messages" in data && data.error_messages.length > 0) {
         el = document.getElementById("error_messages");
         for (i=0; i < data.error_messages.length; ++i) {

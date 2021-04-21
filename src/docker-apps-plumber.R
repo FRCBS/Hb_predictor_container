@@ -73,7 +73,6 @@ hb_predictor2 <- function(req){
   
   #separator <- req$postBody[[1]]
   #readr::write_lines(req$postBody, "/tmp/poista.bin", sep="\r\n")
-  separator <- ""
   cat("tassa\n")
   #  writeBin(req$bodyRaw, con="/tmp/raw_form_data.bin")
   # Copy binary data from connection req$.bodyData to file "/tmp/raw_form_data.bin"
@@ -87,10 +86,11 @@ hb_predictor2 <- function(req){
   }
   #writeBin(req$.bodyData, con="/tmp/raw_form_data.bin")
   close(to)
-#   return(NULL)
-# }  
-# 
-# hb_predictor3 <- function() {
+  return(list())
+}
+
+hb_predictor3 <- function() {
+  separator <- ""
   command <- sprintf("./parse /tmp/raw_form_data.bin \"%s\" /tmp/parsed.json", separator)
   system(command)
   post <- rjson::fromJSON(file="/tmp/parsed.json")

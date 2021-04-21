@@ -65,7 +65,10 @@ s <- runServer("0.0.0.0", 8080,
 
                      ws$onMessage(function(binary, message) {
                        cat("Server received message:", message, "\n")
-                       ws$send("Hello from server")
+                       #result <- list()
+                       result <- hb_predictor3()
+                       result <- rjson::toJSON(result)
+                       ws$send(result)
                      })
                      
                      ws$onClose(function() {
