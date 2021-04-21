@@ -24,22 +24,25 @@ COPY /static/bootstrap.min.css /static/bootstrap.min.css
 COPY /static/bloodservice_logo.png /static/bloodservice_logo.png
 COPY /static/FundedbyEBA.jpg /static/FundedbyEBA.jpg
 
-COPY /src/docker-server-plumber.R /src/docker-server-plumber.R
-COPY /src/docker-apps-plumber.R /src/docker-apps-plumber.R
 #COPY /src/ppc.R /src/ppc.R
-COPY /src/enrich_deferrals_rf.R /src/enrich_deferrals_rf.R
-COPY /src/new_preprocess.R /src/new_preprocess.R
-COPY /src/sanquin_preprocess.R /src/sanquin_preprocess.R
-COPY /src/helper_functions.R /src/helper_functions.R
-COPY /src/validate_stan_fit.R /src/validate_stan_fit.R
-COPY /src/jarkko_create_datasets.R /src/jarkko_create_datasets.R
-COPY /src/hb-predictor.sh /src/hb-predictor.sh
-COPY /src/hb-predictor-helper.R /src/hb-predictor-helper.R
-COPY /src/linear_models.Rmd /src/linear_models.Rmd
-COPY /src/template.Rmd /src/template.Rmd
-COPY /src/random_forest.Rmd /src/random_forest.Rmd
-COPY /src/Makefile /src/Makefile
-COPY /src/parse.cpp /src/parse.cpp
+
+# COPY /src/docker-server-plumber.R /src/docker-server-plumber.R
+# COPY /src/docker-apps-plumber.R /src/docker-apps-plumber.R
+# COPY /src/enrich_deferrals_rf.R /src/enrich_deferrals_rf.R
+# COPY /src/new_preprocess.R /src/new_preprocess.R
+# COPY /src/sanquin_preprocess.R /src/sanquin_preprocess.R
+# COPY /src/helper_functions.R /src/helper_functions.R
+# COPY /src/validate_stan_fit.R /src/validate_stan_fit.R
+# COPY /src/jarkko_create_datasets.R /src/jarkko_create_datasets.R
+# COPY /src/hb-predictor.sh /src/hb-predictor.sh
+# COPY /src/hb-predictor-helper.R /src/hb-predictor-helper.R
+# COPY /src/linear_models.Rmd /src/linear_models.Rmd
+# COPY /src/template.Rmd /src/template.Rmd
+# COPY /src/random_forest.Rmd /src/random_forest.Rmd
+# COPY /src/Makefile /src/Makefile
+# COPY /src/parse.cpp /src/parse.cpp
+
+COPY /src/docker-server-plumber.R /src/docker-apps-plumber.R /src/enrich_deferrals_rf.R /src/new_preprocess.R /src/sanquin_preprocess.R /src/helper_functions.R /src/validate_stan_fit.R /src/jarkko_create_datasets.R /src/hb-predictor.sh /src/hb-predictor-helper.R /src/linear_models.Rmd /src/template.Rmd /src/random_forest.Rmd /src/Makefile /src/parse.cpp /src/common.R /src/
 
 RUN make -C src
 

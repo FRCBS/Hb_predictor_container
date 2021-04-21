@@ -39,7 +39,7 @@ called `rocker/r-ubuntu`.
 
 Using command
 
-```docker build -f Dockerfile-r-base-tidyverse-binary-ubuntu -t toivoja/r-base-tidyverse .```
+```docker build -f Dockerfile-r-base-tidyverse -t toivoja/r-base-tidyverse .```
 
 we build an intermediate image that adds many additional packages to the above image.
 Some R packages are also installed from sources.
