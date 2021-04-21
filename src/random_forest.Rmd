@@ -190,24 +190,28 @@ if (sample_fraction < 1.0) {
 
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
-  findonor_and_snip_and_prs <- load_single(params$donor_specific_file)
-  #findonor_and_snip_and_prs <- load_single("/tmp/RtmpRUlZ9Z/preprocessed_data_3fdd430c88b5.rdata")
-  donor_descript <- donor_descript %>% filter(Variable %in% names(findonor_and_snip_and_prs))
-  donor_variables <- donor_descript$Variable
-  pretty_donor_variables <- donor_descript$Pretty
+  donor_specific_variables <- load_single(params$donor_specific_file)
+  #donor_specific_variables <- load_single("/tmp/RtmpRUlZ9Z/preprocessed_data_3fdd430c88b5.rdata")
   
-  data <- inner_join(data, findonor_and_snip_and_prs, by="donor")
+  #donor_descript <- donor_descript %>% filter(Variable %in% names(donor_specific_variables))
+  #donor_variables <- donor_descript$Variable
+  donor_variables <- donor_descript %>% filter(Variable %in% names(donor_specific_variables)) %>% pull(Variable)
+
+  #pretty_donor_variables <- donor_descript$Pretty
+  
+  data <- inner_join(data, donor_specific_variables, by="donor")
 } else {
   donor_variables = NULL
+  donor_specific_variables <- NULL
 }
 
 
 # Pretty names for parameters
-vars <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
+#vars <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
 
-if (!is.null(donor_variables)) {
-  vars     <- c(vars, pretty_donor_variables)
-}
+#if (!is.null(donor_variables)) {
+#  vars     <- c(vars, pretty_donor_variables)
+#}
 
 # Make sure the columns in data are in the same order as in the vars list (only needed for stan preprocessing)
 variables_in_order <- setdiff(descript$Variable, "donor")
@@ -261,7 +265,7 @@ summary_rows <- list()  # This is used to construct the summary table in the end
 ```{r, echo=FALSE, results="markup"}
 kable(descript)
 if (!is.null(params$donor_specific_file)) {
-  kable(donor_descript)
+  kable(donor_descript %>% filter(Variable %in% c(names(donor_specific_variables), "one_deferall")))
 }
 ```
 
@@ -295,14 +299,16 @@ pboth
 temp_donor_specific <- at_least_one_deferral
 tr <- tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
 if (!is.null(params$donor_specific_file)) {
-  temp_donor_specific <- findonor_and_snip_and_prs %>% 
-    inner_join(at_least_one_deferral)
+  temp_donor_specific <- donor_specific_variables %>% 
+    inner_join(at_least_one_deferral, by="donor")
 }
+
+message(sprintf("Column names are: %s\n", paste(names(temp_donor_specific), collapse=" ")))
 
 pdata2 <- temp_donor_specific %>%
   filter(donor %in% temp_donors)
 pdata2 <- summary_plotter(pdata2, 
-                          donor_descript %>% add_row(tr), 
+                          donor_descript,# %>% add_row(tr), 
                           color)
 pdata2
 

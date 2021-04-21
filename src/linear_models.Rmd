@@ -238,17 +238,18 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
   #donor_variables <- c("smoking", "bmi", "RNF43_mutant", "prs")
   #donor_variables <- c("smoking", "height", "weight", "RNF43_mutant", "prs")
   #pretty_donor_variables <- c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score")
-  findonor_and_snip_and_prs <- load_single(params$donor_specific_file)
-  if ("FERRITIN_LAST_DATE" %in% names(findonor_and_snip_and_prs))   # This variable is only included to be able to filter data in random_forest.Rmd
-    findonor_and_snip_and_prs <- findonor_and_snip_and_prs %>% select(-FERRITIN_LAST_DATE)
-  donor_descript <- donor_descript %>% filter(Variable %in% names(findonor_and_snip_and_prs))
-  donor_variables <- donor_descript$Variable
-  pretty_donor_variables <- donor_descript$Pretty
+  donor_specific_variables <- load_single(params$donor_specific_file)
+  if ("FERRITIN_LAST_DATE" %in% names(donor_specific_variables))   # This variable is only included to be able to filter data in random_forest.Rmd
+    donor_specific_variables <- donor_specific_variables %>% select(-FERRITIN_LAST_DATE)
+  donor_descript2 <- donor_descript %>% filter(Variable %in% names(donor_specific_variables))
+  donor_variables <- donor_descript2$Variable
+  pretty_donor_variables <- donor_descript2$Pretty
   
   
-  data <- inner_join(data, findonor_and_snip_and_prs, by="donor")
+  data <- inner_join(data, donor_specific_variables, by="donor")
 } else {
   donor_variables = NULL
+  donor_specific_variables <- NULL
 }
 
 #basic_prediction_variables <- setdiff(descript$Variable, c("donor", "Hb", "Hb_deferral")) 
@@ -344,7 +345,7 @@ effect_size_rows <- list() # This is for the effect sizes
 
 ```{r, echo=FALSE}
 kable(descript)
-kable(donor_descript)
+kable(donor_descript %>% filter(Variable %in% c(names(donor_specific_variables), "one_deferall")))
 ```
 
 
@@ -364,6 +365,11 @@ color = "blue"
 convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
 temp_donors <- data.male$donor
 
+# Find out do donors have at least one deferral
+at_least_one_deferral <- data.male %>% 
+  group_by(donor) %>% 
+  summarise(one_deferral=max(Hb_deferral))
+
 pmale <- data.male %>%
   filter(first_event == FALSE) %>%
   select(all_of(descript$Variable))
@@ -372,14 +378,17 @@ pmale <- data.male %>%
 pmale <- summary_plotter(pmale, descript, color)  
 pmale
 
+temp_donor_specific <- at_least_one_deferral
 if (!is.null(params$donor_specific_file)) {
-  #convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
-  pmale2 <- findonor_and_snip_and_prs %>%
-    filter(donor %in% temp_donors) # %>%
+  #convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(donor_specific_variables))
+  temp_donor_specific <- donor_specific_variables %>% 
+    inner_join(at_least_one_deferral, by="donor")
     #mutate(across(convert_to_integer, as.integer)) %>%
-  pmale2 <- summary_plotter(pmale2, donor_descript, color)
-  pmale2
 }
+pmale2 <- temp_donor_specific %>%
+  filter(donor %in% temp_donors)
+pmale2 <- summary_plotter(pmale2, donor_descript, color)
+pmale2
 
 time_series_length_plotter(data.male, color)
   
@@ -399,6 +408,11 @@ color = "orange"
 
 temp_donors <- data.female$donor
 
+# Find out do donors have at least one deferral
+at_least_one_deferral <- data.female %>% 
+  group_by(donor) %>% 
+  summarise(one_deferral=max(Hb_deferral))
+
 convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
 pfemale <- data.female %>%
   filter(first_event == FALSE) %>%
@@ -417,23 +431,17 @@ pfemale
 #             facet_wrap(~ key, scales = "free") +
 #             geom_histogram(fill = "orange")
 
-
+temp_donor_specific <- at_least_one_deferral
 if (!is.null(params$donor_specific_file)) {
-  #convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(findonor_and_snip_and_prs))
-  pfemale2 <- findonor_and_snip_and_prs %>%
-    filter(donor %in% temp_donors) #%>%
-  pfemale2 <- summary_plotter(pfemale2, donor_descript, color)
-    #mutate_at(vars(convert_to_integer), as.integer)
-  # pfemale2 <- female_donor_specific %>%
-  #   keep(is.numeric) %>%
-  #   to_pretty(donor_descript) %>%
-  #   gather() %>%
-  #   mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
-  #   ggplot(aes(value)) +
-  #   facet_wrap(~ key, scales = "free") +
-  #   geom_histogram(fill = "orange")
-  pfemale2
+  #convert_to_integer <- intersect(c("smoking", "RNF43_mutant"), names(donor_specific_variables))
+  temp_donor_specific <- donor_specific_variables %>% 
+    inner_join(at_least_one_deferral, by="donor")
 }
+pfemale2 <- temp_donor_specific %>%
+  filter(donor %in% temp_donors)
+pfemale2 <- summary_plotter(pfemale2, donor_descript, color)
+pfemale2
+
 time_series_length_plotter(data.female, color)
 
 rm(data.female2);
