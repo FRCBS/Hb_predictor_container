@@ -86,6 +86,10 @@ fieldset {
   color: red;
 }
 
+#warning_messages p {
+  color: yellow;
+}
+
 #spinner-container {
   text-align: center;
 }

@@ -42,6 +42,16 @@ check_columns <- function(got, expected) {
   }
 }
 
+create_summary_table <- function(summary_table) {
+  cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
+            "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+  summary_table_string <- kable(summary_table %>% select(!!!cols), format="html", digits=3, 
+                                caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE),\
+                           area under ROC curve (AUROC), and area under precision-recall curve (AUPR).",
+                                align="llllll",
+                                table.attr = "id='errors_table' class='table table-condensed'")
+  return(summary_table_string)
+}
 
 
 #' Read the input form and learn the models, and show the results.
@@ -89,7 +99,7 @@ hb_predictor2 <- function(req){
   return(list())
 }
 
-hb_predictor3 <- function() {
+hb_predictor3 <- function(ws) {
   separator <- ""
   command <- sprintf("./parse /tmp/raw_form_data.bin \"%s\" /tmp/parsed.json", separator)
   system(command)
@@ -191,7 +201,8 @@ hb_predictor3 <- function() {
       }
     }
     donation_info <- sprintf("<p>Donations: filename=%s, rows=%i, columns=%i</p>", donations_o$filename, nrow(donations), ncol(donations))
-
+    ws$send(rjson::toJSON(list(type="info", result=donation_info)))
+    
     # Check donor dataframe
     donors <- read_delim(donors_o$tempfile, col_names=use_col_names, delim='|')
     if (input_format == "FRCBS") {
@@ -207,6 +218,7 @@ hb_predictor3 <- function() {
       }
     }
     donor_info <- sprintf("<p>Donor: filename=%s, rows=%i, columns=%i</p>", donors_o$filename, nrow(donors), ncol(donors))
+    ws$send(rjson::toJSON(list(type="info", result=donor_info)))
   } else {
     donation_info <- ""
     donor_info <- ""
@@ -252,6 +264,7 @@ hb_predictor3 <- function() {
     donation_specific_filename <- post$preprocessed_fileUpload$tempfile
     fulldata_preprocessed <- load_single(donation_specific_filename)
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
+    ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
   } else {
     # Do the preprocessing
     tic("Preprocessing data")
@@ -279,6 +292,7 @@ hb_predictor3 <- function() {
     }
     post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
+    ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
     #donation_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
     donation_specific_filename <- "../output/preprocessed.rdata"
     save(fulldata_preprocessed, file=donation_specific_filename)
@@ -321,6 +335,7 @@ hb_predictor3 <- function() {
   summary_tables <- list()
   effect_size_tables <- list()
   details_df <- tibble(id=character(0), pretty=character(0), gender=character(0), html=character(0), pdf=character(0))
+  details_dfs <- list()
   
   ####################
   #
@@ -359,19 +374,33 @@ hb_predictor3 <- function() {
       )
       if (!is.null(error_messages)) {
         cat(paste0(error_messages))
-        return(list(error_messages=error_messages))
+        ws$send(rjson::toJSON(list(type="error", error_messages=error_messages)))
+        break
       }      
-      summary_tables[[gender]] <- read_csv(filename)
+      s <- read_csv(filename)
+      summary_tables[[gender]] <- s
+      #ws$send(rjson::toJSON(list(type="summary", df = purrr::transpose(s), colnames = colnames(s))))
+      ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
+      
       effect_size_tables[[gender]] <- read_csv(effect_size_filename)
       
       #m <- myparams$method
       pretty <- case_when(m=="lmm" ~ "Linear mixed model", m=="dlmm" ~ "Dynamic linear mixed model", TRUE ~ "Linear mixed models")
-      details_df <- details_df %>% 
-        add_row(id=sprintf("detail-linear-models-%s", gender), 
+      t <- 
+        tibble(id=sprintf("detail-linear-models-%s", gender), 
                 pretty=pretty,
                 gender=gender,
                 html=sprintf("output/results-%s.html", gender),
                 pdf=sprintf("output/results-%s.pdf", gender))
+      details_dfs[[length(details_dfs)+1]] <- t
+      
+      ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
+      # details_df <- details_df %>% 
+      #   add_row(id=sprintf("detail-linear-models-%s", gender), 
+      #           pretty=pretty,
+      #           gender=gender,
+      #           html=sprintf("output/results-%s.html", gender),
+      #           pdf=sprintf("output/results-%s.pdf", gender))
     }
   }
   
@@ -419,16 +448,28 @@ hb_predictor3 <- function() {
       )
       if (!is.null(error_messages)) {
         cat(paste0(error_messages))
-        return(list(error_messages=error_messages))
+        ws$send(rjson::toJSON(list(type="error", error_messages=error_messages)))
+        break
       }
-      summary_tables[[paste(m, gender, sep="-")]] <- read_csv(temp_filename)
+      s <- read_csv(temp_filename)
+      summary_tables[[paste(m, gender, sep="-")]] <- s
+      ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
       
-      details_df <- details_df %>% 
-        add_row(id=sprintf("detail-%s-%s", m, gender), 
+      t <-
+        tibble(id=sprintf("detail-%s-%s", m, gender), 
                 pretty=str_to_sentence(pretty),
                 gender=gender,
                 html=sprintf("output/results-%s-%s.html", m, gender),
                 pdf=sprintf("output/results-%s-%s.pdf", m, gender))
+      details_dfs[[length(details_dfs)+1]] <- t
+      ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
+      
+      # details_df <- details_df %>% 
+      #   add_row(id=sprintf("detail-%s-%s", m, gender), 
+      #           pretty=str_to_sentence(pretty),
+      #           gender=gender,
+      #           html=sprintf("output/results-%s-%s.html", m, gender),
+      #           pdf=sprintf("output/results-%s-%s.pdf", m, gender))
       
       # should I read here the effect size table?
       #effect_size_tables[[paste(m, gender, sep="-")]] <- read_csv(temp_effect_size_filename)
@@ -446,25 +487,22 @@ hb_predictor3 <- function() {
   ####################
   
   summary_table <- bind_rows(summary_tables)
-  effect_size_table <- bind_rows(effect_size_tables)
-  write_csv(summary_table, "../output/summary.csv")
-  write_csv(effect_size_table, "../output/effect-size.csv")
-  cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
-  summary_table_string <- kable(summary_table %>% select(!!!cols), format="html", digits=3, 
-                         caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE),\
-                           area under ROC curve (AUROC), and area under precision-recall curve (AUPR).",
-                         align="llllll",
-                         table.attr = "id='errors_table' class='table table-condensed'")
+  summary_table_string <- create_summary_table(summary_table)
+  ws$send(rjson::toJSON(list(type="summary", summary_table_string = summary_table_string)))
   
-
+  write_csv(summary_table, "../output/summary.csv")
+  
+  effect_size_table <- bind_rows(effect_size_tables)
+  write_csv(effect_size_table, "../output/effect-size.csv")
+  
 
   
   #result2 <- c(upload_info, s1, s2, s3, myparams_string, time_start_s, time_end_s, total_time)
-  result2 <- c(donation_info, donor_info, preprocessed_info)
-  result2 <- paste(result2, collapse="\n")
+  #result2 <- c(donation_info, donor_info, preprocessed_info)
+  #result2 <- paste(result2, collapse="\n")
   
-  
-  return(list(result=result2, summary_table=as.character(summary_table_string), details_df = purrr::transpose(details_df)))
+  details_df <- bind_rows(details_dfs)
+  return(list(type="final", summary_table=as.character(summary_table_string), details_df = purrr::transpose(details_df)))
   
 }
 
@@ -598,19 +636,17 @@ hb_predictor <- function(req){
           <div class="lds-spinner" hidden ><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
         </div>
         <div id="error_messages"></div>
+        <div id="warning_messages"></div>
         <div id="info"></div>
       </div>
       
       <div id="results-container" hidden>
         <h2>Results</h2>
-        <!--
-        <p><a href="output/results-male.html">Result page for males</a></p>
-        <p><a href="output/results-female.html">Result page for females</a></p>
-        <p><a href="output/results-male.pdf">Results for males in pdf</a></p>
-        <p><a href="output/results-female.pdf">Result for females in pdf</a></p>
-        --> 
+
         <h3>Summary</h3>
         <div id="table_container"></div>
+        <table id="summary-table" class="table table-condensed">
+        </table>
         <p>Load the summary table in CSV form from <a href="/output/summary.csv">here.</a></p>
         <p id="effect-size">Load the effect size table in CSV form from <a href="/output/effect-size.csv">here.</a></p>
         <p id="variable-importance">Load the variable importance table in CSV form from <a href="/output/variable-importance.csv">here.</a></p>
@@ -619,12 +655,6 @@ hb_predictor <- function(req){
         <h3>Detailed result pages</h3>
         <table id="detailed-results" class="table table-condensed">
         <tr> <th>Model</th> <th>Gender</th> <th>html</th> <th>pdf</th> </tr>
-        <!--
-        <tr id="detail-lmm-male"> <td>LMM (male)</td> <td>male</td> <td><a href="output/results-male.html" target="_blank" >html</a></td> <td><a href="output/results-male.pdf" target="_blank" >pdf</a></td> </tr>
-        <tr id="detail-lmm-female"> <td>LMM (female)</td> <td>female</td> <td><a href="output/results-female.html" target="_blank" >html</a></td> <td><a href="output/results-female.pdf" target="_blank" >pdf</a></td> </tr>
-        <tr id="detail-rf"> <td>Random forest</td> <td>both</td> <td><a href="output/results-random-forest-both.html" target="_blank" >html</a></td> <td><a href="output/results-random-forest-both.pdf" target="_blank" >pdf</a></td> </tr>
-        <tr id="detail-dt"> <td>Decision tree</td> <td>both</td> <td><a href="output/results-decision-tree-both.html" target="_blank" >html</a></td> <td><a href="output/results-decision-tree-both.pdf" target="_blank" >pdf</a></td> </tr>
-        -->
         </table>
       </div>
       

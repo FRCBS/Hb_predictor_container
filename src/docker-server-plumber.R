@@ -66,9 +66,22 @@ s <- runServer("0.0.0.0", 8080,
                      ws$onMessage(function(binary, message) {
                        cat("Server received message:", message, "\n")
                        #result <- list()
-                       result <- hb_predictor3()
-                       result <- rjson::toJSON(result)
-                       ws$send(result)
+                       error_messages <- tryCatch(
+                         error = function(cnd) {
+                           message("In error handler\n")
+                           error_messages <- c(sprintf("Error in %s call.\n", "hb_predictor3"), cnd$message)
+                           return(error_messages)
+                         },
+                         {
+                           result <- hb_predictor3(ws)
+                           NULL
+                         }
+                       )
+                       if (!is.null(error_messages)) {
+                         cat(paste0(error_messages))
+                         result <- list(type="final", error_messages=error_messages)
+                       }
+                       ws$send(rjson::toJSON(result))
                      })
                      
                      ws$onClose(function() {

@@ -191,9 +191,10 @@ document.onreadystatechange = function() {
       }
       var exampleSocket = new WebSocket("ws://0.0.0.0:8080/");
       exampleSocket.onmessage = function (event) {
-	      console.log("Got message from server");
-	      process_json_result(JSON.parse(event.data));
-	      //divi.innerHTML += p("Received: " + event.data);
+	  parsed = JSON.parse(event.data);
+	  process_json_result(parsed);
+	  console.log("Got message from server of type " + parsed.type);
+	  //divi.innerHTML += p("Received: " + event.data);
       }
       exampleSocket.onopen = function (event) {
 	      console.log("Websocket opened");
@@ -214,58 +215,94 @@ document.onreadystatechange = function() {
       el.innerHTML = "<p>Server error!  readyState: " + httpRequest.readyState + " status: " + httpRequest.status + "</p>  ";
     }
   }
-  
-  function process_json_result(data) {
-          //  httpRequest.overrideMimeType("application/json");
-      //document.getElementsByClassName("lds-spinner")[0].setAttribute("hidden", "hidden");
-      //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
-      //clearInterval(interval_id);  // stop the timer
-      stop_waiting(interval_id);
-      document.getElementById("finish-time-container").style.display = "block";
-      document.getElementById("finish-time").innerHTML = new Date().toString();//.substr(0, 19);
-      
 
-      console.log("Type of data is " + typeof(data))
-      if ("error_messages" in data && data.error_messages.length > 0) {
-        el = document.getElementById("error_messages");
-        for (i=0; i < data.error_messages.length; ++i) {
-          el.innerHTML += "<p>" + data.error_messages[i] + "</p>";
-        }
-        document.getElementById("submit").disabled = false;
-        return;
+    function add_rows_to_details_table(data) {
+	// Add pointers to separate result pages in the details table
+	console.log(`Details dataframe has ${data.details_df.length} rows`);
+	// get the tbody element under the table element
+	detailed_results = document.getElementById("detailed-results").firstElementChild;  
+	for (i=0; i < data.details_df.length; ++i) {
+            var wrapper= document.createElement('tbody');
+            e = data.details_df[i];
+            t = `<tr id="${e.id}"> <td>${e.pretty}</td> <td>${e.gender}</td> <td><a href="${e.html}" target="_blank" >html</a></td> <td><a href="${e.pdf}" target="_blank" >pdf</a></td> </tr>`;
+            wrapper.innerHTML = t;
+            console.log(t)
+            detailed_results.appendChild(wrapper.firstChild);
+	}
+    }
+
+
+    function add_error_messages(data) {
+	if ("error_messages" in data && data.error_messages.length > 0) {
+            el = document.getElementById("error_messages");
+            for (i=0; i < data.error_messages.length; ++i) {
+		el.innerHTML += "<p>" + data.error_messages[i] + "</p>";
+            }
+            document.getElementById("submit").disabled = false;
+            return;
+	}
+	
+    }
+
+    function add_warning_messages(data) {
+	if ("warning_messages" in data && data.warning_messages.length > 0) {
+            el = document.getElementById("warning_messages");
+            for (i=0; i < data.warning_messages.length; ++i) {
+		el.innerHTML += "<p>" + data.warning_messages[i] + "</p>";
+            }
+            document.getElementById("submit").disabled = false;
+            return;
+	}
+	
+    }
+
+    function process_json_result(data) {
+    
+      if (data.type == "final") {
+          //  httpRequest.overrideMimeType("application/json");
+	  //document.getElementsByClassName("lds-spinner")[0].setAttribute("hidden", "hidden");
+	  //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
+	  //clearInterval(interval_id);  // stop the timer
+	  stop_waiting(interval_id);
+	  document.getElementById("finish-time-container").style.display = "block";
+	  document.getElementById("finish-time").innerHTML = new Date().toString();//.substr(0, 19);
+	  
+
+	  console.log("Type of data is " + typeof(data))
+	  add_error_messages(data)
+	  add_warning_messages(data)
+	  
+	  
+	  if (!document.getElementById("random-forest").checked) {
+              document.getElementById("variable-importance").style.display = "none";
+              //document.getElementById("detail-rf").style.display = "none";
+	  }
+	  if (!document.getElementById("lmm").checked && !document.getElementById("dlmm").checked) {
+              document.getElementById("effect-size").style.display = "none";
+              //document.getElementById("detail-lmm-male").style.display = "none";
+              //document.getElementById("detail-lmm-female").style.display = "none";
+	  }
+	  
+	  //add_rows_to_details_table(data);
+	  
+	  document.getElementById("results-container").removeAttribute("hidden");  
+	  
+	  if (document.querySelector('input[name="input_format"]:checked').value == "Preprocessed")
+              document.getElementById("preprocessed").style.display = "none";
+      } else if (data.type == "info") {
+          // Show information about input and preprocessed dataframes
+	  document.getElementById("info").innerHTML += data.result;
+      } else if (data.type == "summary") {
+	  // Show summary table
+	  document.getElementById("table_container").innerHTML = data.summary_table_string;
+      } else if (data.type == "error") {
+	  // Show error
+	  add_error_messages(data)
+	  add_warning_messages(data)
+      } else if (data.type == "detail") {
+	  add_rows_to_details_table(data);
+	  document.getElementById("results-container").removeAttribute("hidden");  
       }
-      
-      // Show information about input and preprocessed dataframes
-      document.getElementById("info").innerHTML += data.result;
-      // Show summary table
-      document.getElementById("table_container").innerHTML = data.summary_table;
-      
-      if (!document.getElementById("random-forest").checked) {
-        document.getElementById("variable-importance").style.display = "none";
-        //document.getElementById("detail-rf").style.display = "none";
-      }
-      if (!document.getElementById("lmm").checked && !document.getElementById("dlmm").checked) {
-        document.getElementById("effect-size").style.display = "none";
-        //document.getElementById("detail-lmm-male").style.display = "none";
-        //document.getElementById("detail-lmm-female").style.display = "none";
-      }
-      
-      // Add pointers to separate result pages in the details table
-      console.log(`Details dataframe has ${data.details_df.length} rows`);
-      detailed_results = document.getElementById("detailed-results").firstElementChild;  // get the tbody element under the table element
-      for (i=0; i < data.details_df.length; ++i) {
-        var wrapper= document.createElement('tbody');
-        e = data.details_df[i];
-        t = `<tr id="${e.id}"> <td>${e.pretty}</td> <td>${e.gender}</td> <td><a href="${e.html}" target="_blank" >html</a></td> <td><a href="${e.pdf}" target="_blank" >pdf</a></td> </tr>`;
-        wrapper.innerHTML = t;
-        console.log(t)
-        detailed_results.appendChild(wrapper.firstChild);
-      }
-      
-      document.getElementById("results-container").removeAttribute("hidden");  
-      
-      if (document.querySelector('input[name="input_format"]:checked').value == "Preprocessed")
-        document.getElementById("preprocessed").style.display = "none";
   }
   
   function handleResponse() {

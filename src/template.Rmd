@@ -2,7 +2,7 @@
 #title: "Subset analyses"
 output: md_document
 params:
-  input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
+  input_file: NULL
   hlen: NULL
   hlen_exactly: FALSE
   sample_fraction: 1.0
@@ -20,7 +20,6 @@ params:
   iterations: 2000
   skip_train: FALSE
   create_datasets_bool: TRUE
-#  donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
   donor_specific_file: NULL
 ---
 
@@ -30,27 +29,18 @@ message(sprintf(">>>>>>>>>> Decision tree %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ```
 
 ```{r, results="asis", echo=FALSE, message=FALSE}
-#message("here")
 cat(sprintf("# Decision tree (%s)\n", params$gender))
 ```
 
 
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-#message("and here")
 suppressPackageStartupMessages(library(tidyverse))
-```
-
-```{r, echo = FALSE}
-
-#source("common.R")
-
 ```
 
 <!-- <h2> Initialization </h2> -->
 ```{r Setup, setup = TRUE, echo=FALSE, message=FALSE, results="hide"}
 
-message("taalla ollaan")
 
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(knitr))
@@ -66,7 +56,6 @@ suppressPackageStartupMessages(library(ROCR))
 suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
 suppressPackageStartupMessages(library(sn))
-#library(tidyselect)
 
 source("common.R")
 
@@ -79,20 +68,14 @@ for (name in names(params)) {
   message(sprintf("%s = ", name), params[[name]])
 }
 
-# These are used to select which computations to perform,
-# base on params$gender and params$method
-compute_male   <- params$gender %in% c("male", "both")
-compute_female <- params$gender %in% c("female", "both")
-compute_decision_tree  <- params$method %in% c("decision-tree", "both")
-compute_male_decision_tree <- compute_male && compute_decision_tree 
-compute_female_decision_tree <- compute_female && compute_decision_tree
+
 
 set.seed(123)
 if (!is.null(params$cores)) {
   options(mc.cores = params$cores)   # This option is in package parallel
 }
 
-message("taalla ollaan2")
+
 
 datadir = "../data/rdata/"
 rawresultdir = "../data/raw_results/"   # I store plot objects and tables in this directory
@@ -107,9 +90,7 @@ if (is.null(params$id)) {
 
 source("helper_functions.R")
 source("validate_stan_fit.R")
-#source("ppc.R")
 
-message("taalla ollaan3")
 data <- load_single(params$input_file) # Forgets the name of the object
 
 data <- data %>%
@@ -117,7 +98,7 @@ data <- data %>%
          donor = as.character(donor))   # For some reason this cannot be a factor
 
 
-message("taalla ollaan4")
+
 sample_fraction <- params$sample_fraction
 
 is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
@@ -142,7 +123,7 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample siz
   message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
 }
 
-message("taalla ollaan5")
+
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
   donor_specific_variables <- load_single(params$donor_specific_file)
@@ -156,29 +137,26 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
   donor_specific_variables <- NULL
 }
 
-message("taalla ollaan6")
+
 # Pretty names for parameters
 #vars <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
-message("taalla ollaan6.1")
+
 #if (!is.null(donor_variables)) {
 #  vars     <- c(vars, pretty_donor_variables)
 #}
-message("taalla ollaan6.2")
+
 # Make sure the columns in data are in the same order as in the vars list (only needed for stan preprocessing)
 variables_in_order <- setdiff(descript$Variable, "donor")
 if (!is.null(donor_variables)) {
-  message("taalla ollaan6.3")
   message(paste(variables_in_order, collapse=" "))
   message(paste(donor_variables, collapse=" "))
   message(paste(colnames(data), collapse=" "))
   data <- data %>% select(all_of(variables_in_order),
                           all_of(donor_variables), everything())
 } else {
-  message("taalla ollaan6.4")
   data <- data %>% select(all_of(variables_in_order), everything())
 }
 
-message("taalla ollaan7")
 if (params$gender == "male") {
   data <- data %>% filter(gender == "Men")
 } else if (params$gender == "female") {
@@ -189,14 +167,12 @@ sample_donors <- function(df, fraction) {
   donors <- df %>% select(donor) %>% distinct() %>% sample_frac(fraction, replace=FALSE) %>% pull(donor)
   return(df %>% filter(donor %in% donors))
 }
-message("taalla ollaan8")
 data <- sample_donors(data, sample_fraction)
 
 # Maybe this is not needed except for linear regression
 data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
-#data.female <- filter_based_on_number_of_donations(data.female, params$hlen, params$hlen_exactly)
 
-message("taalla ollaan9")
+
 
 summary_rows <- list()  # This is used to construct the summary table in the end
                    # It has columns Model, MAE, RMSE, AUROC, and AUPR
@@ -226,10 +202,9 @@ cat(sprintf("### Summary plots of variables (%s)\n", params$gender))
 ```
 
 
-```{r Summary plots for males, echo = FALSE}
-#Plot distributions for male donors
+```{r Summary plots, echo = FALSE}
+#Plot distributions for donors
 
-#color = ifelse(params$gender=="male", "blue", ifelse(params$gender=="female", "orange", "black"))
 g <- params$gender
 color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "green")
 
@@ -263,37 +238,7 @@ pdata2 <- summary_plotter(pdata2,
                           color)
 pdata2
 
-# data.male2 <- data.male %>%
-#   filter(first_event == FALSE) %>%
-#   select(all_of(descript$Variable)) %>%
-#   mutate(Hb_deferral = as.integer(Hb_deferral),
-#          warm_season = as.integer(warm_season),
-#          previous_Hb_def = as.integer(previous_Hb_def))
-# 
-# pmale <- data.male2 %>%
-#   keep(is.numeric) %>%
-#   to_pretty(descript) %>%
-#   gather() %>%
-#   mutate(key = factor(key, levels=descript$Pretty))  %>% # Don't sort alphabetically
-#   ggplot(aes(value)) +
-#   facet_wrap(~ key, scales = "free") +
-#   geom_histogram(fill = "blue")
-# pmale
-# 
-# if (!is.null(params$donor_specific_file)) {
-#   male_donor_specific <- donor_specific_variables %>%
-#     semi_join(data.male2, by="donor") %>%
-#     mutate(smoking = as.integer(smoking), RNF43_mutant = as.integer(RNF43_mutant)) %>%
-#     keep(is.numeric) %>%
-#     to_pretty(donor_descript) 
-#   male_donor_specific %>%
-#     gather() %>%
-#     mutate(key = factor(key, levels=donor_descript$Pretty))  %>% # Don't sort alphabetically
-#     ggplot(aes(value)) +
-#     facet_wrap(~ key, scales = "free") +
-#     geom_histogram(fill = "blue")
-# }
-# rm(data.male2, pmale);
+
 
 time_series_length_plotter(data, color)
 ```
@@ -315,10 +260,6 @@ rm(data.male); invisible(gc(reset = TRUE))
 ## Results
 
 
-```{asis, echo=compute_male_decision_tree}
-### Decision tree, male donors
-```
-
 ```{r}
 dummy_plots <- function(df) {
   result <- list()
@@ -330,14 +271,15 @@ dummy_plots <- function(df) {
 }
 ```
 
-```{r Decision tree male donors, results="hide"}
-# Load first datasets
+```{r Decision tree, results="hide"}
 
+# Instead of using the real input data, I create random data
 n=500   # We create n random rows
 df <- tibble(original_value  = rnorm(n, 150, 20),
              predicted_value = rnorm(n, 150, 20),
-             original_label  = as.integer(original_value < params$Hb_cutoff_male),
-             predicted_label = as.integer(predicted_value < params$Hb_cutoff_male),
+             gender = sample(c("Men", "Women"), n, replace = TRUE),
+             original_label  = as.integer(original_value < ifelse(gender=="Men", params$Hb_cutoff_male, params$Hb_cutoff_female)),
+             predicted_label = as.integer(predicted_value < ifelse(gender=="Men", params$Hb_cutoff_male, params$Hb_cutoff_female)),
              score           = rnorm(n))
 
 
@@ -351,7 +293,7 @@ results_decision_tree$pr_plot
 
 t <- tibble(Id="both-dt", Model="Decision tree", Gender=params$gender, 
             MAE=NA, RMSE=NA, MAE2=NA, RMSE2=NA) 
-message("Here7")
+
 t <- bind_cols(c(t, results_decision_tree$roc_plot$roc_ci, results_decision_tree$pr_plot$pr_ci, results_decision_tree$f1_ci))
 
 summary_rows[[length(summary_rows)+1]] <- t
@@ -375,32 +317,15 @@ save(results_decision_tree, file = paste(rawresultdir, sprintf("raw_result_%s_de
 
 
 
-
-
-
-
-
-
 ### Summary
 
 ```{r Summary}
 
-#str(error_rows)
-#df <- do.call(rbind, error_rows)
-# for (i in seq_along(error_rows)) {
-#   if (i == 1) {
-#     errors <- as_tibble(error_rows[[1]])
-#   } else {
-#     errors <- rbind(errors, error_rows[[i]])
-#   }
-# }  
-#errors <- as_tibble(df)
+
 summary_table <- bind_rows(summary_rows)
 summary_table <- summary_table %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
                             "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
 
-# Fix this to have real values !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#summary <- summary %>% mutate("AUROC value" = -1, "AUPR value" = -1, "F1 value" = -1)
 
 write_csv(summary_table, paste(rawresultdir, "errors_", id, ".csv", sep = ''))
 if (!is.null(params$summary_table_file)) {
@@ -410,6 +335,7 @@ if (!is.null(params$summary_table_file)) {
 ```
 
 ```{r}
-cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
+          "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
 ```
