@@ -189,7 +189,7 @@ document.onreadystatechange = function() {
 
         return;
       }
-      var exampleSocket = new WebSocket("ws://0.0.0.0:8080/");
+      var exampleSocket = new WebSocket("ws://127.0.0.1:8080/");
       exampleSocket.onmessage = function (event) {
 	  parsed = JSON.parse(event.data);
 	  process_json_result(parsed);
