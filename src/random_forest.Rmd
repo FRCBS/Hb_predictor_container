@@ -322,7 +322,7 @@ rm(pboth, pdata2, temp_donor_specific);
 
 ```{r clean up memory, echo = FALSE}
 #rm(data); invisible(gc())
-rm(data.male, data.female); invisible(gc(reset = TRUE))
+#rm(data.male, data.female); invisible(gc(reset = TRUE))
 ```
 
 
@@ -350,11 +350,16 @@ if (debug) save(train_orig, file="/tmp/pre-enriched.rdata")
 # enrich the data so that 50% of the donors have deferral as their last donation attempt
 old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
 #sink(file=stderr(), type="output")
-enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
-#sink()
-message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
-              old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
-if (debug) save(enriched, file="/tmp/post-enriched.rdata")
+if (old_count2 >= 1000) {
+  enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
+  #sink()
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+                  old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
+  if (debug) save(enriched, file="/tmp/post-enriched.rdata")
+} else {  # Don't enrich if less than 1000 donors
+  message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
+  enriched <- train_orig
+}
 
 n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
 message(sprintf("%i donors have at least one deferral\n", n))
@@ -492,7 +497,7 @@ rm(validate_deferred)
 
 
 
-```{r Train random forest, message=TRUE}
+```{r Train random forest, message=FALSE}
 number_of_accepted  <- train %>% filter(Hb_deferral=="Accepted") %>% nrow()
 number_of_deferrals <- train %>% filter(Hb_deferral=="Deferred") %>% nrow()
 # stopifnot(number_of_deferrals > 0)
@@ -504,8 +509,11 @@ if (number_of_accepted == 0 || number_of_deferrals == 0) {
 tic("Training random forest")
 #save(train, file="/tmp/jarkko.rdata")   # remove this
 min.node.size = 34
-if (nrow(train) <= min.node.size)
+if (nrow(train) <= min.node.size) {
   message("Warning: There are less points in the train data than what is the min.node.size of the random forest")
+  warning(sprintf("There are less points in the train data (%i) than what is the min.node.size of the random forest(%i)",
+                  nrow(train), min.node.size))
+}
 rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
                  method = "ranger", 
                  #mtry = 4,
@@ -526,7 +534,7 @@ rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train,
                 #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
                 )
 sink(file=stderr(), type="output"); toc(); sink()
-warning("Varoitus")
+#warning("Varoitus")
 ```
 
 

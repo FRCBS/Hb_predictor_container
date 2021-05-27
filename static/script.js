@@ -129,7 +129,16 @@ document.onreadystatechange = function() {
       progress.value = 1;
     };
     */
-    
+
+
+      var el = document.getElementById("error_messages");
+      el.innerHTML="";
+      var el = document.getElementById("warning_messages");
+      el.innerHTML="";
+      var el = document.getElementById("info");
+      el.innerHTML="";
+      document.getElementById("results-container").hidden = true;
+      
     httpRequest.onreadystatechange = handleResponseForUpload;
     //httpRequest.onreadystatechange = handleResponse;
     //httpRequest.timeout = 5000;
@@ -235,6 +244,8 @@ document.onreadystatechange = function() {
     function add_error_messages(data) {
 	if ("error_messages" in data && data.error_messages.length > 0) {
             el = document.getElementById("error_messages");
+	    if (typeof(data.error_messages) == "string")
+		data.error_messages = [data.error_messages];
             for (i=0; i < data.error_messages.length; ++i) {
 		el.innerHTML += "<p>" + data.error_messages[i] + "</p>";
             }
@@ -247,7 +258,9 @@ document.onreadystatechange = function() {
     function add_warning_messages(data) {
 	if ("warning_messages" in data && data.warning_messages.length > 0) {
             el = document.getElementById("warning_messages");
-            for (i=0; i < data.warning_messages.length; ++i) {
+            if (typeof(data.warning_messages) == "string")
+		data.warning_messages = [data.warning_messages];
+	    for (i=0; i < data.warning_messages.length; ++i) {
 		el.innerHTML += "<p>" + data.warning_messages[i] + "</p>";
             }
             document.getElementById("submit").disabled = false;
@@ -285,7 +298,7 @@ document.onreadystatechange = function() {
 	  
 	  //add_rows_to_details_table(data);
 	  
-	  document.getElementById("results-container").removeAttribute("hidden");  
+	  //document.getElementById("results-container").removeAttribute("hidden");  
 	  
 	  if (document.querySelector('input[name="input_format"]:checked').value == "Preprocessed")
               document.getElementById("preprocessed").style.display = "none";
@@ -296,6 +309,10 @@ document.onreadystatechange = function() {
 	  // Show summary table
 	  document.getElementById("table_container").innerHTML = data.summary_table_string;
       } else if (data.type == "error") {
+	  // Show error
+	  add_error_messages(data)
+	  add_warning_messages(data)
+      } else if (data.type == "warning") {
 	  // Show error
 	  add_error_messages(data)
 	  add_warning_messages(data)

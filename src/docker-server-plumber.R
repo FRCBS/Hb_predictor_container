@@ -13,6 +13,8 @@ cat("Press control-c to kill the server\n")
 
 #pr$run(host='0.0.0.0', port=8080) # Listen to the specified port on all interfaces
 
+options(warn=1)
+
 source("docker-apps-plumber.R")
 
 multiplexer <- function(req) {
@@ -34,6 +36,8 @@ s <- runServer("0.0.0.0", 8080,
                  list(
                    call = function(req) {
                      print(names(req))
+                     cat("User agent is:\n")
+                     print(req$HTTP_USER_AGENT)
                      print(req$.bodyData)
                      cat("moi\n")
                      if (req$PATH_INFO == "/hb-predictor") {
@@ -66,21 +70,22 @@ s <- runServer("0.0.0.0", 8080,
                      ws$onMessage(function(binary, message) {
                        cat("Server received message:", message, "\n")
                        #result <- list()
-                       error_messages <- tryCatch(
+                       result <- tryCatch(
                          error = function(cnd) {
                            message("In error handler\n")
                            error_messages <- c(sprintf("Error in %s call.\n", "hb_predictor3"), cnd$message)
-                           return(error_messages)
+                           cat(error_messages)
+                           result <- list(type="final", error_messages=error_messages)
+                           return(result)
                          },
                          {
-                           result <- hb_predictor3(ws)
-                           NULL
+                           hb_predictor3(ws)
                          }
                        )
-                       if (!is.null(error_messages)) {
-                         cat(paste0(error_messages))
-                         result <- list(type="final", error_messages=error_messages)
-                       }
+                       # if (!is.null(error_messages)) {
+                       #   cat(paste0(error_messages))
+                       #   result <- list(type="final", error_messages=error_messages)
+                       # }
                        ws$send(rjson::toJSON(result))
                      })
                      

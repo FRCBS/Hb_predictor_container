@@ -63,6 +63,14 @@ knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE, warning=TRUE)
 #options(warn = 1)
 
+if (knitr::opts_chunk$get("dev") == "pdf") {
+  knitr::opts_chunk$set(dev="cairo_pdf")
+  knitr::opts_current$set(dev="cairo_pdf")
+}
+message(paste0("Device is ", knitr::opts_chunk$get("dev"), "\n"))
+message(paste0("Current device is ", knitr::opts_current$get("dev"), "\n"))
+use_pdf <- knitr::opts_chunk$get("dev") %in% c("pdf", "cairo_pdf")
+
 message("Parameters are:")
 for (name in names(params)) {
   message(sprintf("%s = ", name), params[[name]])
@@ -220,6 +228,7 @@ pboth <- data %>%
   filter(first_event == FALSE) %>%
   select(all_of(descript$Variable))
 
+summary(pboth)
 pboth <- summary_plotter(pboth, descript, color)
 pboth
 
@@ -250,7 +259,7 @@ time_series_length_plotter(data, color)
 
 ```{r clean up memory, echo = FALSE}
 rm(data); invisible(gc())
-rm(data.male); invisible(gc(reset = TRUE))
+#rm(data.male); invisible(gc(reset = TRUE))
 ```
 
 

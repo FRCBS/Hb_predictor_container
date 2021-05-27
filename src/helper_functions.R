@@ -33,7 +33,7 @@ is_hb_value_sane <- function(hb, hb_unit)
   } else if (hb_unit=="gperdl") {
     return(hb > 10.0 && hb < 20.0)
   } else if (hb_unit =="mmolperl") { 
-    return(hb > 10.0 && hb > 0.0)
+    return(hb < 10.0 && hb > 0.0)
   } else {
     stop(sprintf("Unknown hb unit %s\n", hb_unit))
   }

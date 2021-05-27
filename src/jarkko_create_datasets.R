@@ -85,7 +85,9 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
       s <- capture.output(summary(x_train))
       s <- paste(s, collapse="\n")
       message(s)
-      cnd$message <- paste("\nError in qr_decomposition of x_train matrix:", cnd$message, sep="\n")
+      constants <- colnames(mutate_all(x_train, as.numeric) %>% keep(function(c) sd(c)==0.0))
+      cnd$message <- paste("\nError in qr_decomposition of x_train matrix:", cnd$message, 
+                           "The following variables are constant:", paste(constants, collapse=","), sep="\n")
       stop(cnd)
     },
     {

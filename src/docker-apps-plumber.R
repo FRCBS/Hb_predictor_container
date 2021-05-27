@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.21"
+container_version="0.22"
 
 message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
@@ -39,6 +39,7 @@ check_columns <- function(got, expected) {
     return("")
   } else {
     msg <- sprintf("Expected columns %s, got columns %s, missing %s", paste(expected, collapse=" "), paste(got, collapse=" "), paste(setdiff(expected, got), collapse=" "))
+    return(msg)
   }
 }
 
@@ -95,6 +96,7 @@ hb_predictor2 <- function(req){
     writeBin(data, to)
   }
   #writeBin(req$.bodyData, con="/tmp/raw_form_data.bin")
+  cat("here3")
   close(to)
   return(list())
 }
@@ -155,7 +157,7 @@ hb_predictor3 <- function(ws) {
     error_messages <- c(error_messages, "The input format should be either FRCBS, Sanquin, or Preprocessed")
 
   if (length(error_messages) > 0)
-    return(list(error_messages=error_messages))
+    return(list(type="final", error_messages=error_messages))
   
   cat(sprintf("The input format is %s\n", input_format))
   
@@ -190,16 +192,17 @@ hb_predictor3 <- function(ws) {
     if (input_format == "FRCBS") {
       if (ncol(donations) != 12) {
         error_messages <- c(error_messages, sprintf("Expected 12 columns in the donation file, got %i columns", ncol(donations)))
-        return(list(error_messages=error_messages))
+        return(list(type="final", error_messages=error_messages))
       }
     } else {
       msg <- check_columns(names(donations), c("KEY_DONOR", "KEY_DONAT_INDEX_DATE", "DONAT_PHLEB_START", "DONAT_STATUS", "KEY_DONAT_PHLEB", 
                                               "DONAT_VOL_DRAWN", "DONAT_RESULT_CODE"))
       if(str_length(msg) > 0) {
         error_messages <- c(error_messages, sprintf("donation dataframe: %s", msg))
-        return(list(error_messages=error_messages))
+        return(list(type="final", error_messages=error_messages))
       }
     }
+    # Give intermediate results to the browser
     donation_info <- sprintf("<p>Donations: filename=%s, rows=%i, columns=%i</p>", donations_o$filename, nrow(donations), ncol(donations))
     ws$send(rjson::toJSON(list(type="info", result=donation_info)))
     
@@ -208,22 +211,27 @@ hb_predictor3 <- function(ws) {
     if (input_format == "FRCBS") {
       if (ncol(donors) != 26) {
         error_messages <- c(error_messages, sprintf("Expected 26 columns in the donor file, got %i columns", ncol(donors)))
-        return(list(error_messages=error_messages))
+        return(list(type="final", error_messages=error_messages))
       }
     } else {
-      msg <- check_columns(names(donors), c("KEY_DONOR", "KEY_DONOR_SEX", "KEY_DONOR_DOB", "DONOR_DATE_FIRST_DONATION"))
+      required_donor_variables <- c("KEY_DONOR", "KEY_DONOR_SEX", "KEY_DONOR_DOB", "DONOR_DATE_FIRST_DONATION")
+      msg <- check_columns(names(donors), required_donor_variables)
       if(str_length(msg) > 0) {
         error_messages <- c(error_messages, sprintf("donor dataframe: %s", msg))
-        return(list(error_messages=error_messages))
+        return(list(type="final", error_messages=error_messages))
+      } else {
+        additional_variables <- setdiff(names(donors), required_donor_variables) %>%
+          keep(function(name) is.numeric(df[[name]]) || name == "DONOR_DATE_FIRST_DONATION")
+        cat(sprintf("Got the following additional numeric donor specific variables: %s\n", paste(additional_variables, collapse=" ")))
       }
     }
+    # Give intermediate results to the browser
     donor_info <- sprintf("<p>Donor: filename=%s, rows=%i, columns=%i</p>", donors_o$filename, nrow(donors), ncol(donors))
     ws$send(rjson::toJSON(list(type="info", result=donor_info)))
   } else {
     donation_info <- ""
     donor_info <- ""
   }
-  
   
   # Create the input parameter list for the Rmd files that do the actual prediction    
   myparams <- list()
@@ -299,6 +307,7 @@ hb_predictor3 <- function(ws) {
     toc()
     message(sprintf("Saved preprocessed data to file %s\n", donation_specific_filename))
   }
+  print(summary(fulldata_preprocessed))
   
   cat("Distribution of time series length\n")
   print(fulldata_preprocessed %>% count(donor, name="Length") %>% count(Length, name="Count"))
@@ -430,11 +439,7 @@ hb_predictor3 <- function(ws) {
       temp_effect_size_filename <- sprintf("../output/variable-importance-%s.csv", m)
       myparams["effect_size_table_file"] <- temp_effect_size_filename
       error_messages <- tryCatch(
-        error = function(cnd) {
-          error_messages <- c(sprintf("Error in %s call.\n", pretty), cnd$message)
-          return(error_messages)
-        },
-        {
+        withCallingHandlers({
           rmarkdown::render(
             rmd,
             #'template.Rmd',
@@ -444,6 +449,12 @@ hb_predictor3 <- function(ws) {
             output_dir='../output',
             params = myparams)
           NULL
+        }, warning = function(w) ws$send(rjson::toJSON(list(type="warning", 
+                                                            warning_messages=c(sprintf("Warning in %s call.\n", pretty),
+                                                                               w$message))))),
+        error = function(cnd) {
+          error_messages <- c(sprintf("Error in %s call.\n", pretty), cnd$message)
+          return(error_messages)
         }
       )
       if (!is.null(error_messages)) {

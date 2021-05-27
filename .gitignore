@@ -20,3 +20,4 @@ output/
 .Rhistory
 
 src/stan/*.rds
+.Rproj.user
