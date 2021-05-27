@@ -1,0 +1,219 @@
+---
+title: "Figures for paper supplement"
+author: "Jarkko Toivonen"
+date: "5/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rstan)
+figure_path="~/FRCBS/results-for-eba-project/pdf/"
+#figure_path="/tmp/results-for-eba-project/pdf/"
+system(sprintf("mkdir -p %s", figure_path))
+
+source("validate_stan_fit.R")
+source("common.R")
+```
+
+## R Markdown
+
+```{r}
+load_single <- function(filename) {
+  names <- load(filename, verbose=FALSE)
+  stopifnot(length(names) == 1)
+  return(get(names))
+}
+```
+
+Results in md files:
+
+```{r, eval=FALSE}
+#FinnGen:
+results-date-2020-08-09-gender-both-sample_fraction-1.0-method-icp-fix-hlen-7-extra_id-finngen-test-data.md
+#eProgesa:
+results-date-2020-08-18-gender-male-sample_fraction-1.0-method-no-fix-hlen-7-iterations-2400-extra_id-progesa-test.md
+results-date-2020-08-18-gender-male-sample_fraction-1.0-method-icp-fix-hlen-7-iterations-2400-extra_id-progesa-test.md
+results-date-2020-08-12-gender-female-sample_fraction-1.0-method-no-fix-hlen-7-cores-3-extra_id-progesa-test.md
+results-date-2020-08-12-gender-female-sample_fraction-1.0-method-icp-fix-hlen-7-extra_id-progesa-test.md
+#FinDonor:
+/home/toivoja/FRCBS/interval_prediction/data/model_fits/hmc_2108.rdata
+/home/toivoja/FRCBS/interval_prediction/data/model_fits/hfc_2108.rdata
+
+```
+
+Results in raw output files:
+
+```{r}
+prefix <- "/home/toivoja/FRCBS/interval_prediction/data/raw_results"
+filename_finngen_dlmm_female_raw <- "raw_result_female_icp_date-2020-08-09-gender-both-sample_fraction-1.0-method-icp-fix-hlen-7-extra_id-finngen-test-data.rdata"
+filename_finngen_dlmm_male_raw <- "raw_result_male_icp_date-2020-08-09-gender-both-sample_fraction-1.0-method-icp-fix-hlen-7-extra_id-finngen-test-data.rdata"
+
+filename_progesa_lmm_male_raw <- "raw_result_male_date-2020-08-18-gender-male-sample_fraction-1.0-method-no-fix-hlen-7-iterations-2400-extra_id-progesa-test.rdata"
+filename_progesa_dlmm_male_raw <- "raw_result_male_icp_date-2020-08-18-gender-male-sample_fraction-1.0-method-icp-fix-hlen-7-iterations-2400-extra_id-progesa-test.rdata"
+filename_progesa_lmm_female_raw <- "raw_result_female_date-2020-08-12-gender-female-sample_fraction-1.0-method-no-fix-hlen-7-cores-3-extra_id-progesa-test.rdata"
+filename_progesa_dlmm_female_raw <- "raw_result_female_icp_date-2020-08-12-gender-female-sample_fraction-1.0-method-icp-fix-hlen-7-extra_id-progesa-test.rdata"
+
+```
+
+## Create forest plots
+
+```{r}
+# Function for plotting combined posterior
+combine_posterior <- function(fit_filenames) {
+  
+  fd.icp.vars <- c("Days to previous full blood donation", "Previous Hb deferred", "Age", "Year", "Warm season", "Hour", "Consecutive deferrals", 
+                   "Recent donations", "Recent deferrals", "Previous Hb", "Erythrocyte", "HKR", "Leukocyte", "Trombocyte", "MCH", "MCHC", "MCV", "RDW", "CRP",
+                   "Ferritin", "Transferrin receptor", "First age", "First year", "First warm season", "First hour")
+  fd.icp.vars.consts <- c(fd.icp.vars, "Height", "Weight", "Smoking status", "Physical condition", "Meat amount", "Sleep quality", "Iron supplement")
+  variables <- fd.icp.vars.consts
+  params <- fd.params.icp.consts <- c(sprintf("beta[%i]", 1:21), sprintf("phi[%i]", 1:7), sprintf("ups[%i]", 1:4))
+  
+  helper <- function(f) {
+    fit <- load_single(f)
+    return(as_tibble(extract(fit, params)))
+  }
+  
+  posterior <- map_dfr(fit_filenames, helper)
+
+  
+  return(list(samples = posterior,
+              pretty_variables_names = variables))
+}
+
+date <- "2108"
+fnames.hmc <- sprintf("icp_model_male_consts_fold%i_%s.rdata", 1:4, date)
+fnames.hfc <- sprintf("icp_model_female_consts_fold%i_%s.rdata", 2:4, date)
+
+hmc.path <- "~/FRCBS/interval_prediction/data/model_fits/kfolds/icp_male_consts/"
+hfc.path <- "~/FRCBS/interval_prediction/data/model_fits/kfolds/icp_female_consts/"
+
+fnames.hmc <- paste0(hmc.path, fnames.hmc)
+fnames.hfc <- paste0(hfc.path, fnames.hfc)
+
+```
+
+```{r}
+progesa_lmm_male_raw    <- load_single(paste(prefix, filename_progesa_lmm_male_raw, sep="/"))
+progesa_lmm_female_raw  <- load_single(paste(prefix, filename_progesa_lmm_female_raw, sep="/"))
+progesa_dlmm_male_raw   <- load_single(paste(prefix, filename_progesa_dlmm_male_raw, sep="/"))
+progesa_dlmm_female_raw <- load_single(paste(prefix, filename_progesa_dlmm_female_raw, sep="/"))
+
+finngen_dlmm_male_raw   <- load_single(paste(prefix, filename_finngen_dlmm_male_raw, sep="/"))
+finngen_dlmm_female_raw <- load_single(paste(prefix, filename_finngen_dlmm_female_raw, sep="/"))
+
+findonor_dlmm_male_raw <- combine_posterior(fnames.hmc)
+findonor_dlmm_female_raw <- combine_posterior(fnames.hfc)
+```
+
+```{r, eval=FALSE}
+load("/home/toivoja/FRCBS/interval_prediction/data/model_fits/hmc_2108.rdata", verbose=TRUE) # results.hmc
+```
+
+```{r}
+progesa_lmm_forest <- create_double_forest_plot(progesa_lmm_male_raw$samples, progesa_lmm_female_raw$samples, progesa_lmm_male_raw$pretty_variable_names)
+progesa_dlmm_forest <- create_double_forest_plot(progesa_dlmm_male_raw$samples, progesa_dlmm_female_raw$samples, progesa_dlmm_male_raw$pretty_variable_names)
+finngen_dlmm_forest <- create_double_forest_plot(finngen_dlmm_male_raw$samples, finngen_dlmm_female_raw$samples, finngen_dlmm_male_raw$pretty_variable_names)
+findonor_dlmm_forest <- create_double_forest_plot(findonor_dlmm_male_raw$samples, findonor_dlmm_female_raw$samples, findonor_dlmm_male_raw$pretty_variables_names)
+```
+
+```{r}
+ggsave(filename=paste(figure_path, "progesa-coefficient-lmm.pdf", sep="/"), plot=progesa_lmm_forest$plot, width = 180, height = 108, units="mm")
+ggsave(filename=paste(figure_path, "progesa-coefficient-dlmm.pdf", sep="/"), plot=progesa_dlmm_forest$plot, width = 180, height = 108, units="mm")
+ggsave(filename=paste(figure_path, "finngen-coefficient-dlmm.pdf", sep="/"), plot=finngen_dlmm_forest$plot, width = 180, height = 108, units="mm")
+ggsave(filename=paste(figure_path, "findonor-coefficient-dlmm.pdf", sep="/"), plot=findonor_dlmm_forest$plot, width = 180, units="mm")
+
+```
+
+## Create summary plots
+
+```{r}
+fulldata_preprocessed <- load_single("~/proj/interval_prediction/data/full_data_preprocessed-2020-05-25.rdata")
+
+data.male <- fulldata_preprocessed %>% filter(gender=="Men")
+data.female <- fulldata_preprocessed %>% filter(gender=="Women")
+
+pmale <- data.male %>%
+  filter(first_event == FALSE) %>%
+#  mutate(across(c(previous_Hb_def, Hb_deferral), function(x) as.integer(as.character(x)))) %>% # convert factors to integers
+  select(all_of(descript$Variable))
+pfemale <- data.female %>%
+  filter(first_event == FALSE) %>%
+#  mutate(across(c(previous_Hb_def, Hb_deferral), function(x) as.integer(as.character(x)))) %>% # convert factors to integers
+  select(all_of(descript$Variable))
+
+```
+
+
+```{r}
+progesa_summary_plot <- double_summary_plotter(pmale, pfemale, descript, freqpoly=TRUE)
+```
+
+```{r}
+finngen <- load_single("/home/toivoja/proj/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata")
+finngen_variables <- intersect(donor_descript$Variable, colnames(finngen))
+finngen.male <- semi_join(finngen, data.male, by="donor") %>%
+  select(all_of(finngen_variables))
+finngen.female <- semi_join(finngen, data.female, by="donor") %>%
+  select(all_of(finngen_variables))
+
+
+```
+
+```{r}
+finngen_summary_plot <- double_summary_plotter(finngen.male, finngen.female, donor_descript, freqpoly=TRUE)
+```
+
+```{r}
+combined_findonor_male <- load_single("~/proj/interval_prediction/data/combined_findonor_male.rdata") %>% ungroup()
+combined_findonor_female <- load_single("~/proj/interval_prediction/data/combined_findonor_female.rdata") %>% ungroup()
+```
+
+```{r}
+male_donation_specific <- combined_findonor_male %>%
+#  filter(first_event == FALSE) %>%
+  select(all_of(descript.fd$Variable))# %>%
+
+female_donation_specific <- combined_findonor_female %>%
+  select(all_of(descript.fd$Variable))# %>%
+
+findonor_donation_specific_summary_plot <- double_summary_plotter(male_donation_specific, female_donation_specific, descript.fd, freqpoly = TRUE)
+
+male_donor_specific <- combined_findonor_male %>%
+  select(all_of(descript.fd.consts$Variable)) %>%
+  distinct()
+female_donor_specific <- combined_findonor_female %>%
+  select(all_of(descript.fd.consts$Variable)) %>%
+  distinct()
+findonor_donor_specific_summary_plot <- double_summary_plotter(male_donor_specific, female_donor_specific, descript.fd.consts, freqpoly = TRUE)
+```
+
+```{r}
+progesa_summary_plot
+finngen_summary_plot
+findonor_donation_specific_summary_plot
+findonor_donor_specific_summary_plot
+
+```
+
+
+```{r}
+ggsave(filename=paste(figure_path, "progesa-summary-plot.pdf", sep="/"), plot=progesa_summary_plot, width = 180, units="mm")
+ggsave(filename=paste(figure_path, "finngen-summary-plot.pdf", sep="/"), plot=finngen_summary_plot, width = 180, units="mm")
+ggsave(filename=paste(figure_path, "findonor-donation-specific-summary-plot.pdf", sep="/"), plot=findonor_donation_specific_summary_plot, width = 180, units="mm")
+ggsave(filename=paste(figure_path, "findonor-donor-specific-summary-plot.pdf", sep="/"), plot=findonor_donor_specific_summary_plot, width = 180, units="mm")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

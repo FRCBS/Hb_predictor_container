@@ -261,21 +261,28 @@ create_scatter_plot <- function(df, threshold) {
 #   return(posterior.plot)
 # }
 
+forest_plot_helper <- function(v, name) {
+  ci_hdi <- bayestestR::ci(v, method = "HDI", ci=0.95)
+  #str(ci_hdi)
+  tibble(names = name, mean = mean(v), low = ci_hdi$CI_low, high = ci_hdi$CI_high)
+}
+
 create_forest_plot <- function(posterior, variables) {
-  for (i in seq_along(posterior)) {
-    #cat(sprintf("Column %i\n", i))
-    v <- posterior[[i]]
-    ci_hdi <- bayestestR::ci(v, method = "HDI", ci=0.95)
-    #str(ci_hdi)
-    L <- list(names = variables[[i]], mean = mean(v), low = ci_hdi$CI_low, high = ci_hdi$CI_high)
-    if (i == 1) {
-      result <- data.frame(L, stringsAsFactors = FALSE)
-    } else {
-      result <- rbind(result, L)
-    }
-    #print(L)
-  }
-  result <- as_tibble(result)
+  
+  
+  # for (i in seq_along(posterior)) {
+  #   #cat(sprintf("Column %i\n", i))
+  #   L <- helper(posterior[[i]], variables[[i]])
+  #   if (i == 1) {
+  #     result <- L
+  #   } else {
+  #     result <- rbind(result, L)
+  #   }
+  #   #print(L)
+  # }
+  #result <- as_tibble(result)
+  #result <- map_dfr(seq_along(posterior), function(i) forest_plot_helper(posterior[[i]], variables[[i]]))
+  result <- map2_dfr(posterior, variables, forest_plot_helper)
   str(result)
   cis <- result
   result <- DescTools::Rev(result, margin=1)   # Reverse the order of rows so they appear in correct order in the forest plot
@@ -290,6 +297,37 @@ create_forest_plot <- function(posterior, variables) {
   return(list(plot=plot, cis=cis))
 }
 
+create_double_forest_plot <- function(male_posterior, female_posterior, variables) {
+  
+  male_result <- map2_dfr(male_posterior, variables, forest_plot_helper)
+  female_result <- map2_dfr(female_posterior, variables, forest_plot_helper)
+  male_result$Sex <- "Male"
+  female_result$Sex <- "Female"
+  result <- bind_rows(male_result, female_result)
+  result <- result %>% mutate(names=factor(names, levels=rev(variables)))
+  #head(result)
+  cis <- result
+  #cis <- bind_rows(male_result, female_result)
+
+  #result <- DescTools::Rev(result, margin=1)   # Reverse the order of rows so they appear in correct order in the forest plot
+  #result <- mutate   # Reverse the order of rows so they appear in correct order in the forest plot
+  plot <- ggplot() +     
+    geom_vline(aes(xintercept=0), color="lightgray") +
+    #geom_rect(data=tibble(names=rep(rev(variables), each=2)), 
+    geom_rect(data=result %>% filter(as.numeric(names) %% 2 == 0), 
+              mapping=aes(ymax = as.numeric(names) + 0.5,
+                          ymin = as.numeric(names) - 0.5),
+              fill = "gray", xmin=-Inf, xmax=Inf, alpha = 0.1, show.legend = FALSE, colour=NA) +
+    ggstance::geom_pointrangeh(mapping=aes(y=names, x=mean, xmin=low, xmax=high, color=Sex), 
+                    data=result,
+                    position=position_dodge2(width=1, padding=0.9)) +
+    labs(title="Effects sizes of variables on Hb prediction",
+         x="Regression coefficient", y="") +
+    scale_y_discrete() + # !!!!! This is important. Solves the problem with position_dodge2 and the order of rect and pointrange geoms !!!!!!
+    # Otherwise following error results: Error: Discrete value supplied to continuous scale
+    theme_classic()
+  return(list(plot=plot, cis=cis))
+}
 
 
 # Creates ROC, and Precision-recall plots, and puts them side-by-side.

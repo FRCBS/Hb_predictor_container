@@ -554,39 +554,16 @@ These are the additional variables from FinDonor data set. These will be used to
 
 ```{r Create FinDonor table, echo = FALSE}
 
-descript.fd <- tibble(Variable = c("Eryt", "HKR", "Leuk", "Trom", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "TransferrinR"),
-                      Pretty = c("Erythrocyte", "HKR", "Leukocyte", "Trombocyte", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "Transferrin receptor"),
-                      Type = c("Numeric", "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",
-                                "Numeric"),
-                      Description = c("Amount of erythrocytes, red blood cells [E12/l]",
-                                      "Hematocrit (HTC) the volume percentage of RBCs in whole blood [%]",
-                                      "Leukocytes, white blood cell counts [E9/l] (thousand cells per microliter)",
-                                      "Thrombocytes/platelets [E9/l]",
-                                      "Mean corpuscular hemoglobin, average mass of hemoglobin per red blood cell. Diminished in hypochromic anemias. [pg]",
-                                      "Mean corpuscular hemoglobin concentration, average mass of hemoglobin in a litre of RBCs. [g/l]",
-                                      "Mean Corpuscular Volume, the average volume of RBCs. [fl]",
-                                      "Red blood cell distribution width, is a measure of the range of variation of RBC volume. [%]",
-                                      "C-reactive protein, measure of inflammation. Its circulating concentrations rise in response to inflammation. [mg/l]",
-                                      "An intracellular protein that stores iron and releases it in controlled fashion. Acts as a buffer against iron deficiency and iron overload. Plasma ferritin is an indirect marker of the total iron strorage. [µg/l]",
-                                      "Transferrin receptor (TfR) is a carrier protein for transferrin. [mg/l]"))
-descript.fd.consts <- tibble(Variable=c("height", "weight", "smoking_status", "physical_condition", "meat_amount", "sleep_quality", "iron_supplement"),
-                             Pretty=c("Height", "Weight", "Smoking status", "Physical condition", "Meat amount", "Sleep quality", "Iron supplement"),
-                             Type=c("Numeric", "Numeric", "Boolean", "Numeric (int)", "Numeric (int)", "Numeric (int)", "Numeric (int)"),
-                             Description=c("Height", "Weight", "Smoking status: no=0, sometimes or daily = 1", 
-                                           "Physical condition: very bad=0, bad=1, satisfactory=2, rather good=3, good=4, excellent=5",
-                                           "How often meat: less than one weekly=1, 1-3 per week=2, 4-6 per week=3, daily=4, several daily=5", 
-                                           "How often do you feel like you've slept enough: never=0, rarely = 1, mostly=2, always or almost = 3",
-                                           "How many iron table were eaten"))
                                      
 #dummy1 <- c("Days to previous full blood donation", "Previous Hb deferred", "Age", "Year", "Warm season", "Hour", "Consecutive deferrals", "Recent donations", "Recent deferrals", "Previous Hb")  
 #dummy2 <- c("First age", "First year", "First warm season", "First hour")
 
-to_pretty <- function(df, description) {
-  old_names <- colnames(df)
-  new_names <- description %>% filter(Variable %in% all_of(old_names)) %>% pull(Pretty)
-  colnames(df) <- new_names
-  df
-}
+# to_pretty <- function(df, description) {
+#   old_names <- colnames(df)
+#   new_names <- description %>% filter(Variable %in% all_of(old_names)) %>% pull(Pretty)
+#   colnames(df) <- new_names
+#   df
+# }
 
 ```
 
