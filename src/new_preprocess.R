@@ -34,7 +34,7 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
                     'directed', 'donStartTime', 'volume_drawn', 'index_test', 
                     'Hb')
   print(head(donation))
-  mean_hb <- mean(donation$Hb)
+  mean_hb <- mean(donation$Hb, na.rm=TRUE)
   if (!is_hb_value_sane(mean_hb, Hb_input_unit)) {
     warning(sprintf("The mean Hb value %f does not seem to agree with the Hb unit %s\n", mean_hb, Hb_input_unit))
   }
@@ -133,7 +133,7 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   print(table(donation$gender))
   #English sex
   #levels(donation$gender) = c('Men','Women')         # This is wrong!!!!!!!!!!
-  donation <- donation %>% mutate(gender=fct_recode(gender, "Women" = "F", "Men" = "M"))
+  donation <- donation %>% mutate(gender=fct_recode(gender, "Women" = "Woman", "Men" = "Man"))
 
   #Sort
   donation <- donation %>% arrange(date)  
@@ -173,7 +173,7 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   
   #make age at time of donation
   #https://stackoverflow.com/questions/31126726/efficient-and-accurate-age-calculation-in-years-months-or-weeks-in-r-given-b
-  age <- as.period(interval(start = donation$dob, end = donation$date))$year
+  age <- as.integer(as.period(interval(start = donation$dob, end = donation$date))$year)
   donation$age <- age
   
   #Drop anything of age below 18
@@ -184,9 +184,9 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
               old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
   
   donation <- droplevels(donation)
-  #age groups
-  age.group <- cut(donation$age,breaks=c(min(donation$age),seq(from=25,to=65,by=10),max(donation$age)),include.lowest = TRUE)
-  donation$age.group <- factor(age.group)
+  #age groups, not used
+  # age.group <- cut(donation$age,breaks=c(min(donation$age),seq(from=25,to=65,by=10),max(donation$age)),include.lowest = TRUE)
+  # donation$age.group <- factor(age.group)
   
   #Split date into parts
   donation <- donation %>% mutate(Year = year(date), 
@@ -195,24 +195,31 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
                                   Hour=hour(date), 
                                   Week = week(date))
   
-  donation <- donation %>% 
-    group_by(Month)  %>% 
-    mutate(monthHb=mean(Hb,na.rm=TRUE)) %>%
-    ungroup()
-  
-  donation <- donation %>% 
-    group_by(Day)  %>% 
-    mutate(dayHb=mean(Hb,na.rm=TRUE)) %>%
-    ungroup()
+  # monthHb and dayHb are not used
+  # donation <- donation %>% 
+  #   group_by(Month)  %>% 
+  #   mutate(monthHb=mean(Hb,na.rm=TRUE)) %>%
+  #   ungroup()
+  # 
+  # donation <- donation %>% 
+  #   group_by(Day)  %>% 
+  #   mutate(dayHb=mean(Hb,na.rm=TRUE)) %>%
+  #   ungroup()
 
   
   #Add deferral rate
-  hbd <- rep(0, nrow(donation))
-  hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_male & donation$gender == 'Men'] <- 1
-  hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_female & donation$gender == 'Women'] <- 1
-  donation$'Hb_deferral' <- as.factor(hbd)
-  print(table(donation$gender,donation$Hb_deferral))
-  donation$Hb_deferral <- as.integer(as.character(donation$Hb_deferral))   # Fix Hb_deferral everywhere !!!!!!!!!!!!!!!!!
+  # hbd <- rep(0, nrow(donation))
+  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_male & donation$gender == 'Men'] <- 1
+  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_female & donation$gender == 'Women'] <- 1
+  # donation$'Hb_deferral' <- hbd
+  donation <- donation %>%
+    mutate(Hb_deferral=case_when(
+      donat_phleb == '*' & Hb < Hb_cutoff_male   & gender == 'Men'   ~ 1,
+      donat_phleb == '*' & Hb < Hb_cutoff_female & gender == 'Women' ~ 1,
+      TRUE ~ 0
+    ))
+  print(table(donation$gender, as.factor(donation$Hb_deferral)))
+  #donation$Hb_deferral <- as.integer(as.character(donation$Hb_deferral))   # Fix Hb_deferral everywhere !!!!!!!!!!!!!!!!!
 
   donation <- donation %>% 
     select(-c("first",    "family",   "language")) #%>% 
@@ -263,7 +270,7 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
 
 decorateData <- function(data) {
   
-  #Take all donations events (reagrdless of type)
+  #Take all donations events (regardless of type)
   data$Hb[is.nan(data$Hb)] <- NA
   
   # Sort the data into ascending timeseries
@@ -302,7 +309,7 @@ decorateData <- function(data) {
   # Assumes Hb_deferral is never NA
   consecutive_deferrals_f <- function(Hb_deferral) {
     c <- cumsum(Hb_deferral)
-    c_at_previous_non_deferral <- ifelse(Hb_deferral, NA, c)
+    c_at_previous_non_deferral <- ifelse(Hb_deferral==1, NA, c)
     if (is.na(c_at_previous_non_deferral[1])) {
       c_at_previous_non_deferral[1] <- 0
     }
@@ -319,7 +326,7 @@ decorateData <- function(data) {
   
   data <- data %>%
     group_by(donor) %>%
-    mutate(previous_Hb_def = lag(as.integer(as.character(Hb_deferral)), default = NA),
+    mutate(previous_Hb_def = lag(Hb_deferral, default = NA),
            Hb_first = Hb[first_event == T],
            previous_Hb = lag(Hb, default=0)
            ) %>%
@@ -350,7 +357,7 @@ decorateData <- function(data) {
   
   data <- data %>%
     mutate(weight_donation=ifelse(donat_phleb == "K", 1, 0),
-           Hb_deferral = as.integer(as.character(Hb_deferral))) %>%
+           Hb_deferral = Hb_deferral) %>%
     arrange(date) %>%
     group_by(donor) %>%
     mutate(recent_donations = two_year_sliding_window_sum(weight_donation, date)) %>%
@@ -362,10 +369,10 @@ decorateData <- function(data) {
   
   # This isn't used anywhere !!!!!!!!!!!!!!!!
   # Add variable for how many times a donor has donated in the data
-  data <- data %>%
-    group_by(donor) %>%
-    mutate(times_donated = 1:n()) %>%
-    ungroup()
+  # data <- data %>%
+  #   group_by(donor) %>%
+  #   mutate(times_donated = 1:n()) %>%
+  #   ungroup()
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
   data <- data %>%

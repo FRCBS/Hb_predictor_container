@@ -33,13 +33,13 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
     #X1 = col_character(),
     KEY_DONOR = col_character(),
     #X3 = col_character(),
-    KEY_DONAT_INDEX_DATE = col_double(),
+    KEY_DONAT_INDEX_DATE = col_character(),
     DONAT_PHLEB_START = col_character(),
     DONAT_STATUS = col_character(),
     KEY_DONAT_PHLEB = col_character(),
     #X8 = col_character(),
     #½X9 = col_character(),
-    DONAT_VOL_DRAWN = col_character(),
+    DONAT_VOL_DRAWN = col_integer(),
     #X11 = col_double(),
     DONAT_RESULT_CODE = col_double()
   )
@@ -58,13 +58,13 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   names(temp) <- new_names
   donation <- donation %>% rename(!!!temp)
   #print(head(donation))
-  mean_hb <- mean(donation$Hb)
+  mean_hb <- mean(donation$Hb, na.rm=TRUE)
   if (!is_hb_value_sane(mean_hb, Hb_input_unit)) {
     warning(sprintf("The mean Hb value %f does not seem to agree with the Hb unit %s\n", mean_hb, Hb_input_unit))
   }
   donation <- donation %>%
     mutate(donat_phleb = as.factor(donat_phleb),
-           volume_drawn = as.integer(volume_drawn),
+           #volume_drawn = as.integer(volume_drawn),
            #Hb = as.numeric(Hb) * 10,  # convert g/dL to g/L
            Hb = convert_hb_unit(Hb_input_unit, "gperl", as.numeric(Hb)),  # convert to g/L
            donat_phleb = recode(donat_phleb, `Whole blood`="K"),
@@ -73,7 +73,7 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
 
   
 
-  mytemp <- ymd_hm(sprintf("%s %04i", as.character(donation$date), donation$phleb_start))
+  mytemp <- ymd_hm(sprintf("%s %04i", donation$date, donation$phleb_start))
   mm <- is.na(mytemp)
   cat("Failed to parse dates:", sum(mm), "\n")
   if (sum(mm) > 0) {
@@ -83,27 +83,26 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   print(summary(donation %>% mutate_at("status", as.factor)))
   
   if (FALSE) {
-  old_count <- nrow(donation); old_count2 <- ndonor(donation)
-  yn=grep("^Y\\d{14}.$", as.vector(donation[["donation"]]),perl=TRUE) #The last one can be any character. #data.table way
-  #But the ones used in luhti have 15 chars?
-  bad <- unique(as.character(donation$donation)[-yn])
-  cat("Bad ones look like this:\n",head(bad),"...",tail(bad),"\n")
-  donation <- donation[yn,]
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) due to badly formed ID\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
+    old_count <- nrow(donation); old_count2 <- ndonor(donation)
+    yn=grep("^Y\\d{14}.$", as.vector(donation[["donation"]]),perl=TRUE) #The last one can be any character. #data.table way
+    #But the ones used in luhti have 15 chars?
+    bad <- unique(as.character(donation$donation)[-yn])
+    cat("Bad ones look like this:\n",head(bad),"...",tail(bad),"\n")
+    donation <- donation[yn,]
+    cat(sprintf("Dropped %i / %i donations (%i / %i donors) due to badly formed ID\n", 
+                old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
   }
   
   ######### DONOR
   input_col_types2 <- list(
-    KEY_DONOR = col_character())
+    KEY_DONOR     = col_character(),
+    KEY_DONOR_SEX = col_character(),
+    KEY_DONOR_DOB = col_character(),
+    DONOR_DATE_FIRST_DONATION = col_character()
+    )
   donor <- read_delim(donor.file, delim="|", col_types = input_col_types2)
-  #old_donor_names <- c("KEY_DONOR", "KEY_DONOR_SEX", "KEY_DONOR_DOB", "DONOR_DATE_FIRST_DONATION")
-  #new_donor_names <- c('donor', 'gender', 'dob', 'date_first_donation')
-  #temp <- old_donor_names
   conversion <- c(donor="KEY_DONOR", gender="KEY_DONOR_SEX", dob="KEY_DONOR_DOB", date_first_donation="DONOR_DATE_FIRST_DONATION")
-  #names(temp) <- new_donor_names
   donor <- donor %>% rename(!!!conversion)
-  #names(donor) <- new_donor_names
   #1 "9626820"|
   #2 "YYYY XXXX"|
   #3 "ZZZZ"
@@ -135,6 +134,7 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
     mutate(gender = as.factor(gender))
   print(summary(donor))
   
+  # These variables are optional. Really they should not be used at all.
   conversion2 <- c(nb_donat_progesa="DONOR_NB_DONAT_PROGESA", nb_donat_outside="DONOR_NB_DONAT_OUTSIDE")
   variables <- c("donor", "gender", "dob", "date_first_donation", conversion2)
   if (length(intersect(conversion2, names(donor))) == 0)  { # numbers of donations not provided
@@ -213,7 +213,7 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   
   #make age at time of donation
   #https://stackoverflow.com/questions/31126726/efficient-and-accurate-age-calculation-in-years-months-or-weeks-in-r-given-b
-  age <- as.period(interval(start = donation$dob, end = donation$date))$year
+  age <- as.integer(as.period(interval(start = donation$dob, end = donation$date))$year)
   donation$age <- age
   
   #Drop anything of age below 18
@@ -224,9 +224,9 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
               old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
   
   donation <- droplevels(donation)
-  #age groups
-  age.group <- cut(donation$age,breaks=c(min(donation$age),seq(from=25,to=65,by=10),max(donation$age)),include.lowest = TRUE)
-  donation$age.group <- factor(age.group)
+  #age groups, not used
+  # age.group <- cut(donation$age,breaks=c(min(donation$age),seq(from=25,to=65,by=10),max(donation$age)),include.lowest = TRUE)
+  # donation$age.group <- factor(age.group)
   
   #Split date into parts
   donation <- donation %>% mutate(Year = year(date), 
@@ -235,24 +235,31 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
                                   Hour=hour(date), 
                                   Week = week(date))
   
-  donation <- donation %>% 
-    group_by(Month)  %>% 
-    mutate(monthHb=mean(Hb,na.rm=TRUE)) %>%
-    ungroup()
-  
-  donation <- donation %>% 
-    group_by(Day)  %>% 
-    mutate(dayHb=mean(Hb,na.rm=TRUE)) %>%
-    ungroup()
+  # monthHb and dayHb are not used
+  # donation <- donation %>% 
+  #   group_by(Month)  %>% 
+  #   mutate(monthHb=mean(Hb,na.rm=TRUE)) %>%
+  #   ungroup()
+  # 
+  # donation <- donation %>% 
+  #   group_by(Day)  %>% 
+  #   mutate(dayHb=mean(Hb,na.rm=TRUE)) %>%
+  #   ungroup()
 
   
   #Add deferral rate
-  hbd <- rep(0, nrow(donation))
-  hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_male & donation$gender == 'Men'] <- 1
-  hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_female & donation$gender == 'Women'] <- 1
-  donation$'Hb_deferral' <- as.factor(hbd)
-  print(table(donation$gender,donation$Hb_deferral))
-  donation$Hb_deferral <- as.integer(as.character(donation$Hb_deferral))   # Fix Hb_deferral everywhere !!!!!!!!!!!!!!!!!
+  # hbd <- rep(0, nrow(donation))
+  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_male & donation$gender == 'Men'] <- 1
+  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_female & donation$gender == 'Women'] <- 1
+  # donation$'Hb_deferral' <- hbd
+  donation <- donation %>%
+    mutate(Hb_deferral=case_when(
+      donat_phleb == '*' & Hb < Hb_cutoff_male   & gender == 'Men'   ~ 1,
+      donat_phleb == '*' & Hb < Hb_cutoff_female & gender == 'Women' ~ 1,
+      TRUE ~ 0
+    ))
+  print(table(donation$gender, as.factor(donation$Hb_deferral)))
+  #donation$Hb_deferral <- as.integer(as.character(donation$Hb_deferral))   # Fix Hb_deferral everywhere !!!!!!!!!!!!!!!!!
 
   #donation <- donation %>% 
   #  select(-c("first",    "family",   "language")) #%>% 
@@ -344,7 +351,7 @@ sanquin_decorate_data <- function(data) {
   # Assumes Hb_deferral is never NA
   consecutive_deferrals_f <- function(Hb_deferral) {
     c <- cumsum(Hb_deferral)
-    c_at_previous_non_deferral <- ifelse(Hb_deferral, NA, c)
+    c_at_previous_non_deferral <- ifelse(Hb_deferral==1, NA, c)
     if (is.na(c_at_previous_non_deferral[1])) {
       c_at_previous_non_deferral[1] <- 0
     }
@@ -361,7 +368,7 @@ sanquin_decorate_data <- function(data) {
   
   data <- data %>%
     group_by(donor) %>%
-    mutate(previous_Hb_def = lag(as.integer(as.character(Hb_deferral)), default = NA),
+    mutate(previous_Hb_def = lag(Hb_deferral, default = NA),
            Hb_first = Hb[first_event == T],
            previous_Hb = lag(Hb, default=0)
            ) %>%
@@ -392,7 +399,7 @@ sanquin_decorate_data <- function(data) {
   
   data <- data %>%
     mutate(weight_donation=ifelse(donat_phleb == "K", 1, 0),
-           Hb_deferral = as.integer(as.character(Hb_deferral))) %>%
+           Hb_deferral = Hb_deferral) %>%
     arrange(date) %>%
     group_by(donor) %>%
     mutate(recent_donations = two_year_sliding_window_sum(weight_donation, date)) %>%
@@ -410,13 +417,15 @@ sanquin_decorate_data <- function(data) {
   #   ungroup()
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
+  n <- nrow(data %>% filter(first_event==TRUE & !(donat_phleb == 'K' | donat_phleb == '*')))
+  cat(sprintf("There are %i first donations with donat_phleb being neither 'K' nor '*'\n", n))
   data <- data %>%
     filter(donat_phleb == 'K' | donat_phleb == '*')
   cat(sprintf("Dropped %i / %i donations (%i / %i donors) because donat_phleb was not 'K' nor '*'\n", 
               old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
-  print(data %>% filter(!(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))) %>% select(days_to_previous_fb, Hb), n=Inf)
+  #print(data %>% filter(!(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))) %>% select(first_event, days_to_previous_fb, Hb), n=Inf)
   data <- data %>%
     filter(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))
   cat(sprintf("Dropped %i / %i donations (%i / %i donors) because Hb or days_to_previous_fb was NA for a non-first donation\n", 
