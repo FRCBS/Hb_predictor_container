@@ -133,7 +133,9 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   print(table(donation$gender))
   #English sex
   #levels(donation$gender) = c('Men','Women')         # This is wrong!!!!!!!!!!
-  donation <- donation %>% mutate(gender=fct_recode(gender, "Women" = "Woman", "Men" = "Man"))
+  donation <- donation %>% mutate(gender=fct_recode(gender, "Women" = "Woman", "Men" = "Man"),
+                                  gender=fct_relevel(gender, c("Men", "Women")))  # Give fixed order to levels so that caret's
+                                                                                  # variable coding is predictable
 
   #Sort
   donation <- donation %>% arrange(date)  

@@ -222,6 +222,12 @@ if (!is.null(donor_variables)) {
   data <- data %>% select(all_of(variables_in_order), everything())
 }
 
+if (params$gender == "male") {
+  data <- data %>% filter(gender=="Men")
+} else if (params$gender == "female") {
+  data <- data %>% filter(gender=="Women")
+} else {
+}
 
 # data.male <-
 #   data %>% filter(gender == "Men")
@@ -314,7 +320,7 @@ pdata2
 
 time_series_length_plotter(data, color)
 
-rm(pboth, pdata2, temp_donor_specific);
+
 ```
 
 
@@ -323,6 +329,7 @@ rm(pboth, pdata2, temp_donor_specific);
 ```{r clean up memory, echo = FALSE}
 #rm(data); invisible(gc())
 #rm(data.male, data.female); invisible(gc(reset = TRUE))
+rm(pboth, pdata2, temp_donor_specific, temp_donors)
 ```
 
 
@@ -389,34 +396,41 @@ message("and here")
 
 
 ```{r Process train and validate sets}
-variables <- c("Hb_deferral",
-               "days_to_previous_fb", 
-               "age", 
-               "previous_Hb_def",
-               #year, #CHECK! 
-               "warm_season", 
-               "consecutive_deferrals", 
-               "recent_donations",
-               "recent_deferrals", 
-               "hour", 
-               "previous_Hb", 
-               "Hb_first", 
-               "Hb_deferral",
-               "nb_donat",
-               "gender")
+# variables <- c(
+#                "days_to_previous_fb", 
+#                "age", 
+#                "previous_Hb_def",
+#                year, #CHECK! 
+#                "warm_season", 
+#                "consecutive_deferrals", 
+#                "recent_donations",
+#                "recent_deferrals", 
+#                "hour", 
+#                "previous_Hb", 
+#                "Hb_first")
 
+variables <- params$predictive_variables
+
+variables <- c(variables, 
+               c(
+               "Hb_deferral",
+               "nb_donat"))
+# This is already done in higher level
+# if (params$gender != "both") {
+#   variables <- setdiff(variables, "gender")
+# }
 
 # old_count <- nrow(train); old_count2 <- ndonor(train)
 #   message(sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
 #               old_count - nrow(train), old_count, old_count2 - ndonor(train), old_count2))
   
 #Train
-train <- enriched %>% group_by(donor) %>% 
-  arrange(desc(dateonly)) %>% 
-  dplyr::slice(1) %>%   
-  mutate(
-    nb_donat = sum(nb_donat_progesa, nb_donat_outside, na.rm=TRUE)
-  ) %>% 
+train <- enriched %>% 
+  group_by(donor) %>% 
+  slice_max(order_by = dateonly, n=1) %>%
+  # arrange(desc(dateonly)) %>% 
+  # dplyr::slice(1) %>%   
+  mutate(nb_donat = sum(nb_donat_progesa, nb_donat_outside, na.rm=TRUE)) %>% 
   ungroup() %>%
   mutate(Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred")))
 
@@ -444,8 +458,9 @@ train <- train %>% select(all_of(variables))
 old_count <- nrow(test); old_count2 <- ndonor(test)
 validate <- test %>% group_by(donor) %>%
   dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
-  arrange(desc(dateonly)) %>% 
-  dplyr::slice(1) %>%   
+  slice_max(order_by = dateonly, n=1) %>%
+  # arrange(desc(dateonly)) %>% 
+  # dplyr::slice(1) %>%   
   mutate(
     nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)
   ) %>% 
@@ -482,7 +497,7 @@ sink(file=stderr(), type="output"); summary(validate); sink()
 ```
 
 
-```{r, results="asis", echo=FALSE}
+```{r Info about datasets, results="asis", echo=FALSE}
 cat(sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train)))
 cat(sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate)))
 
@@ -508,12 +523,15 @@ if (number_of_accepted == 0 || number_of_deferrals == 0) {
 }
 tic("Training random forest")
 #save(train, file="/tmp/jarkko.rdata")   # remove this
-min.node.size = 34
-if (nrow(train) <= min.node.size) {
+
+rf_hyper_parameters <- list(mtry=4, splitrule="hellinger", min.node.size=34)
+
+if (nrow(train) <= rf_hyper_parameters$min.node.size) {
   message("Warning: There are less points in the train data than what is the min.node.size of the random forest")
   warning(sprintf("There are less points in the train data (%i) than what is the min.node.size of the random forest(%i)",
-                  nrow(train), min.node.size))
+                  nrow(train), rf_hyper_parameters$min.node.size))
 }
+
 rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
                  method = "ranger", 
                  #mtry = 4,
@@ -524,9 +542,10 @@ rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train,
                  ## Now specify the exact models 
                  ## to evaluate:
                  #tuneLength=1,
-                 tuneGrid = expand_grid(mtry = 4,
-                  splitrule="hellinger",
-                  min.node.size = min.node.size),
+                 tuneGrid = do.call(expand_grid, rf_hyper_parameters),
+                   # expand_grid(mtry = 4,
+                   #  splitrule="hellinger",
+                   #  min.node.size = 34),
                 #metric="ROC",
                 #should we use Kappa or ROC?
                 importance = "permutation"
@@ -534,7 +553,6 @@ rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train,
                 #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
                 )
 sink(file=stderr(), type="output"); toc(); sink()
-#warning("Varoitus")
 ```
 
 
@@ -544,38 +562,59 @@ sink(file=stderr(), type="output"); toc(); sink()
 ## Results
 
 
-```{r}
+```{r Create variable importances plot}
 rrfFit_rocImp <- caret::varImp(rrfFit_roc, scale = FALSE)
 #plot(rrfFit_rocImp)
 
 
 #rrfFit.varimp <- as_tibble(cbind(rownames(rrfFit_rocImp$importance), rrfFit_rocImp$importance))
-rrfFit.varimp <- rownames_to_column(rrfFit_rocImp$importance)  # Cleaner than above
-colnames(rrfFit.varimp) <- c("Variable", "Importance")
-rrfFit.varimp <- left_join(rrfFit.varimp, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>% select(Variable, Pretty, Importance) %>% arrange(Importance)
+rf_variable_importances <- rownames_to_column(rrfFit_rocImp$importance)  # Cleaner than above
+colnames(rf_variable_importances) <- c("Variable", "Importance")
+rf_variable_importances <- left_join(rf_variable_importances, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>% 
+  select(Variable, Pretty, Importance) %>% 
+  arrange(Importance)
 
-rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "previous_Hb_defTRUE"] <- "Previous donation deferred"
-rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "warm_seasonTRUE"] <- "Warm season"
-rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "smokingTRUE"] <- "Smoking"
-rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "RNF43_mutantTRUE"] <- "RNF43 minor allele"
-rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "genderWomen"] <- "Sex"
-rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "nb_donat"] <- "Number of donations"
+message(paste(rf_variable_importances$Variable, collapse=" "))
+
+# Fix some pretty variables names
+
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "previous_Hb_defTRUE"] <- "Previous donation deferred"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "warm_seasonTRUE"] <- "Warm season"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "smokingTRUE"] <- "Smoking"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "RNF43_mutantTRUE"] <- "RNF43 minor allele"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "genderWomen"] <- "Sex"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "nb_donat"] <- "Number of donations"
+
+rf_variable_importances <- rf_variable_importances %>%
+  mutate(Pretty = case_when(
+    Variable == "previous_Hb_defTRUE" ~ "Previous donation deferred",
+    Variable == "warm_seasonTRUE"     ~ "Warm season",
+    Variable == "smokingTRUE"         ~ "Smoking",
+    Variable == "RNF43_mutantTRUE"    ~ "RNF43 minor allele",
+    Variable == "genderWomen"         ~ "Sex",
+    Variable == "nb_donat"            ~ "Number of donations",
+    TRUE                              ~ Pretty
+  ))
 
 if (!is.null(params$effect_size_table_file)) {
-  write_csv(rrfFit.varimp, params$effect_size_table_file)   # Pass the table to the web app as well
+  write_csv(rf_variable_importances, params$effect_size_table_file)   # Pass the table to the web app as well
 }
 
-varimp.plot <- ggplot(rrfFit.varimp) + geom_col(aes(y=Importance, x=reorder(Pretty, Importance)), alpha=0.7) + coord_flip() + xlab("Variable")
+rf_variable_importances_plot <- rf_variable_importances %>%
+  ggplot() + 
+  geom_col(aes(y=Importance, x=reorder(Pretty, Importance)), alpha=0.7) + 
+  coord_flip() + 
+  xlab("Variable")
 
 #filename="../results/rrfFit_roc_importance.pdf"
 #ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
-varimp.plot
+rf_variable_importances_plot
 ```
 
 
-```{r}
+```{r Predict deferral classes}
 prediction.vl <- predict(rrfFit_roc, newdata = validate)
-caret::confusionMatrix(reference=validate$Hb_deferral,data=prediction.vl,positive = "Deferred")
+caret::confusionMatrix(reference=validate$Hb_deferral, data=prediction.vl, positive = "Deferred")
 
 ```
 
@@ -586,22 +625,15 @@ caret::confusionMatrix(reference=validate$Hb_deferral, data=prediction.vl, posit
 ```
 
 
-```{r}
+```{r Get prediction probabilities}
 prediction.probs <- predict(rrfFit_roc, newdata = validate, type="prob")
-
-#validate.ROC <- roc(predictor=prediction.probs$Deferred,
-#               response=validate$Hb_deferral
-##               levels=rev(levels(validate$Hb_deferral))
-#  )
-#validate.ROC$auc
 ```
 
 
 
-```{r , warning=FALSE, echo=FALSE}
+```{r Create prediction result dataframe, warning=FALSE, echo=FALSE}
 source("validate_stan_fit.R")
 width = 180
-#create_precision_recall_new <- function(labels, scores) {
 df <- tibble(original_label = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
              predicted_label = ifelse(prediction.vl == "Deferred", 1, 0), 
              score=prediction.probs$Deferred)
@@ -693,25 +725,13 @@ message("Here9")
 
 
 
-
-
 ### Summary
 
 ```{r Errors, results="markup"}
 
-#str(error_rows)
-#df <- do.call(rbind, error_rows)
-# for (i in seq_along(error_rows)) {
-#   if (i == 1) {
-#     errors <- as_tibble(error_rows[[1]])
-#   } else {
-#     errors <- rbind(errors, error_rows[[i]])
-#   }
-# }  
-#errors <- as_tibble(df)
 summary_table <- bind_rows(summary_rows)
 summary_table <- summary_table %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
-                            "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
+                                          "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
 
 write_csv(summary_table, paste(rawresultdir, "errors_", id, ".csv", sep = ''))
 if (!is.null(params$summary_table_file)) {

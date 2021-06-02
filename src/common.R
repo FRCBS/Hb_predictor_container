@@ -22,8 +22,8 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
                                    "Number of donations in the last two years",
                                    "Number of deferrals due to low hemoglobin in the last two years",
                                    "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
-                                   "Hb value at previous measurement (ICP-model)",
-                                   "Hb value at first donation of this donor (Non ICP-model)",
+                                   "Hb value at previous measurement (dynamic linear mixed model)",
+                                   "Hb value at first donation of this donor (linear mixed model)",
                                    "Deferred based on low hemoglogin")
 )
 

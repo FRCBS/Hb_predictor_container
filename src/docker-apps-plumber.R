@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.22"
+container_version="0.23"
 
 message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
@@ -38,7 +38,10 @@ check_columns <- function(got, expected) {
   if (all(expected %in% got)) {
     return("")
   } else {
-    msg <- sprintf("Expected columns %s, got columns %s, missing %s", paste(expected, collapse=" "), paste(got, collapse=" "), paste(setdiff(expected, got), collapse=" "))
+    msg <- sprintf("Expected columns %s, got columns %s, missing %s", 
+                   paste(expected, collapse=" "), 
+                   paste(got, collapse=" "), 
+                   paste(setdiff(expected, got), collapse=" "))
     return(msg)
   }
 }
@@ -220,8 +223,9 @@ hb_predictor3 <- function(ws) {
         error_messages <- c(error_messages, sprintf("donor dataframe: %s", msg))
         return(list(type="final", error_messages=error_messages))
       } else {
+        message("Check if we got additional variables")
         additional_variables <- setdiff(names(donors), required_donor_variables) %>%
-          keep(function(name) is.numeric(df[[name]]) || name == "DONOR_DATE_FIRST_DONATION")
+          keep(function(name) is.numeric(donors[[name]]) || name == "DONOR_DATE_FIRST_DONATION")
         cat(sprintf("Got the following additional numeric donor specific variables: %s\n", paste(additional_variables, collapse=" ")))
       }
     }
@@ -331,6 +335,9 @@ hb_predictor3 <- function(ws) {
   for (parameter_name in names(post)) {
     if (str_starts(parameter_name, "dv_")) predictive_variables <- append(predictive_variables, str_remove(parameter_name, "^dv_")) 
   }
+  if (stratify_by_sex) {
+    predictive_variables <- setdiff(predictive_variables, "gender")
+  }
   print(predictive_variables)
   myparams$predictive_variables <- paste(predictive_variables, sep=",")
   
@@ -430,7 +437,8 @@ hb_predictor3 <- function(ws) {
     myparams$method <- m
     pretty <- method_df %>% filter(method==m) %>% pull(pretty)
     rmd <- method_df %>% filter(method==m) %>% pull(rmd)
-    genders <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
+    #genders <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
+    genders <- if (stratify_by_sex)  c("male", "female") else c("both")
     for (gender in genders) {
       cat(sprintf("Running gender %s\n", gender))
       myparams["gender"] <- gender
@@ -594,6 +602,16 @@ hb_predictor <- function(req){
             <input type="checkbox" value="on", id="stratify-by-sex" name="stratify-by-sex" />
             </td>
         </tr>
+        <!-- Not ready yet for this.
+        <tr><td>Hyperparameters</td>                <td>
+        <select id="hyperparameters" name="hyperparameters">
+          <option value="finnish" label="Finnish" selected>Finnish</option>
+          <option value="dutch" label="Dutch">Dutch</option>
+          <option value="upload" label="Upload">Upload</option>
+          <option value="learn" label="Learn">Learn</option>
+        </select>
+        </td></tr>
+        -->
         </label>
         <!--<tr><td>Progress</td>               <td><progress id="progress" value="0" /></td></tr>-->
         </table>
