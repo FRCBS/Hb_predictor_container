@@ -3,14 +3,14 @@
 descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
                                 "year", "warm_season", "consecutive_deferrals", "recent_donations",
                                 "recent_deferrals", "hour", 
-                                "previous_Hb", "Hb_first", "Hb_deferral"), 
+                                "previous_Hb", "Hb_first", "Hb_deferral", "gender"), 
                    Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous Hb deferral", 
                               "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
                               "Recent deferrals", "Hour", 
-                              "Previous Hb", "First Hb", "Hb deferral"),
+                              "Previous Hb", "First Hb", "Hb deferral", "Sex"),
                    Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
                             "numeric (int)", "boolean", "numeric (int)", "numeric (int)", "numeric (int)", "numeric",
-                            "numeric", "numeric", "boolean"),
+                            "numeric", "numeric", "boolean", "Factor"),
                    Explanation = c("Donor identifier",
                                    "Amount of Hemoglobin",
                                    "Time (in days) between Hb measurement and previous full blood donation event",
@@ -24,7 +24,8 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
                                    "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
                                    "Hb value at previous measurement (dynamic linear mixed model)",
                                    "Hb value at first donation of this donor (linear mixed model)",
-                                   "Deferred based on low hemoglogin")
+                                   "Deferred based on low hemoglogin",
+                                   "Sex of the donor")
 )
 
 #tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")

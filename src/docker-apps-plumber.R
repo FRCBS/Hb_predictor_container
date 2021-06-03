@@ -362,8 +362,10 @@ hb_predictor3 <- function(ws) {
   methods <- intersect(c("lmm", "dlmm"), names(post))
   if (length(methods) > 0) {
     m <- ifelse(length(methods) == 2, "both", methods[[1]])
-    myparams$method <- case_when(m=="lmm" ~ "no-fix", m=="dlmm" ~ "icp-fix", TRUE ~ m)
-    for (gender in c("male", "female")) {
+    #myparams$method <- case_when(m=="lmm" ~ "no-fix", m=="dlmm" ~ "icp-fix", TRUE ~ m)
+    myparams$method <- m
+    genders <- if (stratify_by_sex)  c("male", "female") else c("both")
+    for (gender in genders) {
       myparams["gender"] <- gender
       filename <- sprintf("/tmp/summary-%s.csv", gender)
       myparams["summary_table_file"] <- filename
@@ -599,7 +601,7 @@ hb_predictor <- function(req){
         </tr>
         <tr id="stratify_by_sex_row"><td>Stratify by sex</td>
             <td>
-            <input type="checkbox" value="on", id="stratify-by-sex" name="stratify-by-sex" />
+            <input type="checkbox" value="on", id="stratify-by-sex" name="stratify-by-sex" checked />
             </td>
         </tr>
         <!-- Not ready yet for this.

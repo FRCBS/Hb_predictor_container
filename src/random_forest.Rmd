@@ -182,10 +182,11 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample siz
 stopifnot(sample_fraction <= 1.0)
 
 if (sample_fraction < 1.0) {
-  donors <- unique(data$donor)
-  a <- caret::createDataPartition(1:length(donors), p=sample_fraction, list=FALSE)
-  data <- data %>%
-    filter(donor %in% donors[a])
+  data <- sample_set(data, sample_fraction)
+  # donors <- unique(data$donor)
+  # a <- caret::createDataPartition(1:length(donors), p=sample_fraction, list=FALSE)
+  # data <- data %>%
+  #   filter(donor %in% donors[a])
 }
 
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
@@ -703,7 +704,8 @@ results_both_random_forest$pr_plot
 message("Here5")
 results_both_random_forest$f1_ci
 message("Here6")
-t <- tibble(Id="both-rf", Model="Random forest", Gender=params$gender, 
+id <- sprintf("%s-rf", params$gender)
+t <- tibble(Id=id, Model="Random forest", Gender=params$gender, 
             MAE=NA, RMSE=NA, MAE2=NA, RMSE2=NA) 
 message("Here7")
 t <- bind_cols(c(t, results_both_random_forest$roc_plot$roc_ci, results_both_random_forest$pr_plot$pr_ci, results_both_random_forest$f1_ci))

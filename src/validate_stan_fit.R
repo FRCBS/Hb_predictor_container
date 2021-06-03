@@ -22,6 +22,7 @@ probability_of_deferral <- function(v, threshold) {
 
 # deferral score
 get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
+  message("In get_scores function")
   pars <- rstan::extract(fit, pars = c("y_pred"))
   y_pred <- pars$y_pred
   
@@ -29,7 +30,10 @@ get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
   #print(y_pred)
   #normalised_threshold <- (cutoff - norm_mean) / norm_sd
   normalised_threshold <- normalize_vector(cutoff, norm_mean, norm_sd)
-  predicted_probabilities <- apply(y_pred, MARGIN = 2, FUN = probability_of_deferral, threshold = normalised_threshold)
+  message(sprintf("Dimensions of y_pred: %i rows, %i columns", nrow(y_pred), ncol(y_pred)))
+  #predicted_probabilities <- apply(y_pred, MARGIN = 2, FUN = probability_of_deferral, threshold = normalised_threshold)
+  # The rows are iterations and columns correspond to donors
+  predicted_probabilities <- map2_dbl(as_tibble(y_pred), normalised_threshold, probability_of_deferral)
   return(predicted_probabilities) 
 }
 
@@ -227,6 +231,8 @@ create_confusion_matrix_plot <- function(orig_labels, pred_labels) {
   return(plot)
 }
 
+
+
 create_scatter_plot <- function(df, threshold) {
   xymin <- min(min(df$predicted_value), min(df$original_value))
   xymax <- max(max(df$predicted_value), max(df$original_value))
@@ -404,6 +410,7 @@ create_scatter_confusion_plots <- function(df, Hb_cutoff,
 validate_fit <- function(fit, original_value, original_label, Hb_cutoff, score, params, pnames = NULL, metric = "mean", 
                          cat.plot = TRUE,
                          use_optimal_cutoff=FALSE) {
+  message("In validate_fit function")
   # Posterior effect sizes
   #x <- as.matrix(fit, pars = params)
   #posterior.plot <- create_forest_plot_old(x, pnames)
@@ -443,7 +450,7 @@ validate_fit <- function(fit, original_value, original_label, Hb_cutoff, score, 
 
   
   df <- tibble(predicted_value = predicted_value, sds=sds, original_value = original_value, 
-               predicted_label=predicted_label, original_label = original_label, score=score)
+               predicted_label = predicted_label, original_label = original_label, score=score)
   
   scatter_plot <- create_scatter_plot(df, Hb_cutoff)
   

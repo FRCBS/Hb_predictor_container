@@ -176,8 +176,9 @@ denormalize <- function(df, original = NULL, columns = NULL, means = NULL, sds =
   return(df)
 }
 
+# Can be used to split data set to train and test parts in given fraction
 split_set <- function(df, train_frac) {
-  # Can be used to split data set to a wanted fraction
+  
   n.tab <- count(df, donor)
   part <- createDataPartition(n.tab$n, p = train_frac, list = F)
   dons <- n.tab$donor[part]
@@ -187,6 +188,15 @@ split_set <- function(df, train_frac) {
   test <- df %>%
     filter(donor %in% dons)
   return(list("train" = train, "test" = test))
+}
+
+# Take a sample of donors
+sample_set <- function(data, fraction) {
+  donors <- unique(data$donor)
+  a <- caret::createDataPartition(1:length(donors), p=fraction, list=FALSE)
+  data <- data %>%
+    filter(donor %in% donors[a])
+  return(data)
 }
 
 # Subtract one from the hlen values due to discarding first event at this point.
@@ -1007,6 +1017,8 @@ plot_param_cis <- function(df, params = NULL) {
 
 stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL, basic_variables = NULL,
                                 donor_variables = NULL, test_data = TRUE, hlen = NULL, hlen_exactly = FALSE) {
+  message("In stan_preprocess_new function")
+  
   hlen_orig <- hlen
   # Preprocessing for combined dataset
   # tolag variable defines which variables should be lagged
@@ -1140,6 +1152,7 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
   }
   
   message(sprintf("Basic variables are %s\n", paste(basic_variables, collapse=" ")))
+  message(sprintf("Variables in x_train are %s\n", paste(colnames(x_train), collapse=" ")))
   
   # Filter unwanted variables
   #x_train <- x_train %>% select(-matches("first_event|Hb_deferral|donat_phleb|dateonly"))
@@ -1171,6 +1184,8 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
               par_sds = par_sds,
               C = C))
 }
+
+
 
 check_numeric <- function(df) {
   #bins <- apply(df,2,function(x) { all(x %in% 0:1) })
@@ -1356,6 +1371,7 @@ stan_preprocess_deltamodel <- function(df, normalize = TRUE, Hb_index = 1, tolag
 
 stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = TRUE, hlen = NULL, hlen_exactly=FALSE,
                                     tolag = NULL, basic_variables, donor_variables = NULL, test_data = TRUE) {
+  message("In stan_preprocess_icp_new function")
   # Does mostly same thing as normal stan-preprocessing function.
   # Main exception is that this returns first Hb-values so that first events can be used
   # with Initial conditions problem fix
@@ -1490,9 +1506,12 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
   
   first_events <- which(ifelse(train_donors != lag(train_donors, default = 0), TRUE, FALSE))
   
+  # These variables can be used to explain the first Hb value, they are not related to previous donations
+  Z_variables <- c("age", "year", "warm_season", "hour")
+  if ("gender" %in% colnames(x_train)) Z_variables <- c(Z_variables, "gender")
   Z <- x_train %>%
     filter(row_number() %in% first_events) %>% 
-    select(age, year, warm_season, hour)
+    select(all_of(Z_variables))
 
   # Convert NA values in days_to_previoys, previous_Hb_def and previous_Hb to 0
   # And select predictor variables
