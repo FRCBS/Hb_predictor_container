@@ -2,6 +2,7 @@
 
 Hemoglobin predictor wrapped in a Docker container. Download
 the docker image with command `docker pull toivoja/hb-predictor`.
+A specific version (0.23) can be downloaded with `docker pull toivoja/hb-predictor:0.23`.
 
 ## Running the container
 
@@ -18,6 +19,9 @@ http://localhost:8080/hb-predictor
 Kill the server (and the server) by pressing control-c.
 
 ### Running from command line
+
+Note, this section contains obsolete information! The option to do
+the analyses from command line are not currently supported. Use the browser user interface instead.
 
 docker container run -i --rm -v /whicheverfolderinputisin:/input toivoja/hb-predictor src/hb-predictor.sh date=2020-07-15 gender=female sample_fraction=0.002 method=icp-fix hlen=1 input_file=/input/inputfilename.rdata
 
@@ -70,15 +74,13 @@ Importing an image from a tar file is done by
 
 ## References
 
-The following page contains examples on building R script based docker
-applications:
-https://www.r-bloggers.com/running-your-r-script-in-docker/
-And the following page shows how a simple web application can be build with
-R package Rook:
-https://anythingbutrbitrary.blogspot.com/2012/12/a-simple-web-application-using-rook.html
-Why Rook does not work well with docker:
-https://pythonspeed.com/articles/docker-connection-refused/
-Plumber for creating a webserver that can listen to all interfaces, instead of just localhost:
-https://www.rplumber.io/docs/index.html
-Installing rstan:
-https://github.com/stan-dev/rstan/wiki/Installing-RStan-on-Linux
+- The following page contains examples on building R script based docker applications:
+  https://www.r-bloggers.com/running-your-r-script-in-docker/
+- And the following page shows how a simple web application can be build with R package Rook:
+  https://anythingbutrbitrary.blogspot.com/2012/12/a-simple-web-application-using-rook.html
+- Why Rook does not work well with docker:
+  https://pythonspeed.com/articles/docker-connection-refused/
+- Plumber for creating a webserver that can listen to all interfaces, instead of just localhost:
+  https://www.rplumber.io/docs/index.html
+- Installing rstan:
+  https://github.com/stan-dev/rstan/wiki/Installing-RStan-on-Linux
