@@ -75,7 +75,7 @@ document.onreadystatechange = function() {
 	// Predictive variables
 	dvs = ["days_to_previous_fb", "age", "previous_Hb_def", "year",                 
 	       "warm_season", "consecutive_deferrals", "recent_donations", "recent_deferrals",     
-	       "hour", "previous_Hb", "Hb_first", "gender"]  ;
+	       "hour", "previous_Hb", "Hb_first", "sex"]  ;
 	el = document.getElementById("predictive-variables");
 	for (i=0; i < dvs.length; ++i) {
 	    l = document.createElement('label');
@@ -233,7 +233,7 @@ document.onreadystatechange = function() {
 	for (i=0; i < data.details_df.length; ++i) {
             var wrapper= document.createElement('tbody');
             e = data.details_df[i];
-            t = `<tr id="${e.id}"> <td>${e.pretty}</td> <td>${e.gender}</td> <td><a href="${e.html}" target="_blank" >html</a></td> <td><a href="${e.pdf}" target="_blank" >pdf</a></td> </tr>`;
+            t = `<tr id="${e.id}"> <td>${e.pretty}</td> <td>${e.sex}</td> <td><a href="${e.html}" target="_blank" >html</a></td> <td><a href="${e.pdf}" target="_blank" >pdf</a></td> </tr>`;
             wrapper.innerHTML = t;
             console.log(t)
             detailed_results.appendChild(wrapper.firstChild);

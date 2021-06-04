@@ -57,7 +57,7 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
     M = ncol(C)
     first_events = df$first_events
   }
-  #x_train <- x_train %>% select(-don_id, -gender)
+  #x_train <- x_train %>% select(-don_id, -sex)
   # All models use QR-reparametrizarion so it will be done here
   tryCatch(
     error = function(cnd) {
@@ -150,12 +150,12 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
   }
 }
 
-drop_some_fields <- function(df, gender2) {
-  #df <- df %>% select(-don_id, -gender, -previous_Hb)
-  if (gender2=="both") {
-    df <- df %>% select(-don_id) %>% mutate(gender = ifelse(gender=="Women", TRUE, FALSE))
+drop_some_fields <- function(df, sex2) {
+  #df <- df %>% select(-don_id, -sex, -previous_Hb)
+  if (sex2=="both") {
+    df <- df %>% select(-don_id) %>% mutate(sex = ifelse(sex=="female", TRUE, FALSE))
   } else {
-    df <- df %>% select(-don_id, -gender)
+    df <- df %>% select(-don_id, -sex)
   }
   return(df)
 }
@@ -166,7 +166,7 @@ create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=N
                             basic_variables, basic_variables_dlmm,
                             donor_variables=NULL,
                             compute_lmm, compute_dlmm,
-                            gender) {
+                            sex) {
   message("In create_datasets function")
   # Set the directory where the files will be saved:
   #dumpdir = "~/FRCBS/interval_prediction/data/rdump/"
@@ -192,11 +192,11 @@ create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=N
   data <- data %>% select("Hb", everything())  # Move Hb to first column, because Yrjo's Hb_index stuff does not work
   data <- data %>% select(-nb_donat_progesa, -nb_donat_outside)  # Drop these as they contain NAs
 
-  message(sprintf("%s dataset size: %i", gender, ndonor(data)))
+  message(sprintf("%s dataset size: %i", sex, ndonor(data)))
 
   # Take a sample
   small <- sample_set(data, sample_fraction)
-  message(sprintf("%s dataset size after sample_fraction split: %i", gender, ndonor(small)))
+  message(sprintf("%s dataset size after sample_fraction split: %i", sex, ndonor(small)))
 
     
 
@@ -205,13 +205,13 @@ create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=N
   Hb_index <- which(colnames(data)=="Hb")
   stopifnot(Hb_index == 1)
   if (compute_lmm) {
-    stan.preprocessed.lmm <- stan_preprocess_new(drop_some_fields(small, gender) %>% select(-previous_Hb), 
+    stan.preprocessed.lmm <- stan_preprocess_new(drop_some_fields(small, sex) %>% select(-previous_Hb), 
                                                         Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
                                                         basic_variables=basic_variables, donor_variables = donor_variables)
     stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.lmm")
   }
   if (compute_dlmm) {
-    stan.preprocessed.dlmm <- stan_preprocess_icp_new(drop_some_fields(small, gender) %>% select(-Hb_first), 
+    stan.preprocessed.dlmm <- stan_preprocess_icp_new(drop_some_fields(small, sex) %>% select(-Hb_first), 
                                                              Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
                                                              basic_variables=basic_variables_dlmm, donor_variables = donor_variables)
     stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.dlmm")

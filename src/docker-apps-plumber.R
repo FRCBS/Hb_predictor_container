@@ -47,7 +47,7 @@ check_columns <- function(got, expected) {
 }
 
 create_summary_table <- function(summary_table) {
-  cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
+  cols <- c("Model", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
             "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
   summary_table_string <- kable(summary_table %>% select(!!!cols), format="html", digits=3, 
                                 caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE),\
@@ -336,7 +336,7 @@ hb_predictor3 <- function(ws) {
     if (str_starts(parameter_name, "dv_")) predictive_variables <- append(predictive_variables, str_remove(parameter_name, "^dv_")) 
   }
   if (stratify_by_sex) {
-    predictive_variables <- setdiff(predictive_variables, "gender")
+    predictive_variables <- setdiff(predictive_variables, "sex")
   }
   print(predictive_variables)
   myparams$predictive_variables <- paste(predictive_variables, sep=",")
@@ -350,7 +350,7 @@ hb_predictor3 <- function(ws) {
   
   summary_tables <- list()
   effect_size_tables <- list()
-  details_df <- tibble(id=character(0), pretty=character(0), gender=character(0), html=character(0), pdf=character(0))
+  details_df <- tibble(id=character(0), pretty=character(0), sex=character(0), html=character(0), pdf=character(0))
   details_dfs <- list()
   
   ####################
@@ -364,23 +364,23 @@ hb_predictor3 <- function(ws) {
     m <- ifelse(length(methods) == 2, "both", methods[[1]])
     #myparams$method <- case_when(m=="lmm" ~ "no-fix", m=="dlmm" ~ "icp-fix", TRUE ~ m)
     myparams$method <- m
-    genders <- if (stratify_by_sex)  c("male", "female") else c("both")
-    for (gender in genders) {
-      myparams["gender"] <- gender
-      filename <- sprintf("/tmp/summary-%s.csv", gender)
+    sexes <- if (stratify_by_sex)  c("male", "female") else c("both")
+    for (sex in sexes) {
+      myparams["sex"] <- sex
+      filename <- sprintf("/tmp/summary-%s.csv", sex)
       myparams["summary_table_file"] <- filename
-      effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", gender)
+      effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", sex)
       myparams["effect_size_table_file"] <- effect_size_filename
       error_messages <- tryCatch(
         error = function(cnd) {
-          error_messages <- c(sprintf("Error in %s with sex %s.\n", "linear mixed model", gender), cnd$message)
+          error_messages <- c(sprintf("Error in %s with sex %s.\n", "linear mixed model", sex), cnd$message)
           return(error_messages)
         },
         {
           rmarkdown::render(
             'linear_models.Rmd',
-            output_file=rep(sprintf('results-%s', gender), 2),   # One for each output format: html and pdf 
-            #output_file=sprintf('results-%s', gender),   # One for each output format: html and pdf 
+            output_file=rep(sprintf('results-%s', sex), 2),   # One for each output format: html and pdf 
+            #output_file=sprintf('results-%s', sex),   # One for each output format: html and pdf 
             output_format=c('html_document', 'pdf_document'),
             #output_format=list('html_document', pdf_document(dev="pdf_cairo")),
             #output_format=c('html_document'),
@@ -396,29 +396,29 @@ hb_predictor3 <- function(ws) {
         break
       }      
       s <- read_csv(filename)
-      summary_tables[[gender]] <- s
+      summary_tables[[sex]] <- s
       #ws$send(rjson::toJSON(list(type="summary", df = purrr::transpose(s), colnames = colnames(s))))
       ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
       
-      effect_size_tables[[gender]] <- read_csv(effect_size_filename)
+      effect_size_tables[[sex]] <- read_csv(effect_size_filename)
       
       #m <- myparams$method
       pretty <- case_when(m=="lmm" ~ "Linear mixed model", m=="dlmm" ~ "Dynamic linear mixed model", TRUE ~ "Linear mixed models")
       t <- 
-        tibble(id=sprintf("detail-linear-models-%s", gender), 
+        tibble(id=sprintf("detail-linear-models-%s", sex), 
                 pretty=pretty,
-                gender=gender,
-                html=sprintf("output/results-%s.html", gender),
-                pdf=sprintf("output/results-%s.pdf", gender))
+                sex=sex,
+                html=sprintf("output/results-%s.html", sex),
+                pdf=sprintf("output/results-%s.pdf", sex))
       details_dfs[[length(details_dfs)+1]] <- t
       
       ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
       # details_df <- details_df %>% 
-      #   add_row(id=sprintf("detail-linear-models-%s", gender), 
+      #   add_row(id=sprintf("detail-linear-models-%s", sex), 
       #           pretty=pretty,
-      #           gender=gender,
-      #           html=sprintf("output/results-%s.html", gender),
-      #           pdf=sprintf("output/results-%s.pdf", gender))
+      #           sex=sex,
+      #           html=sprintf("output/results-%s.html", sex),
+      #           pdf=sprintf("output/results-%s.pdf", sex))
     }
   }
   
@@ -439,12 +439,12 @@ hb_predictor3 <- function(ws) {
     myparams$method <- m
     pretty <- method_df %>% filter(method==m) %>% pull(pretty)
     rmd <- method_df %>% filter(method==m) %>% pull(rmd)
-    #genders <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
-    genders <- if (stratify_by_sex)  c("male", "female") else c("both")
-    for (gender in genders) {
-      cat(sprintf("Running gender %s\n", gender))
-      myparams["gender"] <- gender
-      temp_filename <- sprintf("/tmp/summary-%s-%s.csv", m, gender)
+    #sexess <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
+    sexes <- if (stratify_by_sex)  c("male", "female") else c("both")
+    for (sex in sexes) {
+      cat(sprintf("Running sex %s\n", sex))
+      myparams["sex"] <- sex
+      temp_filename <- sprintf("/tmp/summary-%s-%s.csv", m, sex)
       myparams["summary_table_file"] <- temp_filename
       temp_effect_size_filename <- sprintf("../output/variable-importance-%s.csv", m)
       myparams["effect_size_table_file"] <- temp_effect_size_filename
@@ -453,7 +453,7 @@ hb_predictor3 <- function(ws) {
           rmarkdown::render(
             rmd,
             #'template.Rmd',
-            output_file=rep(sprintf('results-%s-%s', m, gender), 2),   # One for each output format: html and pdf 
+            output_file=rep(sprintf('results-%s-%s', m, sex), 2),   # One for each output format: html and pdf 
             output_format=c('html_document', 'pdf_document'),
             clean=FALSE,
             output_dir='../output',
@@ -473,27 +473,27 @@ hb_predictor3 <- function(ws) {
         break
       }
       s <- read_csv(temp_filename)
-      summary_tables[[paste(m, gender, sep="-")]] <- s
+      summary_tables[[paste(m, sex, sep="-")]] <- s
       ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
       
       t <-
-        tibble(id=sprintf("detail-%s-%s", m, gender), 
+        tibble(id=sprintf("detail-%s-%s", m, sex), 
                 pretty=str_to_sentence(pretty),
-                gender=gender,
-                html=sprintf("output/results-%s-%s.html", m, gender),
-                pdf=sprintf("output/results-%s-%s.pdf", m, gender))
+                sex=sex,
+                html=sprintf("output/results-%s-%s.html", m, sex),
+                pdf=sprintf("output/results-%s-%s.pdf", m, sex))
       details_dfs[[length(details_dfs)+1]] <- t
       ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
       
       # details_df <- details_df %>% 
-      #   add_row(id=sprintf("detail-%s-%s", m, gender), 
+      #   add_row(id=sprintf("detail-%s-%s", m, sex), 
       #           pretty=str_to_sentence(pretty),
-      #           gender=gender,
-      #           html=sprintf("output/results-%s-%s.html", m, gender),
-      #           pdf=sprintf("output/results-%s-%s.pdf", m, gender))
+      #           sex=sex,
+      #           html=sprintf("output/results-%s-%s.html", m, sex),
+      #           pdf=sprintf("output/results-%s-%s.pdf", m, sex))
       
       # should I read here the effect size table?
-      #effect_size_tables[[paste(m, gender, sep="-")]] <- read_csv(temp_effect_size_filename)
+      #effect_size_tables[[paste(m, sex, sep="-")]] <- read_csv(temp_effect_size_filename)
     }
   }
   
@@ -685,7 +685,7 @@ hb_predictor <- function(req){
         
         <h3>Detailed result pages</h3>
         <table id="detailed-results" class="table table-condensed">
-        <tr> <th>Model</th> <th>Gender</th> <th>html</th> <th>pdf</th> </tr>
+        <tr> <th>Model</th> <th>Sex</th> <th>html</th> <th>pdf</th> </tr>
         </table>
       </div>
       

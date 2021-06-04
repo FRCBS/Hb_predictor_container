@@ -3,7 +3,7 @@
 descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
                                 "year", "warm_season", "consecutive_deferrals", "recent_donations",
                                 "recent_deferrals", "hour", 
-                                "previous_Hb", "Hb_first", "Hb_deferral", "gender"), 
+                                "previous_Hb", "Hb_first", "Hb_deferral", "sex"), 
                    Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous Hb deferral", 
                               "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
                               "Recent deferrals", "Hour", 

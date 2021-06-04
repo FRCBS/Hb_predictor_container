@@ -8,12 +8,12 @@ params:
   hlen_exactly: FALSE
   sample_fraction: 1.0
   method: "both"
-  gender: "both"
+  sex: "both"
   id: NULL
   # sample_fraction: 0.004
   # method: "icp-fix"
-  # gender: "male"
-  # id:   date-2020-07-17-gender-male-method-icp-fix-sample_fraction-0.004
+  # sex: "male"
+  # id:   date-2020-07-17-sex-male-method-icp-fix-sample_fraction-0.004
   date: "2020-07-08"
   extra_id: NULL
   summary_table_file: NULL
@@ -30,12 +30,12 @@ params:
 ---
 
 ```{r, echo=FALSE, message=FALSE}
-message(sprintf(">>>>>>>>>> LMMs %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", params$gender, knitr::opts_chunk$get("dev")))
+message(sprintf(">>>>>>>>>> LMMs %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", params$sex, knitr::opts_chunk$get("dev")))
 ```
 
   
 ```{r, results="asis", echo=FALSE}
-cat(sprintf("# Linear mixed models (%s)\n", params$gender))
+cat(sprintf("# Linear mixed models (%s)\n", params$sex))
 ```
 
 <!--
@@ -147,9 +147,9 @@ message(paste0("Current device is ", knitr::opts_current$get("dev"), "\n"))
 use_pdf <- knitr::opts_chunk$get("dev") %in% c("pdf", "cairo_pdf")
 
 # These are used to select which computations to perform,
-# base on params$gender and params$method
-compute_male   <- params$gender %in% c("male", "both")
-compute_female <- params$gender %in% c("female", "both")
+# base on params$sex and params$method
+compute_male   <- params$sex %in% c("male", "both")
+compute_female <- params$sex %in% c("female", "both")
 compute_lmm  <- params$method %in% c("lmm", "both")
 compute_dlmm <- params$method %in% c("dlmm", "both")
 
@@ -216,11 +216,11 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If instead of f
     filter(n() > low_limit) %>%
     ungroup()
   
-  if (params$gender == "male") {
-    temp <- data %>% filter(gender=="Men")
+  if (params$sex == "male") {
+    temp <- data %>% filter(sex=="male")
   }
-  else if (params$gender == "female") {
-    temp <- data %>% filter(gender=="Women")
+  else if (params$sex == "female") {
+    temp <- data %>% filter(sex=="female")
   } else {
     temp <- data
   }
@@ -286,10 +286,10 @@ if (!is.null(donor_variables)) {
   data <- data %>% select(all_of(variables_in_order), everything())
 }
 
-if (params$gender=="male") {
-  data <- data %>% filter(gender == "Men")
-} else if (params$gender=="female") {
-  data <- data %>% filter(gender == "Women")
+if (params$sex=="male") {
+  data <- data %>% filter(sex == "male")
+} else if (params$sex=="female") {
+  data <- data %>% filter(sex == "female")
 }
 
 if (create_datasets_bool) {
@@ -299,7 +299,7 @@ if (create_datasets_bool) {
                          Hb_cutoff_female = params$Hb_cutoff_female, 
                          basic_variables=basic_variables, basic_variables_dlmm=basic_variables_dlmm, donor_variables=donor_variables,
                          compute_lmm=compute_lmm, compute_dlmm=compute_dlmm,
-                         gender=params$gender)
+                         sex=params$sex)
   
   data <- lst$small.data
 } else {   # This is only for plotting purpose
@@ -340,13 +340,13 @@ kable(donor_descript %>% filter(Variable %in% c(names(donor_specific_variables),
 
 
 ```{r, results="asis", echo=FALSE}
-cat(sprintf("# Summary plot of variables (%s)\n", params$gender))
+cat(sprintf("### Summary plot of variables (%s)\n", params$sex))
 ```
 
 ```{r Summary plots, echo = FALSE}
 #Plot distributions
 
-g <- params$gender
+g <- params$sex
 color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "green")
 
 #convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
@@ -357,8 +357,8 @@ at_least_one_deferral <- data %>%
   group_by(donor) %>% 
   summarise(one_deferral=max(Hb_deferral))
 
-if ("gender" %in% colnames(data)) {
-  data <- data %>% mutate(gender=ifelse(gender=="Men", 0, 1))
+if ("sex" %in% colnames(data) && params$sex == "both") {
+  data <- data %>% mutate(sex=ifelse(sex=="male", 0, 1))
 }
 pdata <- data %>%
   filter(first_event == FALSE) %>%
@@ -388,7 +388,7 @@ time_series_length_plotter(data, color)
 
 
 ```{r, results="asis", echo=FALSE}
-cat(sprintf("The %s set contains %i donations from %i donors.", params$gender, nrow(data), n_distinct(data$donor)))
+cat(sprintf("The %s set contains %i donations from %i donors.", params$sex, nrow(data), n_distinct(data$donor)))
 #cat(sprintf("The female set contains %i donations from %i donors.", nrow(data.female), n_distinct(data.female$donor)))
 ```
 
@@ -429,19 +429,19 @@ if (skip_train == TRUE) {
 }
 
 rhats <- bayesplot::rhat(fit)
-message(sprintf("Maximum rhat is %f for %s lmm\n", max(rhats), params$gender))
+message(sprintf("Maximum rhat is %f for %s lmm\n", max(rhats), params$sex))
 
 v <- 0
-if (params$gender == "both") {
+if (params$sex == "both") {
   message("Here inside")
-  message(sprintf("Length of x_test$gender: %i, mean: %f\n", length(stan.preprocessed.lmm$x_test$gender), mean(stan.preprocessed.lmm$x_test$gender)))
+  message(sprintf("Length of x_test$sex: %i, mean: %f\n", length(stan.preprocessed.lmm$x_test$sex), mean(stan.preprocessed.lmm$x_test$sex)))
   # For some reason I have to do this inside the 'if' expression
-  v <- ifelse(stan.preprocessed.lmm$x_test$gender == 0, params$Hb_cutoff_male, params$Hb_cutoff_female)
+  v <- ifelse(stan.preprocessed.lmm$x_test$sex == 0, params$Hb_cutoff_male, params$Hb_cutoff_female)
 }
 message("Here")
-# If gender=="both then Hb_cutoff is vector, otherwise it is scalar
-Hb_cutoff <- case_when(params$gender=="male" ~ params$Hb_cutoff_male, 
-                       params$gender=="female" ~ params$Hb_cutoff_female,
+# If sex=="both then Hb_cutoff is vector, otherwise it is scalar
+Hb_cutoff <- case_when(params$sex=="male" ~ params$Hb_cutoff_male, 
+                       params$sex=="female" ~ params$Hb_cutoff_female,
                        TRUE ~ v)
 message("Here2")
 message(sprintf("Length of Hb_cutoff: %i, mean: %f\n", length(Hb_cutoff), mean(Hb_cutoff)))
@@ -449,10 +449,10 @@ message("Here3")
 original_Hb <- denormalize_vector(stan.preprocessed.lmm$y_test, stan.preprocessed.lmm$par_means["Hb"], stan.preprocessed.lmm$par_sds["Hb"]) 
 message(sprintf("Length of original_Hb: %i, mean: %f\n", length(original_Hb), mean(original_Hb)))
 scores <- get_scores(fit, Hb_cutoff, stan.preprocessed.lmm$par_means[["Hb"]], stan.preprocessed.lmm$par_sds[["Hb"]])
-# if (params$gender=="both") {
+# if (params$sex=="both") {
 #   test_labels <- case_when(
-#     stan.preprocessed.lmm$x_test$gender == "male"   & original_Hb < params$Hb_cutoff_male   ~ 1,
-#     stan.preprocessed.lmm$x_test$gender == "female" & original_Hb < Hb_cutoff_female ~ 1,
+#     stan.preprocessed.lmm$x_test$sex == "male"   & original_Hb < params$Hb_cutoff_male   ~ 1,
+#     stan.preprocessed.lmm$x_test$sex == "female" & original_Hb < Hb_cutoff_female ~ 1,
 #     TRUE ~ 0
 #   )
 # } else {
@@ -470,15 +470,15 @@ val$confusion.matrix.plot
 val$roc_plot
 val$pr_plot
 
-id <- sprintf("%s-lmm", params$gender)
-t <- tibble(Id=id, Model="Linear mixed model", Gender=params$gender, 
+id <- sprintf("%s-lmm", params$sex)
+t <- tibble(Id=id, Model="Linear mixed model", Sex=params$sex, 
             MAE=val$mae, RMSE=val$rmse, 
             MAE2=val$mae2, RMSE2=val$rmse2)
 t <- bind_cols(c(t, val$roc_ci, val$pr_ci, val$f1_ci))
 summary_rows[[length(summary_rows)+1]] <- t
 effect_size_rows[[length(effect_size_rows)+1]] <- val$posterior.plot$cis %>% mutate(Id=id)
 
-save(val, file = sprintf("%s/raw_result_%s_lmm_%s.rdata", rawresultdir, params$gender, fit_id))
+save(val, file = sprintf("%s/raw_result_%s_lmm_%s.rdata", rawresultdir, params$sex, fit_id))
 
 # Remove unnescessary values to save memory
 if (knit == TRUE) {rm(stan.lists.lmm, val, fit); invisible(gc(reset = TRUE))}
@@ -513,19 +513,19 @@ if (skip_train == TRUE) {
 }
 
 rhats <- rhat(fit)
-message(sprintf("Maximum rhat is %f for %s dlmm\n", max(rhats), params$gender))
+message(sprintf("Maximum rhat is %f for %s dlmm\n", max(rhats), params$sex))
 
 
 v <- 0
-if (params$gender == "both") {
-  message(sprintf("Length of x_test$gender: %i, mean: %f\n", length(stan.preprocessed.dlmm$x_test$gender), mean(stan.preprocessed.dlmm$x_test$gender)))
+if (params$sex == "both") {
+  message(sprintf("Length of x_test$sex: %i, mean: %f\n", length(stan.preprocessed.dlmm$x_test$sex), mean(stan.preprocessed.dlmm$x_test$sex)))
   # For some reason I have to do this inside the 'if' expression
-  v <- ifelse(stan.preprocessed.dlmm$x_test$gender == 0, params$Hb_cutoff_male, params$Hb_cutoff_female)
+  v <- ifelse(stan.preprocessed.dlmm$x_test$sex == 0, params$Hb_cutoff_male, params$Hb_cutoff_female)
 }
 
-# If gender=="both then Hb_cutoff is vector, otherwise it is scalar
-Hb_cutoff <- case_when(params$gender=="male" ~ params$Hb_cutoff_male, 
-                       params$gender=="female" ~ params$Hb_cutoff_female,
+# If sex=="both then Hb_cutoff is vector, otherwise it is scalar
+Hb_cutoff <- case_when(params$sex=="male" ~ params$Hb_cutoff_male, 
+                       params$sex=="female" ~ params$Hb_cutoff_female,
                        TRUE ~ v)
 message(sprintf("Length of Hb_cutoff: %i, mean: %f\n", length(Hb_cutoff), mean(Hb_cutoff)))
 original_Hb <- denormalize_vector(stan.preprocessed.dlmm$y_test, stan.preprocessed.dlmm$par_means["Hb"], stan.preprocessed.dlmm$par_sds["Hb"]) 
@@ -544,15 +544,15 @@ val$confusion.matrix.plot
 val$roc_plot
 val$pr_plot
 
-id <- sprintf("%s-dlmm", params$gender)
-t <- tibble(Id=id, Model="Dynamic linear mixed model", Gender=params$gender, 
+id <- sprintf("%s-dlmm", params$sex)
+t <- tibble(Id=id, Model="Dynamic linear mixed model", Sex=params$sex, 
             MAE=val$mae, RMSE=val$rmse, 
             MAE2=val$mae2, RMSE2=val$rmse2)
 t <- bind_cols(c(t, val$roc_ci, val$pr_ci, val$f1_ci))
 summary_rows[[length(summary_rows)+1]] <- t
 effect_size_rows[[length(effect_size_rows)+1]] <- val$posterior.plot$cis %>% mutate(Id=id)
 
-save(val, file = sprintf("%s/raw_result_%s_dlmm_%s.rdata", rawresultdir, params$gender, fit_id))
+save(val, file = sprintf("%s/raw_result_%s_dlmm_%s.rdata", rawresultdir, params$sex, fit_id))
 
 if (knit == TRUE) {rm(stan.lists.dlmm, val, fit); invisible(gc(reset = TRUE))}
 
@@ -586,7 +586,7 @@ if (!is.null(params$summary_table_file)) {
 ```
 
 ```{r}
-cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+cols <- c("Model", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
 ```
 

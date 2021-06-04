@@ -7,7 +7,7 @@ params:
   hlen_exactly: FALSE
   sample_fraction: 1.0
   method: "both"
-  gender: "both"
+  sex: "both"
   id: NULL
   date: "2020-07-08"
   extra_id: NULL
@@ -25,11 +25,11 @@ params:
 
   
 ```{r, echo=FALSE, message=FALSE}
-message(sprintf(">>>>>>>>>> Decision tree %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", params$gender, knitr::opts_chunk$get("dev")))
+message(sprintf(">>>>>>>>>> Decision tree %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", params$sex, knitr::opts_chunk$get("dev")))
 ```
 
 ```{r, results="asis", echo=FALSE, message=FALSE}
-cat(sprintf("# Decision tree (%s)\n", params$gender))
+cat(sprintf("# Decision tree (%s)\n", params$sex))
 ```
 
 
@@ -117,11 +117,11 @@ if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample siz
     filter(n() > low_limit) %>%
     ungroup()
   
-  if (params$gender == "male") {
-    temp <- data %>% filter(gender=="Men")
+  if (params$sex == "male") {
+    temp <- data %>% filter(sex=="male")
   }
-  else if (params$gender == "female") {
-    temp <- data %>% filter(gender=="Women")
+  else if (params$sex == "female") {
+    temp <- data %>% filter(sex=="female")
   } else {
     temp <- data
   }
@@ -165,10 +165,10 @@ if (!is.null(donor_variables)) {
   data <- data %>% select(all_of(variables_in_order), everything())
 }
 
-if (params$gender == "male") {
-  data <- data %>% filter(gender == "Men")
-} else if (params$gender == "female") {
-  data <- data %>% filter(gender == "Women")
+if (params$sex == "male") {
+  data <- data %>% filter(sex == "male")
+} else if (params$sex == "female") {
+  data <- data %>% filter(sex == "female")
 }
 
 sample_donors <- function(df, fraction) {
@@ -206,14 +206,14 @@ kable(donor_descript %>% filter(Variable %in% names(donor_specific_variables)))
 ```
 
 ```{r, results="asis", echo=FALSE}
-cat(sprintf("### Summary plots of variables (%s)\n", params$gender))
+cat(sprintf("### Summary plots of variables (%s)\n", params$sex))
 ```
 
 
 ```{r Summary plots, echo = FALSE}
 #Plot distributions for donors
 
-g <- params$gender
+g <- params$sex
 color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "green")
 
 temp_donors <- data$donor
@@ -286,9 +286,9 @@ dummy_plots <- function(df) {
 n=500   # We create n random rows
 df <- tibble(original_value  = rnorm(n, 150, 20),
              predicted_value = rnorm(n, 150, 20),
-             gender = sample(c("Men", "Women"), n, replace = TRUE),
-             original_label  = as.integer(original_value < ifelse(gender=="Men", params$Hb_cutoff_male, params$Hb_cutoff_female)),
-             predicted_label = as.integer(predicted_value < ifelse(gender=="Men", params$Hb_cutoff_male, params$Hb_cutoff_female)),
+             sex = sample(c("male", "female"), n, replace = TRUE),
+             original_label  = as.integer(original_value < ifelse(sex=="male", params$Hb_cutoff_male, params$Hb_cutoff_female)),
+             predicted_label = as.integer(predicted_value < ifelse(sex=="female", params$Hb_cutoff_male, params$Hb_cutoff_female)),
              score           = rnorm(n))
 
 
@@ -300,18 +300,18 @@ results_decision_tree$confusion_matrix_plot
 results_decision_tree$roc_plot 
 results_decision_tree$pr_plot
 
-t <- tibble(Id="both-dt", Model="Decision tree", Gender=params$gender, 
+t <- tibble(Id="both-dt", Model="Decision tree", Sex=params$sex, 
             MAE=NA, RMSE=NA, MAE2=NA, RMSE2=NA) 
 
 t <- bind_cols(c(t, results_decision_tree$roc_plot$roc_ci, results_decision_tree$pr_plot$pr_ci, results_decision_tree$f1_ci))
 
 summary_rows[[length(summary_rows)+1]] <- t
-# summary_rows[[length(summary_rows)+1]] <- list(Model=sprintf("%s, decision tree", params$gender), MAE=NA, RMSE=NA, 
+# summary_rows[[length(summary_rows)+1]] <- list(Model=sprintf("%s, decision tree", params$sex), MAE=NA, RMSE=NA, 
 #                                            MAE2=NA, RMSE2=NA, 
 #                                            AUC=results_decision_tree$roc_plot$roc_auc, 
 #                                            AUPR=results_decision_tree$pr_plot$pr_auc)
 
-save(results_decision_tree, file = paste(rawresultdir, sprintf("raw_result_%s_decision_tree_%s.rdata", params$gender, id), sep="/"))
+save(results_decision_tree, file = paste(rawresultdir, sprintf("raw_result_%s_decision_tree_%s.rdata", params$sex, id), sep="/"))
 
 # if (!is.null(params$effect_size_table_file)) {
 #   write_csv(rrfFit.varimp, params$effect_size_table_file)   # Pass the table to the web app as well
@@ -344,7 +344,7 @@ if (!is.null(params$summary_table_file)) {
 ```
 
 ```{r}
-cols <- c("Model", "Gender", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
+cols <- c("Model", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
           "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
 ```

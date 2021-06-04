@@ -101,7 +101,7 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
     DONOR_DATE_FIRST_DONATION = col_character()
     )
   donor <- read_delim(donor.file, delim="|", col_types = input_col_types2)
-  conversion <- c(donor="KEY_DONOR", gender="KEY_DONOR_SEX", dob="KEY_DONOR_DOB", date_first_donation="DONOR_DATE_FIRST_DONATION")
+  conversion <- c(donor="KEY_DONOR", sex="KEY_DONOR_SEX", dob="KEY_DONOR_DOB", date_first_donation="DONOR_DATE_FIRST_DONATION")
   donor <- donor %>% rename(!!!conversion)
   #1 "9626820"|
   #2 "YYYY XXXX"|
@@ -131,12 +131,12 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   #26 |"H1157"
   #print(head(donor))
   donor <- donor %>%
-    mutate(gender = as.factor(gender))
+    mutate(sex = as.factor(sex))
   print(summary(donor))
   
   # These variables are optional. Really they should not be used at all.
   conversion2 <- c(nb_donat_progesa="DONOR_NB_DONAT_PROGESA", nb_donat_outside="DONOR_NB_DONAT_OUTSIDE")
-  variables <- c("donor", "gender", "dob", "date_first_donation", conversion2)
+  variables <- c("donor", "sex", "dob", "date_first_donation", conversion2)
   if (length(intersect(conversion2, names(donor))) == 0)  { # numbers of donations not provided
     donor <- donor %>% mutate(DONOR_NB_DONAT_PROGESA=NA, DONOR_NB_DONAT_OUTSIDE=0)
     compute_donation_counts <- TRUE;
@@ -145,7 +145,7 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   }
 
   donor2 <- donor %>% 
-#    select(donor, gender, dob, date_first_donation, nb_donat_progesa, nb_donat_outside) %>%
+#    select(donor, sex, dob, date_first_donation, nb_donat_progesa, nb_donat_outside) %>%
     select(!!!variables) %>%
     filter(donor %in% unique(donation$donor)) #Remove extra donors to get clean join  
   
@@ -170,11 +170,11 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
     donation <- donation %>% group_by(donor) %>% mutate(nb_donat_progesa = n()) %>% ungroup()
   }
   
-  print(table(donation$gender))
+  print(table(donation$sex))
   #English sex
-  #levels(donation$gender) = c('Men','Women')   # This is wrong!!!!!!!!!!
-  donation <- donation %>% mutate(gender=fct_recode(gender, "Women" = "F", "Men" = "M"),
-                                  gender=fct_relevel(gender, c("Men", "Women")))  # Give fixed order to levels so that caret's
+  #levels(donation$sex) = c('Men','Women')   # This is wrong!!!!!!!!!!
+  donation <- donation %>% mutate(sex=fct_recode(sex, "female" = "F", "male" = "M"),
+                                  sex=fct_relevel(sex, c("male", "female")))  # Give fixed order to levels so that caret's
                                                                                   # variable coding is predictable
 
   #Sort
@@ -251,16 +251,16 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   
   #Add deferral rate
   # hbd <- rep(0, nrow(donation))
-  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_male & donation$gender == 'Men'] <- 1
-  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_female & donation$gender == 'Women'] <- 1
+  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_male & donation$sex == 'Men'] <- 1
+  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_female & donation$sex == 'Women'] <- 1
   # donation$'Hb_deferral' <- hbd
   donation <- donation %>%
     mutate(Hb_deferral=case_when(
-      donat_phleb == '*' & Hb < Hb_cutoff_male   & gender == 'Men'   ~ 1,
-      donat_phleb == '*' & Hb < Hb_cutoff_female & gender == 'Women' ~ 1,
+      donat_phleb == '*' & Hb < Hb_cutoff_male   & sex == 'male'   ~ 1,
+      donat_phleb == '*' & Hb < Hb_cutoff_female & sex == 'female' ~ 1,
       TRUE ~ 0
     ))
-  print(table(donation$gender, as.factor(donation$Hb_deferral)))
+  print(table(donation$sex, as.factor(donation$Hb_deferral)))
   #donation$Hb_deferral <- as.integer(as.character(donation$Hb_deferral))   # Fix Hb_deferral everywhere !!!!!!!!!!!!!!!!!
 
   #donation <- donation %>% 
@@ -443,7 +443,7 @@ sanquin_decorate_data <- function(data) {
            consecutive_deferrals = as.integer(consecutive_deferrals),
            nb_donat_progesa = as.integer(nb_donat_progesa),
            nb_donat_outside = as.integer(nb_donat_outside)) %>%
-    select(don_id, donor, Hb, dateonly, previous_Hb_def, days_to_previous_fb, donat_phleb, gender, age,
+    select(don_id, donor, Hb, dateonly, previous_Hb_def, days_to_previous_fb, donat_phleb, sex, age,
            Hb_deferral, nb_donat_progesa, nb_donat_outside,
            first_event, previous_Hb, year, warm_season, Hb_first, hour, consecutive_deferrals, recent_donations,
            recent_deferrals) %>%

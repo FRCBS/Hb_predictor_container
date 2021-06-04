@@ -1508,7 +1508,7 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
   
   # These variables can be used to explain the first Hb value, they are not related to previous donations
   Z_variables <- c("age", "year", "warm_season", "hour")
-  if ("gender" %in% colnames(x_train)) Z_variables <- c(Z_variables, "gender")
+  if ("sex" %in% colnames(x_train)) Z_variables <- c(Z_variables, "sex")
   Z <- x_train %>%
     filter(row_number() %in% first_events) %>% 
     select(all_of(Z_variables))
