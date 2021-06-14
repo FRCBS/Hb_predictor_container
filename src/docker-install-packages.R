@@ -18,3 +18,5 @@ install.packages("pROC")
 install.packages("slider")
 install.packages("sn")       # skew-normal distributions
 install.packages("cutpointr")
+install.packages("rjson")
+install.packages("kernlab")

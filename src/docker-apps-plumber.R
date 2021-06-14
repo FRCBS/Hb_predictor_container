@@ -432,8 +432,9 @@ hb_predictor3 <- function(ws) {
     ~method, ~pretty, ~rmd,
     "decision-tree", "decision tree", "template.Rmd",
     "random-forest", "random forest", "random_forest.Rmd",
+    "svm", "support vector machine", "svm.Rmd",
   )  
-  methods <- intersect(c("decision-tree", "random-forest"), names(post))
+  methods <- intersect(c("decision-tree", "random-forest", "svm"), names(post))
   for (m in methods) {
     cat(sprintf("Running method %s\n", m))
     myparams$method <- m
@@ -460,10 +461,10 @@ hb_predictor3 <- function(ws) {
             params = myparams)
           NULL
         }, warning = function(w) ws$send(rjson::toJSON(list(type="warning", 
-                                                            warning_messages=c(sprintf("Warning in %s call.\n", pretty),
+                                                            warning_messages=c(sprintf("Warning in %s call \n", pretty),
                                                                                w$message))))),
         error = function(cnd) {
-          error_messages <- c(sprintf("Error in %s call.\n", pretty), cnd$message)
+          error_messages <- c(sprintf("Error in %s call \n", pretty), cnd$message)
           return(error_messages)
         }
       )
@@ -651,6 +652,11 @@ hb_predictor <- function(req){
             Random forest
           </label>
           
+          <label for="svm">
+            <input type="checkbox" value="on", id="svm" name="svm"  />
+            Support vector machine
+          </label>
+          
         </fieldset>
     
         <input id="submit" type="submit" value="Upload the files and start computing" name="submit_button" />
@@ -694,7 +700,7 @@ hb_predictor <- function(req){
   </div>
   </body>
   </html>
-  ', container_version, default_Hb_cutoff_male, default_Hb_cutoff_female, default_max_diff_date_first_donation)
+  ', container_version, round(default_Hb_cutoff_male), round(default_Hb_cutoff_female), default_max_diff_date_first_donation)
 
   response
 }
