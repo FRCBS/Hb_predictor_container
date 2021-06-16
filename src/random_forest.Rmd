@@ -131,7 +131,7 @@ source("common.R")
 
 ```
 
-```{r Descriptions, results="asis", echo=FALSE}
+```{r, results="asis", echo=FALSE}
 cat(sprintf("# Random forest (%s)\n", params$sex))
 ```
 
