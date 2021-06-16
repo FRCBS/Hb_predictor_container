@@ -50,7 +50,8 @@ r-cran-ggmcmc \
 r-cran-ggthemes \
 r-cran-proc \
 r-cran-ranger \
-r-cran-rjson
+r-cran-rjson \
+r-cran-kernlab
 
 RUN apt-get update -qq && apt-get -y --no-install-recommends install \
 r-cran-sn \

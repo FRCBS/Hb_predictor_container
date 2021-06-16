@@ -1,0 +1,734 @@
+---
+#title: "Subset analyses"
+output: md_document
+params:
+  input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
+  hlen: NULL
+  hlen_exactly: FALSE
+  sample_fraction: 1.0
+  method: "both"
+  sex: "both"
+  id: NULL
+  date: "2020-07-08"
+  extra_id: NULL
+  summary_table_file: NULL
+  effect_size_table_file: NULL
+  Hb_cutoff_male: 135
+  Hb_cutoff_female: 125
+  predictive_variables: NULL
+  cores: 4
+  iterations: 2000
+  skip_train: FALSE
+  create_datasets_bool: TRUE
+#   donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
+  donor_specific_file: NULL
+  dev: "cairo_pdf"  
+---
+
+```{r, echo=FALSE, message=FALSE}
+message(sprintf(">>>>>>>>>> SVM %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", params$sex, knitr::opts_chunk$get("dev")))
+```
+
+<!-- <h2> Initialization </h2> -->
+```{r Setup, setup = TRUE, echo=FALSE, message=FALSE, results="hide"}
+
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(knitr))
+library(rstan)
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(tictoc))
+suppressPackageStartupMessages(library(entropy))
+suppressPackageStartupMessages(library(brms))
+suppressPackageStartupMessages(library(ggmcmc))
+suppressPackageStartupMessages(library(ggthemes))
+suppressPackageStartupMessages(library(ggridges))
+suppressPackageStartupMessages(library(ROCR))
+suppressPackageStartupMessages(library(pROC))
+suppressPackageStartupMessages(library(furrr))
+suppressPackageStartupMessages(library(sn))
+#library(tidyselect)  # Why is this needed?
+suppressPackageStartupMessages(library(kernlab))
+set.seed(123)
+
+
+# This can measure time a chunk took to execute.
+# Add chunk option time_it=TRUE to each chunk your want to measure.
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- lubridate::now()
+    } else {
+      # calculate the time difference after a chunk
+      res <- lubridate::now() - now
+      # return a character string to show the time
+      msg <- paste("Time for this code chunk to run:", as.numeric(res), units(res))
+      message(msg)
+      NULL   # Don't return the message so that it won't be printed to the resulting document.
+    }
+  }
+}))
+
+
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, results = "hide", time_it=TRUE)
+#knitr::opts_chunk$set(echo=TRUE, message=TRUE)
+#options(warn = 1)
+
+if (knitr::opts_chunk$get("dev") == "pdf") {
+  knitr::opts_chunk$set(dev="cairo_pdf")
+  knitr::opts_current$set(dev="cairo_pdf")
+}
+message(paste0("Device is ", knitr::opts_chunk$get("dev"), "\n"))
+message(paste0("Current device is ", knitr::opts_current$get("dev"), "\n"))
+use_pdf <- knitr::opts_chunk$get("dev") %in% c("pdf", "cairo_pdf")
+
+message("Parameters are:")
+for (name in names(params)) {
+  message(sprintf("%s = ", name), params[[name]])
+}
+
+# These are used to select which computations to perform,
+# base on params$sex and params$method
+compute_male   <- params$sex %in% c("male", "both")
+compute_female <- params$sex %in% c("female", "both")
+
+compute_svm <- params$method %in% c("svm", "both")
+compute_male_svm <- compute_male && compute_svm 
+compute_female_svm <- compute_female && compute_svm
+
+
+set.seed(123)
+number_of_cores <- parallel::detectCores()
+if (!is.null(params$cores)) {
+  options(mc.cores = min(params$cores, number_of_cores))   # This option is in package parallel
+  options(boot.ncpus = min(params$cores, number_of_cores))   # For bootstrapping
+} else {
+  options(mc.cores = number_of_cores)
+  options(boot.ncpus = number_of_cores)
+}
+rstan_options(auto_write = TRUE) # To avoid recompilation of unchanged Stan programs, we recommend calling
+
+datadir = "../data/rdata/"
+rawresultdir = "../data/raw_results/"   # I store plot objects and tables in this directory
+
+# Id for a run. For example files in rawresultdir use this id as part of their name. 
+# Probably I should add a possibility to download raw results from the web interface.
+if (is.null(params$id)) {
+  id <- paste(params$date, params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
+} else {
+  id <- params$id
+}
+
+
+source("helper_functions.R")
+source("validate_stan_fit.R")
+#source("ppc.R")
+source("enrich_deferrals_rf.R")
+source("common.R")
+
+```
+
+```{r Descriptions, results="asis", echo=FALSE}
+cat(sprintf("# SVM (%s)\n", params$sex))
+```
+
+
+
+
+```{r, echo=FALSE}
+data <- load_single(params$input_file) # Forgets the name of the object
+#data <- load_single("~/FRCBS/Hb_predictor_container/output/preprocessed.rdata")
+
+data <- data %>%
+  mutate(days_to_previous_fb = as.double(days_to_previous_fb),
+         donor = as.character(donor))   # For some reason this cannot be a factor
+
+
+
+sample_fraction <- params$sample_fraction
+
+is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+
+if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample size is given instead of fraction, convert it to sample fraction
+  low_limit <- ifelse(params$method=="no-fix", 2, 1)
+  data <- data %>% group_by(donor) %>%
+    filter(n() > low_limit) %>%
+    ungroup()
+  
+  if (params$sex == "male") {
+    temp <- data %>% filter(sex=="male")
+  }
+  else if (params$sex == "female") {
+    temp <- data %>% filter(sex=="female")
+  } else {
+    temp <- data
+  }
+  n <- length(unique(temp$donor))  # number of donors
+  rm(temp)
+  sample_fraction <- sample_fraction / n
+  message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
+}
+stopifnot(sample_fraction <= 1.0)
+
+if (sample_fraction < 1.0) {
+  data <- sample_set(data, sample_fraction)
+  # donors <- unique(data$donor)
+  # a <- caret::createDataPartition(1:length(donors), p=sample_fraction, list=FALSE)
+  # data <- data %>%
+  #   filter(donor %in% donors[a])
+}
+
+# I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
+if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
+  donor_specific_variables <- load_single(params$donor_specific_file)
+  #donor_specific_variables <- load_single("/tmp/RtmpRUlZ9Z/preprocessed_data_3fdd430c88b5.rdata")
+  
+  #donor_descript <- donor_descript %>% filter(Variable %in% names(donor_specific_variables))
+  #donor_variables <- donor_descript$Variable
+  donor_variables <- donor_descript %>% filter(Variable %in% names(donor_specific_variables)) %>% pull(Variable)
+
+  #pretty_donor_variables <- donor_descript$Pretty
+  
+  data <- inner_join(data, donor_specific_variables, by="donor")
+} else {
+  donor_variables = NULL
+  donor_specific_variables <- NULL
+}
+
+
+# Pretty names for parameters
+#vars <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
+
+#if (!is.null(donor_variables)) {
+#  vars     <- c(vars, pretty_donor_variables)
+#}
+
+# Make sure the columns in data are in the same order as in the vars list (only needed for stan preprocessing)
+variables_in_order <- setdiff(descript$Variable, "donor")
+if (!is.null(donor_variables)) {
+  data <- data %>% select(all_of(variables_in_order),
+                          all_of(donor_variables), everything())
+} else {
+  data <- data %>% select(all_of(variables_in_order), everything())
+}
+
+if (params$sex == "male") {
+  data <- data %>% filter(sex=="male")
+} else if (params$sex == "female") {
+  data <- data %>% filter(sex=="female")
+} else {
+}
+
+# data.male <-
+#   data %>% filter(sex == "Men")
+# data.female <-
+#   data %>% filter(sex == "Women")
+
+# Split for men and women separately, done in a complicated way, because I reuse the split_set function
+# data.male <- split_set(data.male, 1.0)
+# data.female <- split_set(data.female, 1.0)
+# names(data.male) <- c("general","validation")
+# names(data.female) <- c("general","validation")
+# # Small test sets
+# smallm <- split_set(data.male$general, sample_fraction)
+# smallf <- split_set(data.female$general, sample_fraction)
+# data.male <- smallm$train
+# data.female <- smallf$train
+# rm(smallm, smallf)
+#data.male <- sample_frac(data.male, sample_fraction, replace=FALSE)
+#data.female <- sample_frac(data.female, sample_fraction, replace=FALSE)
+
+
+# Maybe this is not needed except for linear regression
+#data.male <- filter_based_on_number_of_donations(data.male, params$hlen, params$hlen_exactly)
+#data.female <- filter_based_on_number_of_donations(data.female, params$hlen, params$hlen_exactly)
+
+
+
+summary_rows <- list()  # This is used to construct the summary table in the end
+                   # It has columns Model, MAE, RMSE, AUROC, and AUPR
+
+```
+
+
+
+## Data description
+
+
+
+### Variables used in prediction
+
+```{r, echo=FALSE, results="markup"}
+kable(descript)
+if (!is.null(params$donor_specific_file)) {
+  kable(donor_descript %>% filter(Variable %in% c(names(donor_specific_variables), "one_deferall")))
+}
+```
+
+
+
+```{r VarDescriptions, results="asis", echo=FALSE}
+cat(sprintf("### Summary plots of variables (%s)\n", params$sex))
+```
+
+
+```{r Summary plots for both sexes, echo = FALSE, eval=TRUE}
+#Plot distributions for all donors
+
+g <- params$sex
+color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "green")
+
+temp_donors <- data$donor
+
+# Find out do donors have at least one deferral
+at_least_one_deferral <- data %>% 
+  group_by(donor) %>% 
+  summarise(one_deferral=max(Hb_deferral))
+
+
+pboth <- data %>%
+  filter(first_event == FALSE) %>%
+  select(all_of(descript$Variable))
+
+pboth <- summary_plotter(pboth, descript, color)
+pboth
+
+
+temp_donor_specific <- at_least_one_deferral
+tr <- tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
+if (!is.null(params$donor_specific_file)) {
+  temp_donor_specific <- donor_specific_variables %>% 
+    inner_join(at_least_one_deferral, by="donor")
+}
+
+message(sprintf("Column names are: %s\n", paste(names(temp_donor_specific), collapse=" ")))
+
+pdata2 <- temp_donor_specific %>%
+  filter(donor %in% temp_donors)
+pdata2 <- summary_plotter(pdata2, 
+                          donor_descript,# %>% add_row(tr), 
+                          color)
+pdata2
+
+time_series_length_plotter(data, color)
+
+
+```
+
+
+
+
+```{r clean up memory, echo = FALSE}
+#rm(data); invisible(gc())
+#rm(data.male, data.female); invisible(gc(reset = TRUE))
+rm(pboth, pdata2, temp_donor_specific, temp_donors)
+```
+
+
+
+```{r Partition and enrich, echo=FALSE}
+debug <- TRUE
+
+# Split the data into train and test sets
+donors <- unique(data$donor)
+#message(donors)
+message(sprintf("Number of donors is %i\n", length(donors)))
+old_count <- nrow(data); old_count2 <- ndonor(data)
+a <- caret::createDataPartition(1:length(donors), p=0.8, list=FALSE)
+train_orig <- data %>%
+  filter(donor %in% donors[a])
+message(sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
+              old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2))
+message("Here")
+sink(file=stderr(), type="output"); summary(train_orig); sink()
+n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+message(sprintf("%i donors have at least one deferral\n", n))
+#message(summary(train_orig))
+if (debug) save(train_orig, file="/tmp/pre-enriched.rdata")
+
+# enrich the data so that 50% of the donors have deferral as their last donation attempt
+old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
+#sink(file=stderr(), type="output")
+if (old_count2 >= 1000) {
+  enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
+  #sink()
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+                  old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
+  if (debug) save(enriched, file="/tmp/post-enriched.rdata")
+} else {  # Don't enrich if less than 1000 donors
+  message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
+  enriched <- train_orig
+}
+
+n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+message(sprintf("%i donors have at least one deferral\n", n))
+
+# Drop donors whose last ferritin is not measured before the last blood donation after the truncation
+if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
+  old_count <- nrow(enriched); old_count2 <- ndonor(enriched)
+  enriched <- enriched %>% 
+    group_by(donor) %>% 
+    mutate(last_donation_date = max(dateonly)) %>% 
+    ungroup() %>% 
+    filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
+    select(-last_donation_date)
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
+              old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
+}
+sink(file=stderr(), type="output"); summary(enriched); sink()
+if (debug) save(enriched, file="/tmp/enriched.rdata")
+#enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
+#rm(train_orig)
+test <- data %>% 
+  filter(donor %in% donors[-a])
+
+message("and here")
+```
+
+
+
+```{r Process train and validate sets}
+# variables <- c(
+#                "days_to_previous_fb", 
+#                "age", 
+#                "previous_Hb_def",
+#                year, #CHECK! 
+#                "warm_season", 
+#                "consecutive_deferrals", 
+#                "recent_donations",
+#                "recent_deferrals", 
+#                "hour", 
+#                "previous_Hb", 
+#                "Hb_first")
+
+variables <- params$predictive_variables
+
+variables <- c(variables, 
+               c(
+               "Hb_deferral",
+               "nb_donat"))
+# This is already done in higher level
+# if (params$sex != "both") {
+#   variables <- setdiff(variables, "sex")
+# }
+
+# old_count <- nrow(train); old_count2 <- ndonor(train)
+#   message(sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
+#               old_count - nrow(train), old_count, old_count2 - ndonor(train), old_count2))
+  
+#Train
+train <- enriched %>% 
+  group_by(donor) %>% 
+  slice_max(order_by = dateonly, n=1) %>%
+  # arrange(desc(dateonly)) %>% 
+  # dplyr::slice(1) %>%   
+  mutate(nb_donat = sum(nb_donat_progesa, nb_donat_outside, na.rm=TRUE)) %>% 
+  ungroup() %>%
+  mutate(Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred")))
+
+old_count <- nrow(train); old_count2 <- ndonor(train)
+train <- train %>% 
+  filter( !nb_donat == '0') #Some spurious mistake in the donation record
+message(sprintf("Dropped %i / %i donations (%i / %i donors) due to nb_donat being '0'\n", 
+                old_count - nrow(train), old_count, old_count2 - ndonor(train), old_count2))
+
+old_count <- nrow(train); old_count2 <- ndonor(train)
+#Take out people that return faster than they should as we do not really know what they mean
+train <- train %>% 
+  filter(!((days_to_previous_fb < 62 & sex == "male") | (days_to_previous_fb < 92 & sex == "female")))
+message(sprintf("Dropped %i / %i donations (%i / %i donors) due to days_to_previous_fb < 62 (males) or 92 (females)\n", 
+                old_count - nrow(train), old_count, old_count2 - ndonor(train), old_count2))
+
+
+if (!is.null(donor_variables)) {
+  variables <- c(variables, donor_variables)
+}
+train <- train %>% select(all_of(variables))
+
+#Validate
+
+old_count <- nrow(test); old_count2 <- ndonor(test)
+validate <- test %>% group_by(donor) %>%
+  dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
+  slice_max(order_by = dateonly, n=1) %>%
+  # arrange(desc(dateonly)) %>% 
+  # dplyr::slice(1) %>%   
+  mutate(
+    nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  mutate(Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred")))
+message(sprintf("Dropped %i / %i donations (%i / %i donors) due to length of time series being one\n", 
+                old_count - nrow(validate), old_count, old_count2 - ndonor(validate), old_count2))
+
+old_count <- nrow(validate); old_count2 <- ndonor(validate)
+validate <- validate %>%
+  filter( !nb_donat == '0') #Some spurious mistake in the donation record
+message(sprintf("Dropped %i / %i donations (%i / %i donors) due to nb_donat being '0'\n", 
+                old_count - nrow(validate), old_count, old_count2 - ndonor(validate), old_count2))
+
+old_count <- nrow(validate); old_count2 <- ndonor(validate)
+validate <- validate %>% #Take out people that return faster than they should as we do not really know what they mean
+  filter(!(days_to_previous_fb < 62 & sex == "male"),
+         !(days_to_previous_fb < 92 & sex == "female"))
+message(sprintf("Dropped %i / %i donations (%i / %i donors) due to days_to_previous_fb < 62 (men) or 92 (women)\n", 
+                old_count - nrow(validate), old_count, old_count2 - ndonor(validate), old_count2))
+
+
+validate <- validate %>%   select(all_of(variables))
+
+
+message(sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train)))
+sink(file=stderr(), type="output"); summary(train); sink()
+message(sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate)))
+sink(file=stderr(), type="output"); summary(validate); sink()
+
+#Total donation count
+
+
+```
+
+
+```{r Info about datasets, results="asis", echo=FALSE}
+cat(sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train)))
+cat(sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate)))
+
+train_deferred <- train %>% filter(Hb_deferral == "Deferred")
+validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
+cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
+cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
+rm(train_deferred)
+rm(validate_deferred)
+```
+
+
+```{r Train SVM}
+number_of_accepted  <- train %>% filter(Hb_deferral=="Accepted") %>% nrow()
+number_of_deferrals <- train %>% filter(Hb_deferral=="Deferred") %>% nrow()
+# stopifnot(number_of_deferrals > 0)
+# stopifnot(number_of_accepted > 0)
+if (number_of_accepted == 0 || number_of_deferrals == 0) {
+  stop(sprintf("Not all classes are present in the train data:\nnumber of deferrals = %i, number of accepted = %i\n", number_of_deferrals,
+               number_of_accepted), call.=FALSE)
+}
+
+tic("Training support vector machine")
+
+svm_hyper_parameters <- list(degree=8, scale=1, C=1)
+
+
+svmFit_roc <- caret::train(Hb_deferral ~ ., data = train,
+                 method = "svmPoly",
+                 #mtry = 4,
+                 #splitrule="hellinger",
+                 #min.node.size = 34,
+                 trControl = caret::trainControl(method="none", classProbs = TRUE),
+                 verbose = FALSE,
+                 ## Now specify the exact models
+                 ## to evaluate:
+                 #tuneLength=1,
+                 tuneGrid = do.call(expand_grid, svm_hyper_parameters),
+                 preProcess = c("center","scale"),
+                   # expand_grid(mtry = 4,
+                   #  splitrule="hellinger",
+                   #  min.node.size = 34),
+                metric="ROC"
+                #should we use Kappa or ROC?
+                #importance = "permutation"
+                #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
+                #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
+                )
+sink(file=stderr(), type="output"); toc(); sink()
+
+```
+
+
+```{r}
+save(train, file="../output/trainmarieke.rdata")
+```
+
+## Results
+
+
+```{r Create variable importances plot}
+svmFit_rocImp <- caret::filterVarImp(x=subset(train, select=-c(Hb_deferral)), y=unlist(train[, 'Hb_deferral']))
+
+svm_variable_importances <- rownames_to_column(svmFit_rocImp)  
+svm_variable_importances <- svm_variable_importances[, -2]
+colnames(svm_variable_importances) <- c("Variable", "Importance")
+svm_variable_importances <- left_join(svm_variable_importances, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>% 
+  select(Variable, Pretty, Importance) %>% 
+  arrange(Importance)
+
+message(paste(svm_variable_importances$Variable, collapse=" "))
+
+# Fix some pretty variables names
+
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "previous_Hb_defTRUE"] <- "Previous donation deferred"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "warm_seasonTRUE"] <- "Warm season"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "smokingTRUE"] <- "Smoking"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "RNF43_mutantTRUE"] <- "RNF43 minor allele"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "sexWomen"] <- "Sex"
+# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "nb_donat"] <- "Number of donations"
+
+svm_variable_importances <- svm_variable_importances %>%
+  mutate(Pretty = case_when(
+    Variable == "previous_Hb_defTRUE" ~ "Previous donation deferred",
+    Variable == "warm_seasonTRUE"     ~ "Warm season",
+    Variable == "smokingTRUE"         ~ "Smoking",
+    Variable == "RNF43_mutantTRUE"    ~ "RNF43 minor allele",
+    Variable == "sexfemale"       ~ "Sex",
+    Variable == "nb_donat"            ~ "Number of donations",
+    TRUE                              ~ Pretty
+  ))
+
+if (!is.null(params$effect_size_table_file)) {
+  write_csv(svm_variable_importances, params$effect_size_table_file)   # Pass the table to the web app as well
+}
+
+svm_variable_importances_plot <- svm_variable_importances %>%
+  ggplot() + 
+  geom_col(aes(y=Importance, x=reorder(Pretty, Importance)), alpha=0.7) + 
+  coord_flip() + 
+  xlab("Variable")
+
+#filename="../results/rrfFit_roc_importance.pdf"
+#ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
+svm_variable_importances_plot
+```
+
+
+```{r Predict deferral classes}
+prediction.vl <- predict(svmFit_roc, newdata = validate)
+caret::confusionMatrix(reference=validate$Hb_deferral, data=prediction.vl, positive = "Deferred")
+
+```
+
+
+
+```{r}
+caret::confusionMatrix(reference=validate$Hb_deferral, data=prediction.vl, positive = "Deferred", mode = "prec_recall")
+```
+
+
+```{r Get prediction probabilities}
+prediction.probs <- predict(svmFit_roc, newdata = validate, type="prob")
+```
+
+
+
+```{r Create prediction result dataframe, warning=FALSE, echo=FALSE}
+source("validate_stan_fit.R")
+width = 180
+df <- tibble(original_label = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
+             predicted_label = ifelse(prediction.vl == "Deferred", 1, 0), 
+             score=prediction.probs$Deferred)
+sink(file=stderr(), type="output"); summary(df %>% mutate_at(c("original_label", "predicted_label"), as.factor)); sink()
+
+```
+
+
+
+```{asis, echo=compute_male_svm}
+
+```
+
+```{r, echo=FALSE}
+dummy_plots <- function(df) {
+  #boot.n = 2000
+  #boot.n = 100        # KORJAA TÄMÄ!!!!!!
+  result <- list()
+  result$df <- df
+  result$confusion_matrix_plot <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
+  result$roc_plot <- create_roc_new(df$original_label, df$score) #, boot.n=boot.n)
+  ret <- tryCatch(
+    error =  function(cnd) {
+      message(paste("in error handler, possibly the deferral score is constant", cnd))
+      return(-1)      
+    },
+    {
+      result$pr_plot <- create_precision_recall_new(df$original_label, df$score)#, boot.n=boot.n)
+      NULL
+    })
+  if (!is.null(ret) && ret == -1) {
+    message("taalla")
+    pr_ci <- tibble("AUPR value"=NA, "AUPR low"=NA, "AUPR high"=NA)
+    pr_plot <- list(pr_ci=pr_ci)
+    result$pr_plot <- pr_plot
+  }
+  message("seko1")
+  result$f1_ci <- get_f1_ci(df)#, boot.n=boot.n)
+  result$f1_ci
+  message("seko2")
+  #result$f1 <- get_f1(tibble(obs = factor(ifelse(df$deferral == 1, "Deferred", "Accepted"), levels=c("Accepted", "Deferred")),
+  #                    Deferred = df$scores))
+  return(result)
+}
+```
+
+```{r SVM both, echo=FALSE}
+
+number_of_deferrals <- validate %>% filter(Hb_deferral=="Accepted") %>% nrow()
+number_of_accepted <- validate %>% filter(Hb_deferral=="Deferred") %>% nrow()
+# stopifnot(number_of_deferrals > 0)
+# stopifnot(number_of_accepted > 0)
+if (number_of_accepted == 0 || number_of_deferrals == 0) {
+  stop(sprintf("Not all classes are present in the validation data:\nnumber of deferrals = %i, number of accepted = %i\n", number_of_deferrals,
+               number_of_accepted), call.=FALSE)
+}
+
+message("Here1")
+results_both_svm <- dummy_plots(df)
+
+message("Here2")
+results_both_svm$confusion_matrix_plot
+message("Here3")
+results_both_svm$roc_plot 
+message("Here4")
+results_both_svm$pr_plot
+message("Here5")
+results_both_svm$f1_ci
+message("Here6")
+id <- sprintf("%s-svm", params$sex)
+t <- tibble(Id=id, Model="Support vector machine", Sex=params$sex, 
+            MAE=NA, RMSE=NA, MAE2=NA, RMSE2=NA) 
+message("Here7")
+t <- bind_cols(c(t, results_both_svm$roc_plot$roc_ci, results_both_svm$pr_plot$pr_ci, results_both_svm$f1_ci))
+#print(t)
+message("Here8")
+summary_rows[[length(summary_rows)+1]] <- t
+#save(results_male_random_forest, file = paste0(rawresultdir, "raw_result_male_random_forest_", id, ".rdata"))
+message("Here9")
+# Remove unnescessary values to save memory
+#if (knit == TRUE) {rm(results_male_decision_tree); invisible(gc(reset = TRUE))}
+
+```
+
+
+
+
+
+
+
+
+
+### Summary
+
+```{r Errors, results="markup"}
+
+summary_table <- bind_rows(summary_rows)
+summary_table <- summary_table %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
+                                          "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
+
+write_csv(summary_table, paste(rawresultdir, "errors_", id, ".csv", sep = ''))
+if (!is.null(params$summary_table_file)) {
+  write_csv(summary_table, params$summary_table_file)   # Pass the table to the web app as well
+}
+
+```
+
+```{r, results="markup"}
+cols <- c("Model", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
+```
