@@ -190,6 +190,25 @@ split_set <- function(df, train_frac) {
   return(list("train" = train, "test" = test))
 }
 
+# Can be used to split data set to train, validate, and test parts in given fraction
+split_set3 <- function(df, prob=c(0.64, 0.16, 0.20)) {
+  donors <- unique(df$donor)
+  n <- length(donors)
+  if (FALSE) {
+    labels <- sample(factor(c("train", "validate", "test"), levels = c("train", "validate", "test")), 
+                     size=n, replace = TRUE, prob=prob)
+  } else {
+    n1 <- prob[1] * n
+    n2 <- prob[2] * n
+    n3 <- n - n1 - n2
+    labels <- c(rep("train", n1), rep("validate", n2), rep("test", n3))
+    labels <- factor(sample(labels, size = n), levels=c("train", "validate", "test"))  # permute
+  }
+  classes <- tibble(donor=donors,
+                    label=labels)
+  return(df %>% inner_join(classes, by="donor"))
+}
+
 # Take a sample of donors
 sample_set <- function(data, fraction) {
   donors <- unique(data$donor)

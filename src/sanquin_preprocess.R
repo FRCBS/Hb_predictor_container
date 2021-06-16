@@ -5,46 +5,47 @@ suppressPackageStartupMessages(library(tictoc, quietly = TRUE))
 
 source("helper_functions.R")  # For hours_to_numeric
 
-# max_diff_date_first_donation is a non-negative integer, which specifies the maximum allowed difference
-# between min(KEY_DONAT_INDEX_DATE) and DONOR_DATE_FIRST_DONATION
-sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
-{
-  
-  
+read_sanquin_donations <- function(donation_file) {
   ########## DONATION
   # In the full dataset there lots of missing values. This causes automatic recognition of column types to fail.
   # Therefore we give them explicitly here.
-  # input_col_types <- list(
-  # X1 = col_character(),
-  # X2 = col_character(),
-  # X3 = col_character(),
-  # X4 = col_double(),
-  # X5 = col_character(),
-  # X6 = col_character(),
-  # X7 = col_character(),
-  # X8 = col_character(),
-  # X9 = col_character(),
-  # X10 = col_character(),
-  # X11 = col_double(),
-  # X12 = col_double()
-  # )
-
+  
   input_col_types <- list(
-    #X1 = col_character(),
     KEY_DONOR = col_character(),
-    #X3 = col_character(),
     KEY_DONAT_INDEX_DATE = col_character(),
     DONAT_PHLEB_START = col_character(),
     DONAT_STATUS = col_character(),
     KEY_DONAT_PHLEB = col_character(),
-    #X8 = col_character(),
-    #½X9 = col_character(),
     DONAT_VOL_DRAWN = col_integer(),
-    #X11 = col_double(),
     DONAT_RESULT_CODE = col_double()
   )
   
-  donation <- read_delim(donation.file, col_names=TRUE, delim='|', col_types=input_col_types)
+  donations <- read_delim(donation_file, col_names=TRUE, delim='|', col_types=input_col_types)
+  cat(sprintf("Read %i rows from file %s\n", nrow(donations), donation_file))
+  
+  return(donations)
+}
+
+read_sanquin_donors <- function(donor_file) {
+  input_col_types2 <- list(
+    KEY_DONOR     = col_character(),
+    KEY_DONOR_SEX = col_character(),
+    KEY_DONOR_DOB = col_character(),
+    DONOR_DATE_FIRST_DONATION = col_character(),
+    FERRITIN_LAST_DATE = col_character()
+  )
+  donors <- read_delim(donor_file, delim="|", col_types = input_col_types2)
+  cat(sprintf("Read %i rows from file %s\n", nrow(donors), donor_file))
+
+  return(donors)
+}
+
+# max_diff_date_first_donation is a non-negative integer, which specifies the maximum allowed difference
+# between min(KEY_DONAT_INDEX_DATE) and DONOR_DATE_FIRST_DONATION
+sanquin_freadFRC <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
+{
+  
+  
   old_names <- c("KEY_DONOR", "KEY_DONAT_INDEX_DATE", "DONAT_PHLEB_START", 
                  "DONAT_STATUS", "KEY_DONAT_PHLEB", 
                  "DONAT_VOL_DRAWN",
@@ -56,7 +57,7 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   #names(donation) <- new_names
   temp <- old_names
   names(temp) <- new_names
-  donation <- donation %>% rename(!!!temp)
+  donation <- donations %>% rename(!!!temp)
   #print(head(donation))
   mean_hb <- mean(donation$Hb, na.rm=TRUE)
   if (!is_hb_value_sane(mean_hb, Hb_input_unit)) {
@@ -94,42 +95,12 @@ sanquin_freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutof
   }
   
   ######### DONOR
-  input_col_types2 <- list(
-    KEY_DONOR     = col_character(),
-    KEY_DONOR_SEX = col_character(),
-    KEY_DONOR_DOB = col_character(),
-    DONOR_DATE_FIRST_DONATION = col_character()
-    )
-  donor <- read_delim(donor.file, delim="|", col_types = input_col_types2)
+  donor <- donors
+  
   conversion <- c(donor="KEY_DONOR", sex="KEY_DONOR_SEX", dob="KEY_DONOR_DOB", date_first_donation="DONOR_DATE_FIRST_DONATION")
   donor <- donor %>% rename(!!!conversion)
-  #1 "9626820"|
-  #2 "YYYY XXXX"|
-  #3 "ZZZZ"
-  #4 |"Mies"|
-  #5 "syntymaaika"
-  #6 |"FI"
-  #7 |"A Rh(D) pos"
-  #8 |"osoite"|
-  #9 "65200"|
-  #10 "VAASA"|
-  #11 "puh1"|
-  #12 ""|
-  #13 "puh2"
-  #14 |"Ei"
-  #15 |"01"
-  #16 |"02"
-  #17 |""
-  #18 |"7"
-  #19 |"7"
-  #20 |""
-  #21|"20030731"
-  #22 |"7"
-  #23 |""
-  #24 |""
-  #25 |"20070807"
-  #26 |"H1157"
-  #print(head(donor))
+
+
   donor <- donor %>%
     mutate(sex = as.factor(sex))
   print(summary(donor))
@@ -455,10 +426,18 @@ sanquin_decorate_data <- function(data) {
   return(data)
 }
 
-sanquin_preprocess <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation) {
+# The first two parameters can be either filenames or dataframes
+sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation) {
   tic()
   tic()
-  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
+  if (is.character(donations)) {   # is a filename instead of a dataframe?
+    donations <- read_sanquin_donations(donations)
+  }
+  if (is.character(donors)) {   # is a filename instead of a dataframe?
+    donors <- read_sanquin_donors(donors)
+  }
+  
+  data <- sanquin_freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
   toc()
   tic()
   data <- sanquin_decorate_data(data)
@@ -467,82 +446,41 @@ sanquin_preprocess <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cut
   return(data)
 }
 
-sanquin_preprocess_helper <- function(dir, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation) {
-  tic()
-  tic()
-  donation.file <- paste0(dir,"/FRC.DW_DONATION.dat")
-  donor.file <- paste0(dir,"/FRC.DW_DONOR.dat")
-  data <- sanquin_freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
-  toc()
-  tic()
-  data <- sanquin_decorate_data(data)
-  toc()
-  toc()
-  return(data)
-}
-
-sanquin_sample_raw_progesa <- function(donation.file, donor.file, donation.out = donation.file, donor.out = donor.file, ndonor = 1.0) {
-  
-  
-  # Maybe all the fields should have type col_character, so that they would be kept the same after reading the csv and writing it back
-  
-  # In the full dataset there lots of missing values. This causes automatic recognition of column types to fail.
-  # Therefore we give them explicitly here.
-  input_col_types <- list(
-    #X1 = col_character(),
-    KEY_DONOR = col_character(),
-    #X3 = col_character(),
-    KEY_DONAT_INDEX_DATE = col_character(),
-    DONAT_PHLEB_START = col_character(),
-    DONAT_STATUS = col_character(),
-    KEY_DONAT_PHLEB = col_character(),
-    #X8 = col_character(),
-    #½X9 = col_character(),
-    DONAT_VOL_DRAWN = col_character(),
-    #X11 = col_double(),
-    DONAT_RESULT_CODE = col_double()
-    #.default = col_character()
-  )
-  
-  
-  donation <- read_delim(donation.file, col_names=TRUE, delim='|', col_types=input_col_types)
-
-  cat(sprintf("Read %i rows from file %s\n", nrow(donation), donation.file))
-    
-  input_col_types2 <- list(
-    KEY_DONOR = col_character(),
-    KEY_DONOR_DOB = col_character(),
-    DONOR_DATE_FIRST_DONATION = col_character(),
-    FERRITIN_LAST_DATE = col_character()
-    #.default = col_character()
-    )
-  donor <- read_delim(donor.file, col_names=TRUE, delim="|", col_types = input_col_types2)
 
 
-  cat(sprintf("Read %i rows from file %s\n", nrow(donor), donor.file))
+sanquin_sample_raw_progesa <- function(donations, donors, donation.out = NULL, donor.out = NULL, ndonor = 1.0) {
   
-#  if (ndonor != 1.0) {
-    cat(sprintf("Sampling to %f\n", ndonor))
-    if (ndonor > 1.0) {   # is a count instead of proportion?
-      donor <- slice_sample(donor, n=ndonor)
-    } else if (ndonor < 1.0) {
-      donor <- slice_sample(donor, prop=ndonor)
-    }
-    donor_ids <- donor$KEY_DONOR
-    
-    if (ndonor != 1.0)
-      donation <- donation %>% filter(KEY_DONOR %in% donor_ids)  
-    
-    #if (!file.exists(donation.out)) {
-    write_delim(donation, donation.out, delim="|", col_names = TRUE)
-    cat(sprintf("Wrote %i rows to file %s\n", nrow(donation), donation.out))
-    #}
-    #if (!file.exists(donor.out)) {
-    write_delim(donor, donor.out, delim="|", col_names = TRUE)
-    cat(sprintf("Wrote %i rows to file %s\n", nrow(donor), donor.out))
-    #}
-#  }
-  return(list(donation=donation, donor=donor))
+  
+  
+  if (is.character(donations)) {   # is a filename instead of a dataframe?
+    donations <- read_sanquin_donations(donations)
+  }
+  
+  if (is.character(donors)) {   # is a filename instead of a dataframe?
+    donors <- read_sanquin_donors(donors)
+  }
+  
+  cat(sprintf("Sampling to %f\n", ndonor))
+  if (ndonor > 1.0) {   # is a count instead of proportion?
+    donors <- slice_sample(donors, n=ndonor)
+  } else if (ndonor < 1.0) {
+    donors <- slice_sample(donors, prop=ndonor)
+  }
+  donor_ids <- donors$KEY_DONOR
+  
+  if (ndonor != 1.0)
+    donations <- donations %>% filter(KEY_DONOR %in% donor_ids)  
+  
+  if (!is.null(donation.out)) {
+    write_delim(donations, donation.out, delim="|", col_names = TRUE)
+    cat(sprintf("Wrote %i rows to file %s\n", nrow(donations), donation.out))
+  }
+  if (!is.null(donor.out)) {
+    write_delim(donors, donor.out, delim="|", col_names = TRUE)
+    cat(sprintf("Wrote %i rows to file %s\n", nrow(donors), donor.out))
+  }
+
+  return(list(donations=donations, donors=donors))
 }
 
 sanquin_preprocess_donor_specific <- function(donor, fulldata_preprocessed, use_only_first_ferritin) {

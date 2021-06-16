@@ -10,6 +10,7 @@ message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
 source("new_preprocess.R")
 source("sanquin_preprocess.R")
+source("helper_functions.R")
 # plumber.R
 
 library(readr)
@@ -58,7 +59,7 @@ create_summary_table <- function(summary_table) {
 }
 
 
-#' Read the input form and learn the models, and show the results.
+#' Upload the datas and parameters
 #' @post /hb-predictor2
 #' @parser multi
 #' @serializer json
@@ -104,6 +105,7 @@ hb_predictor2 <- function(req){
   return(list())
 }
 
+# Do the actual processing
 hb_predictor3 <- function(ws) {
   separator <- ""
   command <- sprintf("./parse /tmp/raw_form_data.bin \"%s\" /tmp/parsed.json", separator)
@@ -286,14 +288,24 @@ hb_predictor3 <- function(ws) {
       fulldata_preprocessed <- preprocess(donations_o$tempfile, donors_o$tempfile,
                                           myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit)
     } else {  # Sanquin
-      res <- sanquin_sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
-      fulldata_preprocessed <- sanquin_preprocess(donations_o$tempfile, donors_o$tempfile,
+      donations <- read_sanquin_donations(donations_o$tempfile)
+      donors <- read_sanquin_donors(donors_o$tempfile)
+      #donors <- split_set3(donors)  # label the donors to either train, validate, or test
+      if (sf != 1.0) {
+        res <- sanquin_sample_raw_progesa(donations, donors, 
+                                          #donations_o$tempfile, donors_o$tempfile, 
+                                          ndonor=sf)
+        donations <- res$donations
+        donors    <- res$donors
+      }
+      fulldata_preprocessed <- sanquin_preprocess(donations, donors,
+                                                  #donations_o$tempfile, donors_o$tempfile,
                                                   myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit,
                                                   max_diff_date_first_donation)
-      if ("FERRITIN_FIRST" %in% names(res$donor)) {
+      if ("FERRITIN_FIRST" %in% names(donors)) {
         cat("hep\n")
 
-        donor_specific <- sanquin_preprocess_donor_specific(res$donor, fulldata_preprocessed, use_only_first_ferritin)
+        donor_specific <- sanquin_preprocess_donor_specific(donors, fulldata_preprocessed, use_only_first_ferritin)
         
         donor_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
         save(donor_specific, file = donor_specific_filename)
@@ -315,6 +327,16 @@ hb_predictor3 <- function(ws) {
   
   cat("Distribution of time series length\n")
   print(fulldata_preprocessed %>% count(donor, name="Length") %>% count(Length, name="Count"))
+  
+  if (stratify_by_sex) {
+    male_donation_specific_filename   <- "../output/male_preprocessed.rdata"
+    female_donation_specific_filename <- "../output/female_preprocessed.rdata"
+    tmp <- fulldata_preprocessed %>% filter(sex=="male")
+    save(tmp,   file=male_donation_specific_filename)
+    tmp <- fulldata_preprocessed %>% filter(sex=="female")
+    save(tmp, file=female_donation_specific_filename)
+    rm(tmp)
+  }
   rm(fulldata_preprocessed)
   
   ################################
@@ -341,7 +363,7 @@ hb_predictor3 <- function(ws) {
   print(predictive_variables)
   myparams$predictive_variables <- paste(predictive_variables, sep=",")
   
-  # This debugging information will be sent to the browser
+  # This debugging information will be sent to the browser NOT DONE CURRENTLY! FIX THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   myparams_string <- paste( map_chr(names(myparams), function (name) sprintf("<li>%s=%s</li>", name, myparams[name])), 
                             collapse="\n")
   myparams_string <- sprintf("<p>Parameters are:</p>\n <ul>%s\n</ul>\n", myparams_string)
@@ -380,10 +402,7 @@ hb_predictor3 <- function(ws) {
           rmarkdown::render(
             'linear_models.Rmd',
             output_file=rep(sprintf('results-%s', sex), 2),   # One for each output format: html and pdf 
-            #output_file=sprintf('results-%s', sex),   # One for each output format: html and pdf 
             output_format=c('html_document', 'pdf_document'),
-            #output_format=list('html_document', pdf_document(dev="pdf_cairo")),
-            #output_format=c('html_document'),
             clean=FALSE,
             output_dir='../output',
             params = myparams)
@@ -413,12 +432,6 @@ hb_predictor3 <- function(ws) {
       details_dfs[[length(details_dfs)+1]] <- t
       
       ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
-      # details_df <- details_df %>% 
-      #   add_row(id=sprintf("detail-linear-models-%s", sex), 
-      #           pretty=pretty,
-      #           sex=sex,
-      #           html=sprintf("output/results-%s.html", sex),
-      #           pdf=sprintf("output/results-%s.pdf", sex))
     }
   }
   
@@ -486,20 +499,13 @@ hb_predictor3 <- function(ws) {
       details_dfs[[length(details_dfs)+1]] <- t
       ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
       
-      # details_df <- details_df %>% 
-      #   add_row(id=sprintf("detail-%s-%s", m, sex), 
-      #           pretty=str_to_sentence(pretty),
-      #           sex=sex,
-      #           html=sprintf("output/results-%s-%s.html", m, sex),
-      #           pdf=sprintf("output/results-%s-%s.pdf", m, sex))
-      
       # should I read here the effect size table?
       #effect_size_tables[[paste(m, sex, sep="-")]] <- read_csv(temp_effect_size_filename)
     }
   }
   
   #unlink(donation_specific_filename)
-  if (!is.null(donor_specific_filename))
+  if (FALSE && !is.null(donor_specific_filename))
     unlink(donor_specific_filename)
   
   ####################

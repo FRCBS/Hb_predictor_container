@@ -222,29 +222,7 @@ if (params$sex == "male") {
 } else {
 }
 
-# data.male <-
-#   data %>% filter(sex == "Men")
-# data.female <-
-#   data %>% filter(sex == "Women")
 
-# Split for men and women separately, done in a complicated way, because I reuse the split_set function
-# data.male <- split_set(data.male, 1.0)
-# data.female <- split_set(data.female, 1.0)
-# names(data.male) <- c("general","validation")
-# names(data.female) <- c("general","validation")
-# # Small test sets
-# smallm <- split_set(data.male$general, sample_fraction)
-# smallf <- split_set(data.female$general, sample_fraction)
-# data.male <- smallm$train
-# data.female <- smallf$train
-# rm(smallm, smallf)
-#data.male <- sample_frac(data.male, sample_fraction, replace=FALSE)
-#data.female <- sample_frac(data.female, sample_fraction, replace=FALSE)
-
-
-# Maybe this is not needed except for linear regression
-#data.male <- filter_based_on_number_of_donations(data.male, params$hlen, params$hlen_exactly)
-#data.female <- filter_based_on_number_of_donations(data.female, params$hlen, params$hlen_exactly)
 
 
 
