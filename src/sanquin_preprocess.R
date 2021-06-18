@@ -115,6 +115,9 @@ sanquin_freadFRC <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female
     compute_donation_counts <- FALSE;
   }
 
+  # Keep label column, if it is in the input
+  variables <- c(variables, intersect(names(donor), "label"))
+  
   donor2 <- donor %>% 
 #    select(donor, sex, dob, date_first_donation, nb_donat_progesa, nb_donat_outside) %>%
     select(!!!variables) %>%
@@ -405,6 +408,12 @@ sanquin_decorate_data <- function(data) {
               old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
   
   # Select only the interesting variables, rename some of them and change the types
+  variables <- c("don_id", "donor", "Hb", "dateonly", "previous_Hb_def", "days_to_previous_fb", "donat_phleb", "sex", "age",
+                 "Hb_deferral", "nb_donat_progesa", "nb_donat_outside",
+                 "first_event", "previous_Hb", "year", "warm_season", "Hb_first", "hour", "consecutive_deferrals", "recent_donations",
+                 "recent_deferrals")
+  # Keep label column, if it is in the input
+  variables <- c(variables, intersect(names(data), "label"))
   tic("Final selection")
   data <- data %>%
     mutate(don_id = as.factor(don_id), 
@@ -414,10 +423,7 @@ sanquin_decorate_data <- function(data) {
            consecutive_deferrals = as.integer(consecutive_deferrals),
            nb_donat_progesa = as.integer(nb_donat_progesa),
            nb_donat_outside = as.integer(nb_donat_outside)) %>%
-    select(don_id, donor, Hb, dateonly, previous_Hb_def, days_to_previous_fb, donat_phleb, sex, age,
-           Hb_deferral, nb_donat_progesa, nb_donat_outside,
-           first_event, previous_Hb, year, warm_season, Hb_first, hour, consecutive_deferrals, recent_donations,
-           recent_deferrals) %>%
+    select(!!!variables) %>%
     arrange(donor)
   toc()
   

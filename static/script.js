@@ -61,6 +61,19 @@ function handle_input_format(e) {
     console.log("Fieldset clicked: " + value);
 }
 
+function handle_hyperparameters(e) {
+    console.log("In handle_hyperparameters")
+    //value = document.querySelector('input[name="hyperparameters"]:checked').value;
+    value = e.srcElement.value;
+    e1 = document.getElementById("hyperparameter_file_row");
+    if (value == "upload") {
+	e1.style.display = "table-row";
+    } else {
+	e1.style.display = "none";
+    }
+    console.log("Hyperparameter select clicked: " + value);
+}
+
 document.onreadystatechange = function() {
     console.log("Executing Javascript");
     
@@ -97,6 +110,7 @@ document.onreadystatechange = function() {
 	document.getElementById("Sanquin").onchange = handle_input_format;
 	document.getElementById("Preprocessed").onchange = handle_input_format;
 	document.getElementById("unit").onchange = handle_hb_unit;
+	document.getElementById("hyperparameters").onchange = handle_hyperparameters;
 	el = document.getElementById("unit");
 	el.value="gperdl"; // Because Sanquin is the default input format, set this to its unit
 	el.dispatchEvent(new Event('change', { 'bubbles': true }));  // trigger the change event

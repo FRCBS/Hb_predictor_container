@@ -190,23 +190,26 @@ split_set <- function(df, train_frac) {
   return(list("train" = train, "test" = test))
 }
 
+tvt_ratios <- c(train=0.64, validate=0.16, test=0.20)
+
 # Can be used to split data set to train, validate, and test parts in given fraction
-split_set3 <- function(df, prob=c(0.64, 0.16, 0.20)) {
-  donors <- unique(df$donor)
+split_set3 <- function(df, prob=tvt_ratios) {
+  message("In function split_set3")
+  donors <- unique(df$KEY_DONOR)
   n <- length(donors)
   if (FALSE) {
     labels <- sample(factor(c("train", "validate", "test"), levels = c("train", "validate", "test")), 
                      size=n, replace = TRUE, prob=prob)
   } else {
-    n1 <- prob[1] * n
-    n2 <- prob[2] * n
+    n1 <- as.integer(prob[1] * n)
+    n2 <- as.integer(prob[2] * n)
     n3 <- n - n1 - n2
     labels <- c(rep("train", n1), rep("validate", n2), rep("test", n3))
     labels <- factor(sample(labels, size = n), levels=c("train", "validate", "test"))  # permute
   }
   classes <- tibble(donor=donors,
                     label=labels)
-  return(df %>% inner_join(classes, by="donor"))
+  return(df %>% inner_join(classes, by=c("KEY_DONOR" = "donor")))
 }
 
 # Take a sample of donors
@@ -216,6 +219,55 @@ sample_set <- function(data, fraction) {
   data <- data %>%
     filter(donor %in% donors[a])
   return(data)
+}
+
+# Take a sample while maintaining the train/validate/test division, and possibly also consider the sex.
+# the parameter 'size' can be either a fraction or an integer. In the latter case,
+# There are either 'size' donors or 'size' male donors and 'size' female donors in the returned dataset, depending on
+# the stratify_by_sex parameter.
+stratified_sample <- function(df, stratify_by_sex, size) {
+  message("In function stratified_sample")
+  donor_field <- "KEY_DONOR"
+  sex_field <- "KEY_DONOR_SEX"
+  donors <- df %>% 
+    select(all_of(donor_field), label, all_of(sex_field)) %>%
+    distinct()
+  if (size <= 1.0) {
+    prop <- size
+    if (stratify_by_sex) {
+      g <- donors %>% 
+        group_by(label, all_of(sex))
+    } else {
+      g <- donors %>% 
+        group_by(label)
+    }
+    donors <- g %>%
+      group_modify(function(df, id) slice_sample(df, prop=prop, replace=FALSE))  %>%
+      ungroup()
+  } else {
+    size <- as.integer(size)
+    counts <- enframe(tvt_ratios, "label", "count") %>%
+      mutate(count=as.integer(count*size))
+    r <- nrow(counts)
+    counts[r, "count"] <- as.integer(size - sum(counts$count[1:(r-1)]))   # Make sure the result is exactly 'size' (or 2*size in the stratify_by_sex case)
+    print(counts)    
+    n <- n_distinct(df[[donor_field]])
+    if (stratify_by_sex) {
+      g <- donors %>%
+        group_by(label, all_of(sex)) 
+    } else {
+      g <- donors %>%
+        group_by(label) 
+    }
+    lst <- g %>%
+      group_split()
+    keys <- g %>%
+      group_keys() %>%
+      inner_join(counts)
+    donors <- map2_dfr(lst, keys$count, function(df, count) slice_sample(df, n=count))
+  }
+  result <- df %>% semi_join(donors, by=donor_field)
+  return(result)
 }
 
 # Subtract one from the hlen values due to discarding first event at this point.

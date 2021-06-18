@@ -11,6 +11,7 @@ message(paste0("Working directory is ", getwd(), "\n"))
 source("new_preprocess.R")
 source("sanquin_preprocess.R")
 source("helper_functions.R")
+source("common.R")
 # plumber.R
 
 library(readr)
@@ -57,6 +58,20 @@ create_summary_table <- function(summary_table) {
                                 table.attr = "id='errors_table' class='table table-condensed'")
   return(summary_table_string)
 }
+
+FRCBS_hyperparameters <- tribble(
+  ~Model,          ~Sex,     ~Value,
+  "random-forest", "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
+  "random-forest", "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
+  "random-forest", "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
+  "svm",           "male",   list(degree=8, scale=1, C=1),
+  "svm",           "female", list(degree=8, scale=1, C=1),
+  "svm",           "both",   list(degree=8, scale=1, C=1)
+)
+
+Sanquin_hyperparameters <- FRCBS_hyperparameters
+
+learn_hyperparameters <- tibble(Model=character(0), Sex=character(0), Value=list())
 
 
 #' Upload the datas and parameters
@@ -105,6 +120,8 @@ hb_predictor2 <- function(req){
   return(list())
 }
 
+
+
 # Do the actual processing
 hb_predictor3 <- function(ws) {
   separator <- ""
@@ -135,6 +152,10 @@ hb_predictor3 <- function(ws) {
     error_messages <- c(error_messages, "The Hb cutoff must be a positive number")
   if ("unit" %in% names(post) && ! post$unit %in% c("gperl", "gperdl", "mmolperl"))
     error_messages <- c(error_messages, "The Hb unit must be either gperl, gperdl, or mmolperl")
+  if ("hyperparameters" %in% names(post) && ! post$hyperparameters %in% c("finnish", "dutch", "upload", "learn"))
+    error_messages <- c(error_messages, "The Hb unit must be either finnish, dutch, upload, or learn")
+  if ("mode" %in% names(post) && ! post$mode %in% c("initial", "final"))
+    error_messages <- c(error_messages, "The experiment mode must be either initial or final")
   if ("sample_fraction" %in% names(post)) {
     sf <- as.numeric(post$sample_fraction)
     if (is.na(sf) || sf < 0.0 || (sf > 1.0 && !is.wholenumber(sf)))
@@ -179,7 +200,9 @@ hb_predictor3 <- function(ws) {
   Hb_input_unit <- ifelse ("unit" %in% names(post), post$unit, default_Hb_input_unit)
   cat(sprintf("The parameter Hb_input_unit is %s\n", Hb_input_unit))
   
-
+  hyperparameters <- ifelse ("hyperparameters" %in% names(post), post$hyperparameters, "learn")
+  cat(sprintf("The parameter hyperparameters is %s\n", hyperparameters))
+  
   
   ####################################################################
   #
@@ -279,6 +302,9 @@ hb_predictor3 <- function(ws) {
     fulldata_preprocessed <- load_single(donation_specific_filename)
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
+    if (sf != 1.0) {
+      fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf)
+    }
   } else {
     # Do the preprocessing
     tic("Preprocessing data")
@@ -290,13 +316,15 @@ hb_predictor3 <- function(ws) {
     } else {  # Sanquin
       donations <- read_sanquin_donations(donations_o$tempfile)
       donors <- read_sanquin_donors(donors_o$tempfile)
-      #donors <- split_set3(donors)  # label the donors to either train, validate, or test
+      donors <- split_set3(donors)  # label the donors to either train, validate, or test
       if (sf != 1.0) {
-        res <- sanquin_sample_raw_progesa(donations, donors, 
-                                          #donations_o$tempfile, donors_o$tempfile, 
-                                          ndonor=sf)
-        donations <- res$donations
-        donors    <- res$donors
+        donors <- stratified_sample(donors, stratify_by_sex, sf)
+        donations <- semi_join(donations, donors, by="donor")
+        # res <- sanquin_sample_raw_progesa(donations, donors, 
+        #                                   #donations_o$tempfile, donors_o$tempfile, 
+        #                                   ndonor=sf)
+        # donations <- res$donations
+        # donors    <- res$donors
       }
       fulldata_preprocessed <- sanquin_preprocess(donations, donors,
                                                   #donations_o$tempfile, donors_o$tempfile,
@@ -363,15 +391,32 @@ hb_predictor3 <- function(ws) {
   print(predictive_variables)
   myparams$predictive_variables <- paste(predictive_variables, sep=",")
   
+  #myparams$hyperparameters <- "../output/hyperparameters.rds"   # binary format
+  myparams$hyperparameters <- "../output/hyperparameters.json"
+  if (hyperparameters == "finnish") {
+    write_hyperparameters(FRCBS_hyperparameters, myparams$hyperparameters)
+  } else if (hyperparameters == "dutch") {
+    write_hyperparameters(Sanquin_hyperparameters, myparams$hyperparameters)
+  } else if (hyperparameters == "learn") {
+    write_hyperparameters(learn_hyperparameters, myparams$hyperparameters)  # Empty dataframe
+  } else if (hyperparameters == "upload") {
+    cmd <- sprintf("cp %s %s", post$hyperparameter_fileUpload$tempfile, myparams$hyperparameters)
+    system(cmd)
+  }
+  
+  myparams$mode <- post$mode
+  
   # This debugging information will be sent to the browser NOT DONE CURRENTLY! FIX THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   myparams_string <- paste( map_chr(names(myparams), function (name) sprintf("<li>%s=%s</li>", name, myparams[name])), 
                             collapse="\n")
   myparams_string <- sprintf("<p>Parameters are:</p>\n <ul>%s\n</ul>\n", myparams_string)
-  
+  cat(myparams_string)
   
   
   summary_tables <- list()
   effect_size_tables <- list()
+  variable_importance_tables <- list()
+  prediction_tables <- list()
   details_df <- tibble(id=character(0), pretty=character(0), sex=character(0), html=character(0), pdf=character(0))
   details_dfs <- list()
   
@@ -381,76 +426,91 @@ hb_predictor3 <- function(ws) {
   #
   ####################
   
-  methods <- intersect(c("lmm", "dlmm"), names(post))
-  if (length(methods) > 0) {
-    m <- ifelse(length(methods) == 2, "both", methods[[1]])
-    #myparams$method <- case_when(m=="lmm" ~ "no-fix", m=="dlmm" ~ "icp-fix", TRUE ~ m)
-    myparams$method <- m
-    sexes <- if (stratify_by_sex)  c("male", "female") else c("both")
-    for (sex in sexes) {
-      myparams["sex"] <- sex
-      filename <- sprintf("/tmp/summary-%s.csv", sex)
-      myparams["summary_table_file"] <- filename
-      effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", sex)
-      myparams["effect_size_table_file"] <- effect_size_filename
-      error_messages <- tryCatch(
-        error = function(cnd) {
-          error_messages <- c(sprintf("Error in %s with sex %s.\n", "linear mixed model", sex), cnd$message)
-          return(error_messages)
-        },
-        {
-          rmarkdown::render(
-            'linear_models.Rmd',
-            output_file=rep(sprintf('results-%s', sex), 2),   # One for each output format: html and pdf 
-            output_format=c('html_document', 'pdf_document'),
-            clean=FALSE,
-            output_dir='../output',
-            params = myparams)
-          NULL
-        }
-      )
-      if (!is.null(error_messages)) {
-        cat(paste0(error_messages))
-        ws$send(rjson::toJSON(list(type="error", error_messages=error_messages)))
-        break
-      }      
-      s <- read_csv(filename)
-      summary_tables[[sex]] <- s
-      #ws$send(rjson::toJSON(list(type="summary", df = purrr::transpose(s), colnames = colnames(s))))
-      ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
-      
-      effect_size_tables[[sex]] <- read_csv(effect_size_filename)
-      
-      #m <- myparams$method
-      pretty <- case_when(m=="lmm" ~ "Linear mixed model", m=="dlmm" ~ "Dynamic linear mixed model", TRUE ~ "Linear mixed models")
-      t <- 
-        tibble(id=sprintf("detail-linear-models-%s", sex), 
-                pretty=pretty,
-                sex=sex,
-                html=sprintf("output/results-%s.html", sex),
-                pdf=sprintf("output/results-%s.pdf", sex))
-      details_dfs[[length(details_dfs)+1]] <- t
-      
-      ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
-    }
-  }
+  # methods <- intersect(c("lmm", "dlmm"), names(post))
+  # if (length(methods) > 0) {
+  #   m <- ifelse(length(methods) == 2, "both", methods[[1]])
+  #   #myparams$method <- case_when(m=="lmm" ~ "no-fix", m=="dlmm" ~ "icp-fix", TRUE ~ m)
+  #   myparams$method <- m
+  #   sexes <- if (stratify_by_sex)  c("male", "female") else c("both")
+  #   for (sex in sexes) {
+  #     myparams["sex"] <- sex
+  #     filename <- sprintf("/tmp/summary-%s.csv", sex)
+  #     myparams["summary_table_file"] <- filename
+  #     effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", sex)
+  #     myparams["effect_size_table_file"] <- effect_size_filename
+  #     error_messages <- tryCatch(
+  #       error = function(cnd) {
+  #         error_messages <- c(sprintf("Error in %s with sex %s.\n", "linear mixed model", sex), cnd$message)
+  #         return(error_messages)
+  #       },
+  #       {
+  #         rmarkdown::render(
+  #           'linear_models.Rmd',
+  #           output_file=rep(sprintf('results-%s', sex), 2),   # One for each output format: html and pdf 
+  #           output_format=c('html_document', 'pdf_document'),
+  #           clean=FALSE,
+  #           output_dir='../output',
+  #           params = myparams)
+  #         NULL
+  #       }
+  #     )
+  #     if (!is.null(error_messages)) {
+  #       cat(paste0(error_messages))
+  #       ws$send(rjson::toJSON(list(type="error", error_messages=error_messages)))
+  #       break
+  #     }      
+  #     s <- read_csv(filename)
+  #     summary_tables[[sex]] <- s
+  #     #ws$send(rjson::toJSON(list(type="summary", df = purrr::transpose(s), colnames = colnames(s))))
+  #     ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
+  #     
+  #     effect_size_tables[[sex]] <- read_csv(effect_size_filename)
+  #     
+  #     #m <- myparams$method
+  #     pretty <- case_when(m=="lmm" ~ "Linear mixed model", m=="dlmm" ~ "Dynamic linear mixed model", TRUE ~ "Linear mixed models")
+  #     t <- 
+  #       tibble(id=sprintf("detail-linear-models-%s", sex), 
+  #               pretty=pretty,
+  #               sex=sex,
+  #               html=sprintf("output/results-%s.html", sex),
+  #               pdf=sprintf("output/results-%s.pdf", sex))
+  #     details_dfs[[length(details_dfs)+1]] <- t
+  #     
+  #     ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
+  #   }
+  # }
   
   ###################
   #
-  # Run random forest
+  # Run models
   #
   ###################
 
   method_df <- tribble(
     ~method, ~pretty, ~rmd,
-    "decision-tree", "decision tree", "template.Rmd",
-    "random-forest", "random forest", "random_forest.Rmd",
-    "svm", "support vector machine", "svm.Rmd",
-  )  
+    "decision-tree", "decision tree",             "template.Rmd",
+    "random-forest", "random forest",             "random_forest.Rmd",
+    "svm",           "support vector machine",    "svm.Rmd",
+    "lmm",           "Linear mixed model",        "linear_models.Rmd",
+    "dlmm",          "Dynamic linear mixed model","linear_models.Rmd",
+    "both",          "Linear mixed models",       "linear_models.Rmd",
+  )
+  # This looks ugly because lmm and dlmm are done in the same Rmd.
+  tmp <- intersect(c("lmm", "dlmm"), names(post))
+  if (length(tmp) == 0) {
+    linear_methods <- NULL
+  } else {
+    linear_methods <- case_when(
+      length(tmp) == 1 ~ tmp[[1]],
+      length(tmp) == 2 ~ "both")
+  }
+  
   methods <- intersect(c("decision-tree", "random-forest", "svm"), names(post))
+  methods <- c(methods, linear_methods)
   for (m in methods) {
     cat(sprintf("Running method %s\n", m))
     myparams$method <- m
+    is_linear_model <- m %in% c("lmm", "dlmm", "both")
     pretty <- method_df %>% filter(method==m) %>% pull(pretty)
     rmd <- method_df %>% filter(method==m) %>% pull(rmd)
     #sexess <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
@@ -458,10 +518,26 @@ hb_predictor3 <- function(ws) {
     for (sex in sexes) {
       cat(sprintf("Running sex %s\n", sex))
       myparams["sex"] <- sex
+      myparams$input_file <- case_when(sex=="both" ~ donation_specific_filename,
+                                       sex == "male" ~ male_donation_specific_filename,
+                                       sex == "female" ~ female_donation_specific_filename
+      )
+      
       temp_filename <- sprintf("/tmp/summary-%s-%s.csv", m, sex)
       myparams["summary_table_file"] <- temp_filename
-      temp_effect_size_filename <- sprintf("../output/variable-importance-%s.csv", m)
-      myparams["effect_size_table_file"] <- temp_effect_size_filename
+      
+      effect_size_filename <- ifelse(is_linear_model,
+                                     sprintf("/tmp/effect-size-%s-%s.csv", m, sex),
+                                     sprintf("/tmp/variable-importance-%s-%s.csv", m, sex))
+      myparams["effect_size_table_file"] <- effect_size_filename
+      
+      prediction_filename <- sprintf("/tmp/prediction-%s-%s.csv", m, sex)
+      myparams["prediction_table_file"] <- prediction_filename
+      
+      #     effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", sex)
+      #     myparams["effect_size_table_file"] <- effect_size_filename
+      
+      
       error_messages <- tryCatch(
         withCallingHandlers({
           rmarkdown::render(
@@ -486,9 +562,13 @@ hb_predictor3 <- function(ws) {
         ws$send(rjson::toJSON(list(type="error", error_messages=error_messages)))
         break
       }
+      
       s <- read_csv(temp_filename)
       summary_tables[[paste(m, sex, sep="-")]] <- s
       ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
+      
+      p <- read_csv(prediction_filename)
+      prediction_tables[[paste(m, sex, sep="-")]] <- p
       
       t <-
         tibble(id=sprintf("detail-%s-%s", m, sex), 
@@ -500,7 +580,11 @@ hb_predictor3 <- function(ws) {
       ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
       
       # should I read here the effect size table?
-      #effect_size_tables[[paste(m, sex, sep="-")]] <- read_csv(temp_effect_size_filename)
+      if (is_linear_model) {
+        effect_size_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
+      } else {
+        variable_importance_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
+      }
     }
   }
   
@@ -515,15 +599,18 @@ hb_predictor3 <- function(ws) {
   ####################
   
   summary_table <- bind_rows(summary_tables)
+  write_csv(summary_table, "../output/summary.csv")
   summary_table_string <- create_summary_table(summary_table)
   ws$send(rjson::toJSON(list(type="summary", summary_table_string = summary_table_string)))
-  
-  write_csv(summary_table, "../output/summary.csv")
   
   effect_size_table <- bind_rows(effect_size_tables)
   write_csv(effect_size_table, "../output/effect-size.csv")
   
-
+  variable_importance_table <- bind_rows(variable_importance_tables, .id="Id")
+  write_csv(variable_importance_table, "../output/variable-importance.csv")
+  
+  prediction_table <- bind_rows(prediction_tables)
+  write_csv(prediction_table, "../output/prediction.csv")
   
   #result2 <- c(upload_info, s1, s2, s3, myparams_string, time_start_s, time_end_s, total_time)
   #result2 <- c(donation_info, donor_info, preprocessed_info)
@@ -544,6 +631,7 @@ hb_predictor <- function(req){
   <html>
   
   <head>
+  <meta charset="UTF-8"/>
   <title>Hemoglobin predictor</title>
   <link rel="stylesheet" href="static/bootstrap.min.css">
   <link rel="stylesheet" href="static/style.css">
@@ -611,7 +699,7 @@ hb_predictor <- function(req){
             <input type="checkbox" value="on", id="stratify-by-sex" name="stratify-by-sex" checked />
             </td>
         </tr>
-        <!-- Not ready yet for this.
+        
         <tr><td>Hyperparameters</td>                <td>
         <select id="hyperparameters" name="hyperparameters">
           <option value="finnish" label="Finnish" selected>Finnish</option>
@@ -620,7 +708,18 @@ hb_predictor <- function(req){
           <option value="learn" label="Learn">Learn</option>
         </select>
         </td></tr>
-        -->
+        <tr id="hyperparameter_file_row" hidden>
+          <td>Upload hyperparameter file:</td>    
+          <td><input type=file name="hyperparameter_fileUpload"></td> 
+        </tr>
+
+        <tr><td>Mode</td>                <td>
+        <select id="mode" name="mode">
+          <option value="initial" label="Initial" selected>Initial</option>
+          <option value="final" label="Final">Final</option>
+        </select>
+        </td></tr>
+        
         </label>
         <!--<tr><td>Progress</td>               <td><progress id="progress" value="0" /></td></tr>-->
         </table>
@@ -693,6 +792,8 @@ hb_predictor <- function(req){
         <p>Load the summary table in CSV form from <a href="/output/summary.csv">here.</a></p>
         <p id="effect-size">Load the effect size table in CSV form from <a href="/output/effect-size.csv">here.</a></p>
         <p id="variable-importance">Load the variable importance table in CSV form from <a href="/output/variable-importance.csv">here.</a></p>
+        <p id="prediction">Load the prediction data in CSV form from <a href="/output/prediction.csv">here.</a></p>
+        <p id="download_hyperparameters">Load the learned hyperparameters in JSON form from <a href="/output/hyperparameters.json" target="_blank">here.</a></p>
         <p id="preprocessed">Load the preprocessed data from <a href="/output/preprocessed.rdata">here.</a></p>
         
         <h3>Detailed result pages</h3>

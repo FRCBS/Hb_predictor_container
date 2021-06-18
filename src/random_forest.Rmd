@@ -7,15 +7,18 @@ params:
   hlen_exactly: FALSE
   sample_fraction: 1.0
   method: "both"
+  mode: "initial"
   sex: "both"
   id: NULL
   date: "2020-07-08"
   extra_id: NULL
   summary_table_file: NULL
   effect_size_table_file: NULL
+  prediction_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
   predictive_variables: NULL
+  hyperparameters: "filename"
   cores: 4
   iterations: 2000
   skip_train: FALSE
@@ -46,9 +49,7 @@ suppressPackageStartupMessages(library(ROCR))
 suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
 suppressPackageStartupMessages(library(sn))
-#library(tidyselect)  # Why is this needed?
 suppressPackageStartupMessages(library(tidyverse))
-suppressPackageStartupMessages(library(tictoc))
 set.seed(123)
 
 
@@ -89,6 +90,8 @@ for (name in names(params)) {
   message(sprintf("%s = ", name), params[[name]])
 }
 
+mode <- params$mode
+
 # These are used to select which computations to perform,
 # base on params$sex and params$method
 compute_male   <- params$sex %in% c("male", "both")
@@ -125,7 +128,6 @@ if (is.null(params$id)) {
 
 source("helper_functions.R")
 source("validate_stan_fit.R")
-#source("ppc.R")
 source("enrich_deferrals_rf.R")
 source("common.R")
 
@@ -148,50 +150,39 @@ data <- data %>%
 
 
 
-sample_fraction <- params$sample_fraction
-
-is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
-
-if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample size is given instead of fraction, convert it to sample fraction
-  low_limit <- ifelse(params$method=="no-fix", 2, 1)
-  data <- data %>% group_by(donor) %>%
-    filter(n() > low_limit) %>%
-    ungroup()
-  
-  if (params$sex == "male") {
-    temp <- data %>% filter(sex=="male")
-  }
-  else if (params$sex == "female") {
-    temp <- data %>% filter(sex=="female")
-  } else {
-    temp <- data
-  }
-  n <- length(unique(temp$donor))  # number of donors
-  rm(temp)
-  sample_fraction <- sample_fraction / n
-  message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
-}
-stopifnot(sample_fraction <= 1.0)
-
-if (sample_fraction < 1.0) {
-  data <- sample_set(data, sample_fraction)
-  # donors <- unique(data$donor)
-  # a <- caret::createDataPartition(1:length(donors), p=sample_fraction, list=FALSE)
-  # data <- data %>%
-  #   filter(donor %in% donors[a])
-}
+# sample_fraction <- params$sample_fraction
+# 
+# is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+# 
+# if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample size is given instead of fraction, convert it to sample fraction
+#   low_limit <- ifelse(params$method=="lmm", 2, 1)
+#   data <- data %>% group_by(donor) %>%
+#     filter(n() > low_limit) %>%
+#     ungroup()
+#   
+#   if (params$sex == "male") {
+#     temp <- data %>% filter(sex=="male")
+#   }
+#   else if (params$sex == "female") {
+#     temp <- data %>% filter(sex=="female")
+#   } else {
+#     temp <- data
+#   }
+#   n <- length(unique(temp$donor))  # number of donors
+#   rm(temp)
+#   sample_fraction <- sample_fraction / n
+#   message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
+# }
+# stopifnot(sample_fraction <= 1.0)
+# 
+# if (sample_fraction < 1.0) {
+#   data <- sample_set(data, sample_fraction)
+# }
 
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
   donor_specific_variables <- load_single(params$donor_specific_file)
-  #donor_specific_variables <- load_single("/tmp/RtmpRUlZ9Z/preprocessed_data_3fdd430c88b5.rdata")
-  
-  #donor_descript <- donor_descript %>% filter(Variable %in% names(donor_specific_variables))
-  #donor_variables <- donor_descript$Variable
   donor_variables <- donor_descript %>% filter(Variable %in% names(donor_specific_variables)) %>% pull(Variable)
-
-  #pretty_donor_variables <- donor_descript$Pretty
-  
   data <- inner_join(data, donor_specific_variables, by="donor")
 } else {
   donor_variables = NULL
@@ -215,12 +206,12 @@ if (!is.null(donor_variables)) {
   data <- data %>% select(all_of(variables_in_order), everything())
 }
 
-if (params$sex == "male") {
-  data <- data %>% filter(sex=="male")
-} else if (params$sex == "female") {
-  data <- data %>% filter(sex=="female")
-} else {
-}
+# if (params$sex == "male") {
+#   data <- data %>% filter(sex=="male")
+# } else if (params$sex == "female") {
+#   data <- data %>% filter(sex=="female")
+# } else {
+# }
 
 
 
@@ -264,7 +255,8 @@ temp_donors <- data$donor
 # Find out do donors have at least one deferral
 at_least_one_deferral <- data %>% 
   group_by(donor) %>% 
-  summarise(one_deferral=max(Hb_deferral))
+  summarise(one_deferral=max(Hb_deferral),
+            label=as.integer(unique(label)))
 
 
 pboth <- data %>%
@@ -276,7 +268,7 @@ pboth
 
 
 temp_donor_specific <- at_least_one_deferral
-tr <- tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
+#tr <- tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
 if (!is.null(params$donor_specific_file)) {
   temp_donor_specific <- donor_specific_variables %>% 
     inner_join(at_least_one_deferral, by="donor")
@@ -305,19 +297,44 @@ time_series_length_plotter(data, color)
 rm(pboth, pdata2, temp_donor_specific, temp_donors)
 ```
 
+```{r}
+
+# Split the data into train and test sets
+old_split <- function(data) {
+  donors <- unique(data$donor)
+  #message(donors)
+  a <- caret::createDataPartition(1:length(donors), p=0.8, list=FALSE)
+  train<- data %>%
+    filter(donor %in% donors[a])
+  test <- data %>% 
+    filter(donor %in% donors[-a])
+  return(list(train=train, test=test))
+}
+
+new_split <- function(data, mode) {
+  if (mode=="initial") {
+    train <- data %>% filter(label=="train")
+    test  <- data %>% filter(label=="validate")
+  } else {  # mode=="final"
+    train <- data %>% filter(label %in% c("train", "validate"))
+    test  <- data %>% filter(label == "test")
+  }
+  return(list(train=train, test=test))
+}
+```
 
 
 ```{r Partition and enrich, echo=FALSE}
 debug <- TRUE
 
-# Split the data into train and test sets
-donors <- unique(data$donor)
-#message(donors)
 message(sprintf("Number of donors is %i\n", length(donors)))
 old_count <- nrow(data); old_count2 <- ndonor(data)
-a <- caret::createDataPartition(1:length(donors), p=0.8, list=FALSE)
-train_orig <- data %>%
-  filter(donor %in% donors[a])
+
+#tmp <- old_split(data)
+tmp <- new_split(data, mode)
+train_orig <-tmp$train
+test <- tmp$test
+
 message(sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
               old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2))
 message("Here")
@@ -360,15 +377,44 @@ sink(file=stderr(), type="output"); summary(enriched); sink()
 if (debug) save(enriched, file="/tmp/enriched.rdata")
 #enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
 #rm(train_orig)
-test <- data %>% 
-  filter(donor %in% donors[-a])
 
 message("and here")
 ```
 
 
+```{r}
+additional_preprocess <- function(data, variables) {
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  data <- data %>% group_by(donor) %>%
+    dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
+    slice_max(order_by = dateonly, n=1) %>%
+    mutate(nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)) %>% 
+    ungroup() %>% 
+    mutate(Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred")))
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to length of time series being one\n", 
+                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+  
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  data <- data %>%
+    filter( !nb_donat == '0') #Some spurious mistake in the donation record
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to nb_donat being '0'\n", 
+                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+  
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  data <- data %>% #Take out people that return faster than they should as we do not really know what they mean
+    filter(!(days_to_previous_fb < 62 & sex == "male"),
+           !(days_to_previous_fb < 92 & sex == "female"))
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to days_to_previous_fb < 62 (men) or 92 (women)\n", 
+                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+  
+  
+  data <- data %>%   select(all_of(variables))
+return(data)
+}
+```
 
-```{r Process train and validate sets}
+
+```{r Process train and validate sets further}
 # variables <- c(
 #                "days_to_previous_fb", 
 #                "age", 
@@ -388,81 +434,21 @@ variables <- c(variables,
                c(
                "Hb_deferral",
                "nb_donat"))
-# This is already done in higher level
-# if (params$sex != "both") {
-#   variables <- setdiff(variables, "sex")
-# }
-
-# old_count <- nrow(train); old_count2 <- ndonor(train)
-#   message(sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
-#               old_count - nrow(train), old_count, old_count2 - ndonor(train), old_count2))
-  
-#Train
-train <- enriched %>% 
-  group_by(donor) %>% 
-  slice_max(order_by = dateonly, n=1) %>%
-  # arrange(desc(dateonly)) %>% 
-  # dplyr::slice(1) %>%   
-  mutate(nb_donat = sum(nb_donat_progesa, nb_donat_outside, na.rm=TRUE)) %>% 
-  ungroup() %>%
-  mutate(Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred")))
-
-old_count <- nrow(train); old_count2 <- ndonor(train)
-train <- train %>% 
-  filter( !nb_donat == '0') #Some spurious mistake in the donation record
-message(sprintf("Dropped %i / %i donations (%i / %i donors) due to nb_donat being '0'\n", 
-                old_count - nrow(train), old_count, old_count2 - ndonor(train), old_count2))
-
-old_count <- nrow(train); old_count2 <- ndonor(train)
-#Take out people that return faster than they should as we do not really know what they mean
-train <- train %>% 
-  filter(!((days_to_previous_fb < 62 & sex == "male") | (days_to_previous_fb < 92 & sex == "female")))
-message(sprintf("Dropped %i / %i donations (%i / %i donors) due to days_to_previous_fb < 62 (males) or 92 (females)\n", 
-                old_count - nrow(train), old_count, old_count2 - ndonor(train), old_count2))
-
 
 if (!is.null(donor_variables)) {
   variables <- c(variables, donor_variables)
 }
-train <- train %>% select(all_of(variables))
+  
+#Train
+
+train <- additional_preprocess(enriched, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
 
 #Validate
 
-old_count <- nrow(test); old_count2 <- ndonor(test)
-validate <- test %>% group_by(donor) %>%
-  dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
-  slice_max(order_by = dateonly, n=1) %>%
-  # arrange(desc(dateonly)) %>% 
-  # dplyr::slice(1) %>%   
-  mutate(
-    nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)
-  ) %>% 
-  ungroup() %>% 
-  mutate(Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred")))
-message(sprintf("Dropped %i / %i donations (%i / %i donors) due to length of time series being one\n", 
-                old_count - nrow(validate), old_count, old_count2 - ndonor(validate), old_count2))
-
-old_count <- nrow(validate); old_count2 <- ndonor(validate)
-validate <- validate %>%
-  filter( !nb_donat == '0') #Some spurious mistake in the donation record
-message(sprintf("Dropped %i / %i donations (%i / %i donors) due to nb_donat being '0'\n", 
-                old_count - nrow(validate), old_count, old_count2 - ndonor(validate), old_count2))
-
-old_count <- nrow(validate); old_count2 <- ndonor(validate)
-validate <- validate %>% #Take out people that return faster than they should as we do not really know what they mean
-  filter(!(days_to_previous_fb < 62 & sex == "male"),
-         !(days_to_previous_fb < 92 & sex == "female"))
-message(sprintf("Dropped %i / %i donations (%i / %i donors) due to days_to_previous_fb < 62 (men) or 92 (women)\n", 
-                old_count - nrow(validate), old_count, old_count2 - ndonor(validate), old_count2))
+validate <- additional_preprocess(test, c(variables, "Hb", "sex")) # We want to include Hb and sex to the prediction result table
 
 
-validate <- validate %>%   select(all_of(variables))
 
-
-message(sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train)))
-sink(file=stderr(), type="output"); summary(train); sink()
-message(sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate)))
-sink(file=stderr(), type="output"); summary(validate); sink()
 
 #Total donation count
 
@@ -471,8 +457,16 @@ sink(file=stderr(), type="output"); summary(validate); sink()
 
 
 ```{r Info about datasets, results="asis", echo=FALSE}
-cat(sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train)))
-cat(sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate)))
+msg <- sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train))
+message(msg)
+cat(msg)
+sink(file=stderr(), type="output"); summary(train); sink()
+
+msg <- sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate))
+message(msg)
+cat(msg)
+sink(file=stderr(), type="output"); summary(validate); sink()
+
 
 train_deferred <- train %>% filter(Hb_deferral == "Deferred")
 validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
@@ -482,6 +476,64 @@ rm(train_deferred)
 rm(validate_deferred)
 ```
 
+```{r}
+learn_hyperparameters <- function(df) {
+  message("In function learn_hyperparameters")
+  df <- df %>% filter(label=="train") %>% select(-label) # Drop donors that belong to the original validate set
+  file <- "../output/learned_hyperparameters.Rdata"
+
+  #Initialise parallellisation
+  cl <- parallel::makePSOCKcluster(params$cores)
+  doParallel::registerDoParallel(cl)
+  
+  #Define search grid
+  # rrfGrid <-  expand.grid(
+  #   mtry = c(3:8),
+  #   splitrule=c("gini", "extratrees","hellinger"),
+  #   #min.node.size = seq(3,39,3) #what kind of range is needed?
+  #   min.node.size = seq(1,60,5)
+  #   #https://stats.stackexchange.com/questions/158583/what-does-node-size-refer-to-in-the-random-forest/
+  #   #max.depth =c(1:10) # this is not available
+  # )
+  
+  # Small grid for testing purposes
+  rrfGrid <-  expand.grid(
+    mtry = c(3:5),
+    splitrule=c("extratrees","hellinger"),
+    min.node.size = seq(30,40)
+  )
+  
+  #Define cross validation
+  fitControl <- caret::trainControl(## 4-fold CV
+    method = "repeatedcv",
+    number = 4, #how many is good?
+    ## repeated ten times
+    repeats = 1, #how many is good?
+    classProbs = TRUE,
+    summaryFunction = twoClassSummary
+    #savePredictions = TRUE
+  )
+  
+  #Train
+  rrfFit_roc_hyper <- caret::train(Hb_deferral ~ ., data = df, 
+                            method = "ranger", 
+                            trControl = fitControl, 
+                            verbose = FALSE, 
+                            ## Now specify the exact models 
+                            ## to evaluate:
+                            tuneGrid = rrfGrid,
+                            metric="ROC"
+                            #should we use Kappa or ROC?
+                            #                importance = "permutation"
+                            #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
+                            #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
+  )
+  
+  save(rrfFit_roc_hyper, file=file)
+  parallel::stopCluster(cl)
+  return(as.list(rrfFit_roc_hyper$bestTune))
+}
+```
 
 
 
@@ -497,12 +549,23 @@ if (number_of_accepted == 0 || number_of_deferrals == 0) {
 tic("Training random forest")
 #save(train, file="/tmp/jarkko.rdata")   # remove this
 
-rf_hyper_parameters <- list(mtry=4, splitrule="hellinger", min.node.size=34)
+#rf_hyper_parameters <- list(mtry=4, splitrule="hellinger", min.node.size=34)
+hyperparameters <- read_hyperparameters(params$hyperparameters)
+rf_hyperparameters <- hyperparameters %>% filter(Model=="random-forest", Sex==params$sex) %>% pull(Value)
+if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for this model yet
+  rf_hyperparameters <- learn_hyperparameters(train)
+  hyperparameters <- hyperparameters %>% add_row(Model="random-forest", Sex=params$sex, Value=list(rf_hyperparameters))
+  write_hyperparameters(hyperparameters, params$hyperparameters)
+} else {
+  rf_hyperparameters <- rf_hyperparameters[[1]]
+}
 
-if (nrow(train) <= rf_hyper_parameters$min.node.size) {
+train <- train %>% select(-label)
+
+if (nrow(train) <= rf_hyperparameters$min.node.size) {
   message("Warning: There are less points in the train data than what is the min.node.size of the random forest")
   warning(sprintf("There are less points in the train data (%i) than what is the min.node.size of the random forest(%i)",
-                  nrow(train), rf_hyper_parameters$min.node.size))
+                  nrow(train), rf_hyperparameters$min.node.size))
 }
 
 rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
@@ -515,7 +578,7 @@ rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train,
                  ## Now specify the exact models 
                  ## to evaluate:
                  #tuneLength=1,
-                 tuneGrid = do.call(expand_grid, rf_hyper_parameters),
+                 tuneGrid = as_tibble(rf_hyperparameters),
                    # expand_grid(mtry = 4,
                    #  splitrule="hellinger",
                    #  min.node.size = 34),
@@ -550,13 +613,6 @@ rf_variable_importances <- left_join(rf_variable_importances, bind_rows(descript
 message(paste(rf_variable_importances$Variable, collapse=" "))
 
 # Fix some pretty variables names
-
-# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "previous_Hb_defTRUE"] <- "Previous donation deferred"
-# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "warm_seasonTRUE"] <- "Warm season"
-# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "smokingTRUE"] <- "Smoking"
-# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "RNF43_mutantTRUE"] <- "RNF43 minor allele"
-# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "sexWomen"] <- "Sex"
-# rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "nb_donat"] <- "Number of donations"
 
 rf_variable_importances <- rf_variable_importances %>%
   mutate(Pretty = case_when(
@@ -607,10 +663,17 @@ prediction.probs <- predict(rrfFit_roc, newdata = validate, type="prob")
 ```{r Create prediction result dataframe, warning=FALSE, echo=FALSE}
 source("validate_stan_fit.R")
 width = 180
-df <- tibble(original_label = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
+df <- tibble(model="random-forest",
+             sex=validate$sex,
+             original_label = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
              predicted_label = ifelse(prediction.vl == "Deferred", 1, 0), 
-             score=prediction.probs$Deferred)
+             score=prediction.probs$Deferred,
+             original_value=validate$Hb,
+             predicted_value=NA)
 sink(file=stderr(), type="output"); summary(df %>% mutate_at(c("original_label", "predicted_label"), as.factor)); sink()
+if (!is.null(params$prediction_table_file)) {
+  write_csv(df, params$prediction_table_file)   # Pass the table to the web app as well
+}
 
 ```
 
@@ -676,7 +739,7 @@ results_both_random_forest$pr_plot
 message("Here5")
 results_both_random_forest$f1_ci
 message("Here6")
-id <- sprintf("%s-rf", params$sex)
+id <- sprintf("rf-%s", params$sex)
 t <- tibble(Id=id, Model="Random forest", Sex=params$sex, 
             MAE=NA, RMSE=NA, MAE2=NA, RMSE2=NA) 
 message("Here7")
@@ -701,7 +764,7 @@ message("Here9")
 
 ### Summary
 
-```{r Errors, results="markup"}
+```{r Summary table, results="markup"}
 
 summary_table <- bind_rows(summary_rows)
 summary_table <- summary_table %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
@@ -714,7 +777,7 @@ if (!is.null(params$summary_table_file)) {
 
 ```
 
-```{r, results="markup"}
+```{r Show summary table, results="markup"}
 cols <- c("Model", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
 ```

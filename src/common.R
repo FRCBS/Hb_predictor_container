@@ -31,12 +31,13 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
 #tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
 
 donor_descript <- tibble(
-  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs", "FERRITIN_FIRST", "FERRITIN_LAST", "one_deferral"),
-  Pretty      = c("Smoking", "Height", "Weight", "RNF43", "Polygenic score", "First ferritin", "Last ferritin", "At least one deferral"),
-  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric", "numeric", "numeric", "numeric (int)"),
+  Variable    = c("smoking", "height", "weight", "RNF43_mutant", "prs", "FERRITIN_FIRST", "FERRITIN_LAST", "one_deferral", "label"),
+  Pretty      = c("Smoking", "Height", "Weight", "RNF43", "Polygenic score", "First ferritin", "Last ferritin", "At least one deferral", "Partition label"),
+  Type        = c("boolean", "numeric", "numeric", "boolean", "numeric", "numeric", "numeric", "numeric (int)", "factor"),
   Explanation = c("Does the person smoke", "Height of the donor", "Weight of the donor", 
                   "Mutation at RNF43 gene in chromosome 17 position 58358769", "Polygenic risk score for hemoglobin", 
-                  "First measured ferritin value", "Last measured ferritin value", "At least one deferral")
+                  "First measured ferritin value", "Last measured ferritin value", "At least one deferral",
+                  "The donors are partitioned into train, validate, and test sets")
 )
 
 # FinDonor donation specific:
@@ -129,5 +130,21 @@ time_series_length_plotter <- function(df, color) {
   g
 }
 
+read_hyperparameters <- function(filename) {
+  if (str_detect(filename, "\\.json$")) {
+    df <- as_tibble(rjson::fromJSON(file=filename)) 
+    df <- df %>% mutate(across(c(Model, Sex), as.character))  # In case of empty tibble we have lost information about columns types. Restore them.
+  } else {
+    df <- readRDS(filename)
+  }
+  return(df)
+}
 
+write_hyperparameters <- function(hyperparameters, filename, json=TRUE) {
+  if (json) {
+    cat(rjson::toJSON(hyperparameters), file = filename)
+  } else {
+    saveRDS(hyperparameters, filename)
+  }
+}
 
