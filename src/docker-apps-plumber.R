@@ -49,7 +49,7 @@ check_columns <- function(got, expected) {
 }
 
 create_summary_table <- function(summary_table) {
-  cols <- c("Model", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
+  cols <- c("Model"="Pretty", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
             "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
   summary_table_string <- kable(summary_table %>% select(!!!cols), format="html", digits=3, 
                                 caption="Error and performance measures: mean absolute error (MAE), root mean squared error (RMSE),\
@@ -59,11 +59,21 @@ create_summary_table <- function(summary_table) {
   return(summary_table_string)
 }
 
+model_df <- tribble(
+  ~model, ~pretty, ~rmd,
+  "dt", "decision tree",             "template.Rmd",
+  "rf", "random forest",             "random_forest.Rmd",
+  "svm",           "support vector machine",    "svm.Rmd",
+  "lmm",           "linear mixed model",        "linear_models.Rmd",
+  "dlmm",          "dynamic linear mixed model","linear_models.Rmd",
+  "both",          "Linear mixed models",       "linear_models.Rmd",
+)
+
 FRCBS_hyperparameters <- tribble(
   ~Model,          ~Sex,     ~Value,
-  "random-forest", "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
-  "random-forest", "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
-  "random-forest", "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
+  "rf",            "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
+  "rf",            "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
+  "rf",            "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
   "svm",           "male",   list(degree=8, scale=1, C=1),
   "svm",           "female", list(degree=8, scale=1, C=1),
   "svm",           "both",   list(degree=8, scale=1, C=1)
@@ -71,7 +81,9 @@ FRCBS_hyperparameters <- tribble(
 
 Sanquin_hyperparameters <- FRCBS_hyperparameters
 
-learn_hyperparameters <- tibble(Model=character(0), Sex=character(0), Value=list())
+#learn_hyperparameters <- tibble(Model=character(0), Sex=character(0), Value=list())
+# If empty tibble, we cannot save it to json
+learn_hyperparameters <- tibble(Model="dummy", Sex="dummy", Value=list(list()))  
 
 
 #' Upload the datas and parameters
@@ -364,6 +376,9 @@ hb_predictor3 <- function(ws) {
     tmp <- fulldata_preprocessed %>% filter(sex=="female")
     save(tmp, file=female_donation_specific_filename)
     rm(tmp)
+  } else {
+    male_donation_specific_filename <- NA_character_
+    female_donation_specific_filename <- NA_character_
   }
   rm(fulldata_preprocessed)
   
@@ -417,7 +432,7 @@ hb_predictor3 <- function(ws) {
   effect_size_tables <- list()
   variable_importance_tables <- list()
   prediction_tables <- list()
-  details_df <- tibble(id=character(0), pretty=character(0), sex=character(0), html=character(0), pdf=character(0))
+  #details_df <- tibble(id=character(0), pretty=character(0), sex=character(0), html=character(0), pdf=character(0))
   details_dfs <- list()
   
   ####################
@@ -486,33 +501,24 @@ hb_predictor3 <- function(ws) {
   #
   ###################
 
-  method_df <- tribble(
-    ~method, ~pretty, ~rmd,
-    "decision-tree", "decision tree",             "template.Rmd",
-    "random-forest", "random forest",             "random_forest.Rmd",
-    "svm",           "support vector machine",    "svm.Rmd",
-    "lmm",           "Linear mixed model",        "linear_models.Rmd",
-    "dlmm",          "Dynamic linear mixed model","linear_models.Rmd",
-    "both",          "Linear mixed models",       "linear_models.Rmd",
-  )
   # This looks ugly because lmm and dlmm are done in the same Rmd.
   tmp <- intersect(c("lmm", "dlmm"), names(post))
   if (length(tmp) == 0) {
-    linear_methods <- NULL
+    linear_models <- NULL
   } else {
-    linear_methods <- case_when(
+    linear_models <- case_when(
       length(tmp) == 1 ~ tmp[[1]],
       length(tmp) == 2 ~ "both")
   }
   
-  methods <- intersect(c("decision-tree", "random-forest", "svm"), names(post))
-  methods <- c(methods, linear_methods)
-  for (m in methods) {
-    cat(sprintf("Running method %s\n", m))
-    myparams$method <- m
+  models <- intersect(c("dt", "rf", "svm"), names(post))
+  models <- c(models, linear_models)
+  for (m in models) {
+    cat(sprintf("Running model %s\n", m))
+    myparams$model <- m
     is_linear_model <- m %in% c("lmm", "dlmm", "both")
-    pretty <- method_df %>% filter(method==m) %>% pull(pretty)
-    rmd <- method_df %>% filter(method==m) %>% pull(rmd)
+    pretty <- model_df %>% filter(model==m) %>% pull(pretty)
+    rmd <- model_df %>% filter(model==m) %>% pull(rmd)
     #sexess <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
     sexes <- if (stratify_by_sex)  c("male", "female") else c("both")
     for (sex in sexes) {
@@ -553,7 +559,7 @@ hb_predictor3 <- function(ws) {
                                                             warning_messages=c(sprintf("Warning in %s call \n", pretty),
                                                                                w$message))))),
         error = function(cnd) {
-          error_messages <- c(sprintf("Error in %s call \n", pretty), cnd$message)
+          error_messages <- c(sprintf("Error in %s %s call \n", sex, pretty), cnd$message)
           return(error_messages)
         }
       )
@@ -748,12 +754,12 @@ hb_predictor <- function(req){
           </label>
 
           <label for="decision-tree">
-            <input type="checkbox" value="on", id="decision-tree" name="decision-tree" />
+            <input type="checkbox" value="on", id="decision-tree" name="dt" />
             Mock decision tree
           </label>
           
           <label for="random-forest">
-            <input type="checkbox" value="on", id="random-forest" name="random-forest" checked />
+            <input type="checkbox" value="on", id="random-forest" name="rf" checked />
             Random forest
           </label>
           
