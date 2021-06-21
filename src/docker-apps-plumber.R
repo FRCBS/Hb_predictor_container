@@ -165,7 +165,7 @@ hb_predictor3 <- function(ws) {
   if ("unit" %in% names(post) && ! post$unit %in% c("gperl", "gperdl", "mmolperl"))
     error_messages <- c(error_messages, "The Hb unit must be either gperl, gperdl, or mmolperl")
   if ("hyperparameters" %in% names(post) && ! post$hyperparameters %in% c("finnish", "dutch", "upload", "learn"))
-    error_messages <- c(error_messages, "The Hb unit must be either finnish, dutch, upload, or learn")
+    error_messages <- c(error_messages, "The hyperparameter option must be either finnish, dutch, upload, or learn")
   if ("mode" %in% names(post) && ! post$mode %in% c("initial", "final"))
     error_messages <- c(error_messages, "The experiment mode must be either initial or final")
   if ("sample_fraction" %in% names(post)) {
@@ -332,11 +332,6 @@ hb_predictor3 <- function(ws) {
       if (sf != 1.0) {
         donors <- stratified_sample(donors, stratify_by_sex, sf)
         donations <- semi_join(donations, donors, by="donor")
-        # res <- sanquin_sample_raw_progesa(donations, donors, 
-        #                                   #donations_o$tempfile, donors_o$tempfile, 
-        #                                   ndonor=sf)
-        # donations <- res$donations
-        # donors    <- res$donors
       }
       fulldata_preprocessed <- sanquin_preprocess(donations, donors,
                                                   #donations_o$tempfile, donors_o$tempfile,
@@ -435,65 +430,8 @@ hb_predictor3 <- function(ws) {
   #details_df <- tibble(id=character(0), pretty=character(0), sex=character(0), html=character(0), pdf=character(0))
   details_dfs <- list()
   
-  ####################
-  #
-  # Run linear models
-  #
-  ####################
-  
-  # methods <- intersect(c("lmm", "dlmm"), names(post))
-  # if (length(methods) > 0) {
-  #   m <- ifelse(length(methods) == 2, "both", methods[[1]])
-  #   #myparams$method <- case_when(m=="lmm" ~ "no-fix", m=="dlmm" ~ "icp-fix", TRUE ~ m)
-  #   myparams$method <- m
-  #   sexes <- if (stratify_by_sex)  c("male", "female") else c("both")
-  #   for (sex in sexes) {
-  #     myparams["sex"] <- sex
-  #     filename <- sprintf("/tmp/summary-%s.csv", sex)
-  #     myparams["summary_table_file"] <- filename
-  #     effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", sex)
-  #     myparams["effect_size_table_file"] <- effect_size_filename
-  #     error_messages <- tryCatch(
-  #       error = function(cnd) {
-  #         error_messages <- c(sprintf("Error in %s with sex %s.\n", "linear mixed model", sex), cnd$message)
-  #         return(error_messages)
-  #       },
-  #       {
-  #         rmarkdown::render(
-  #           'linear_models.Rmd',
-  #           output_file=rep(sprintf('results-%s', sex), 2),   # One for each output format: html and pdf 
-  #           output_format=c('html_document', 'pdf_document'),
-  #           clean=FALSE,
-  #           output_dir='../output',
-  #           params = myparams)
-  #         NULL
-  #       }
-  #     )
-  #     if (!is.null(error_messages)) {
-  #       cat(paste0(error_messages))
-  #       ws$send(rjson::toJSON(list(type="error", error_messages=error_messages)))
-  #       break
-  #     }      
-  #     s <- read_csv(filename)
-  #     summary_tables[[sex]] <- s
-  #     #ws$send(rjson::toJSON(list(type="summary", df = purrr::transpose(s), colnames = colnames(s))))
-  #     ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
-  #     
-  #     effect_size_tables[[sex]] <- read_csv(effect_size_filename)
-  #     
-  #     #m <- myparams$method
-  #     pretty <- case_when(m=="lmm" ~ "Linear mixed model", m=="dlmm" ~ "Dynamic linear mixed model", TRUE ~ "Linear mixed models")
-  #     t <- 
-  #       tibble(id=sprintf("detail-linear-models-%s", sex), 
-  #               pretty=pretty,
-  #               sex=sex,
-  #               html=sprintf("output/results-%s.html", sex),
-  #               pdf=sprintf("output/results-%s.pdf", sex))
-  #     details_dfs[[length(details_dfs)+1]] <- t
-  #     
-  #     ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
-  #   }
-  # }
+
+
   
   ###################
   #
@@ -585,7 +523,7 @@ hb_predictor3 <- function(ws) {
       details_dfs[[length(details_dfs)+1]] <- t
       ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
       
-      # should I read here the effect size table?
+
       if (is_linear_model) {
         effect_size_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
       } else {
@@ -618,10 +556,7 @@ hb_predictor3 <- function(ws) {
   prediction_table <- bind_rows(prediction_tables)
   write_csv(prediction_table, "../output/prediction.csv")
   
-  #result2 <- c(upload_info, s1, s2, s3, myparams_string, time_start_s, time_end_s, total_time)
-  #result2 <- c(donation_info, donor_info, preprocessed_info)
-  #result2 <- paste(result2, collapse="\n")
-  
+
   details_df <- bind_rows(details_dfs)
   return(list(type="final", summary_table=as.character(summary_table_string), details_df = purrr::transpose(details_df)))
   

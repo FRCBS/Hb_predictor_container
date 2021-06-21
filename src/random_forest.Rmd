@@ -92,13 +92,7 @@ for (name in names(params)) {
 
 mode <- params$mode
 
-# These are used to select which computations to perform,
-# base on params$sex and params$method
-# compute_male   <- params$sex %in% c("male", "both")
-# compute_female <- params$sex %in% c("female", "both")
-# compute_random_forest <- params$method %in% c("random-forest", "both")
-# compute_male_random_forest <- compute_male && compute_random_forest
-# compute_female_random_forest <- compute_female && compute_random_forest
+
 
 set.seed(123)
 number_of_cores <- parallel::detectCores()
@@ -112,18 +106,7 @@ if (!is.null(params$cores)) {
 }
 rstan_options(auto_write = TRUE) # To avoid recompilation of unchanged Stan programs, we recommend calling
 
-# datadir = "../data/rdata/"
-# rawresultdir = "../data/raw_results/"   # I store plot objects and tables in this directory
-# dir.create(datadir, recursive = TRUE, showWarnings = FALSE)
-# dir.create(rawresultdir, recursive = TRUE, showWarnings = FALSE)
 
-# Id for a run. For example files in rawresultdir use this id as part of their name. 
-# Probably I should add a possibility to download raw results from the web interface.
-# if (is.null(params$id)) {
-#   id <- paste(params$date, params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
-# } else {
-#   id <- params$id
-# }
 
 
 source("helper_functions.R")
@@ -172,8 +155,6 @@ if (!is.null(donor_variables)) {
 }
 
 
-#summary_rows <- list()  # This is used to construct the summary table in the end
-                   # It has columns Model, MAE, RMSE, AUROC, and AUPR
 
 ```
 
@@ -200,8 +181,6 @@ cat(sprintf("### Summary plots of variables (%s)\n", params$sex))
 
 
 ```{r Summary plots, echo = FALSE, eval=TRUE}
-#Plot distributions
-
 create_summary_plots(data, donor_specific_variables, params$sex, descript, donor_descript)
 ```
 
@@ -451,8 +430,6 @@ rf_variable_importances_plot
 prediction_vl <- predict(rrfFit_roc, newdata = validate)
 prediction_probs <- predict(rrfFit_roc, newdata = validate, type="prob")
 
-#caret::confusionMatrix(reference=validate$Hb_deferral, data=prediction_vl, positive = "Deferred")
-#caret::confusionMatrix(reference=validate$Hb_deferral, data=prediction_vl, positive = "Deferred", mode = "prec_recall")
 
 ```
 
@@ -519,9 +496,6 @@ message("Here9")
 
 ```{r Summary table, results="markup"}
 
-#summary_table <- bind_rows(summary_rows)
-
-#write_csv(summary_table, paste(rawresultdir, "errors_", id, ".csv", sep = ''))
 if (!is.null(params$summary_table_file)) {
   write_csv(summary_table, params$summary_table_file)   # Pass the table to the web app as well
 }
