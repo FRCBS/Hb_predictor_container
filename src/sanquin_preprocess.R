@@ -489,6 +489,8 @@ sanquin_sample_raw_progesa <- function(donations, donors, donation.out = NULL, d
   return(list(donations=donations, donors=donors))
 }
 
+
+
 sanquin_preprocess_donor_specific <- function(donor, fulldata_preprocessed, use_only_first_ferritin) {
   if (use_only_first_ferritin) {
     donor_specific <- donor %>% select(donor = KEY_DONOR, FERRITIN_FIRST)

@@ -6,33 +6,59 @@ suppressPackageStartupMessages(library(tictoc, quietly = TRUE))
 source("helper_functions.R")  # For hours_to_numeric
 
 
-freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
+read_donations <- function(donation_file) {
+  # In the full dataset are there lots of missing values. This causes automatic recognition of column types to fail.
+  # Therefore we give them explicitly here.
+  input_col_types <- list(
+    X1 = col_character(),
+    X2 = col_character(),
+    X3 = col_character(),
+    X4 = col_double(),
+    X5 = col_character(),
+    X6 = col_character(),
+    X7 = col_character(),
+    X8 = col_character(),
+    X9 = col_character(),
+    X10 = col_character(),
+    X11 = col_double(),
+    X12 = col_double()
+  )
+  
+  donations <- read_delim(donation_file, col_names=FALSE, delim='|', col_types=input_col_types)
+  cat(sprintf("Read %i rows from file %s\n", nrow(donations), donation_file))
+  
+    old_names <-   c("KEY_DONAT_INDEX_DON", "KEY_DONOR", "KEY_DONAT_COLLECT", "KEY_DONAT_INDEX_DATE", "DONAT_PHLEB_START", 
+                   "DONAT_STATUS", "KEY_DONAT_PHLEB", "DONAT_DIRECTED", "Field name?", "DONAT_VOL_DRAWN", "KEY_DONAT_INDEX_TEST", 
+                   "DONAT_RESULT_CODE")
+  names(donations) <- old_names
+  donations
+}
+
+read_donors <- function(donor_file) {
+  input_col_types2 <- list(
+    X1 = col_character())
+  donors <- read_delim(donor_file, col_names=FALSE, delim="|", col_types = input_col_types2)
+  cat(sprintf("Read %i rows from file %s\n", nrow(donors), donor_file))
+  old_names <-
+    c("KEY_DONOR", "DONOR_FIRST", "DONOR_NAME", "KEY_DONOR_SEX", "KEY_DONOR_DOB", "DONOR_LANGUAGE", "KEY_DONOR_ABORH", "DONOR_ADDR_1_A", 
+    "KEY_DONOR_ZIP_1", "DONOR_CITY_1", "DONOR_TEL_1", "DONOR_E_MAIL", "DONOR_TEL_MOBILE", "DONOR_NOTIFIABLE", "DONOR_NOTIFICATION_METHOD_1", 
+    "DONOR_NOTIFICATION_METHOD_2", "DONOR_NOTIFICATION_METHOD_3", "DONOR_NB_DONATIONS", "DONOR_NB_DONAT_PROGESA", "DONOR_NB_DONAT_OUTSIDE", 
+    "DONOR_DATE_FIRST_DONATION", "DONOR_NB_WB", "DONOR_NB_PLA", "DONOR_NB_THR", "DONOR_LAST_DONAT_PHLEB", "DONOR_LAST_COLLECT")
+  names(donors) <- old_names
+  donors
+}
+
+freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
 {
   
   
   ########## DONATION
-  # In the full dataset there lots of missing values. This causes automatic recognition of column types to fail.
-  # Therefore we give them explicitly here.
-  input_col_types <- list(
-  X1 = col_character(),
-  X2 = col_character(),
-  X3 = col_character(),
-  X4 = col_double(),
-  X5 = col_character(),
-  X6 = col_character(),
-  X7 = col_character(),
-  X8 = col_character(),
-  X9 = col_character(),
-  X10 = col_character(),
-  X11 = col_double(),
-  X12 = col_double()
-  )
-
-  donation <- read_delim(donation.file, col_names=FALSE, delim='|', col_types=input_col_types)
+  
   names(donation)=c('donation', 'donor', 'site', 'date', 'phleb_start',
                     'status', 'donat_phleb', 
                     'directed', 'donStartTime', 'volume_drawn', 'index_test', 
                     'Hb')
+  
   print(head(donation))
   mean_hb <- mean(donation$Hb, na.rm=TRUE)
   if (!is_hb_value_sane(mean_hb, Hb_input_unit)) {
@@ -68,17 +94,19 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   
   
   ######### DONOR
-  input_col_types2 <- list(
-    X1 = col_character())
-  donor <- read_delim(donor.file, col_names=FALSE, delim="|", col_types = input_col_types2)
-  names(donor)=c('donor','first','family', 'sex', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
-                 'tel','email', 'mobile',
-                 'notifiable', 'notification_method_1', 'notification_method_2', 'notification_method_3', 
-                 'nb_donations', 'nb_donat_progesa', 'nb_donat_outside', 
-                 'date_first_donation', 'nb_wb', 'nb_pla',
-                 'nb_thr', 'last_donat_phleb', 'last_collect'
-                 
-                 )
+  conversion <- names(donor)
+    
+  names(conversion)=c('donor','first','family', 'sex', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
+                      'tel','email', 'mobile',
+                      'notifiable', 'notification_method_1', 'notification_method_2', 'notification_method_3', 
+                      'nb_donations', 'nb_donat_progesa', 'nb_donat_outside', 
+                      'date_first_donation', 'nb_wb', 'nb_pla',
+                      'nb_thr', 'last_donat_phleb', 'last_collect', 'label'
+                      
+  )
+  
+    donor <- donor %>% rename(!!!conversion)
+  
   #1 "9626820"|
   #2 "YYYY XXXX"|
   #3 "ZZZZ"
@@ -108,9 +136,14 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   #print(head(donor))
   donor <- donor %>%
     mutate(sex = as.factor(sex))
+  print(summary(donor))
+  
+  
+  variables <- c("donor", "sex", "dob", "date_first_donation", "nb_donat_progesa", "nb_donat_outside")
+  variables <- c(variables, intersect(names(donor), "label"))
   
   donor2 <- donor %>% 
-    select(donor,first,family,sex,dob,language,aborh,zip,city,date_first_donation, nb_donat_progesa, nb_donat_outside) %>%
+    select(!!!variables) %>%
     filter(donor %in% unique(donation$donor)) #Remove extra donors to get clean join  
   
   
@@ -223,8 +256,8 @@ freadFRC <- function(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female
   print(table(donation$sex, as.factor(donation$Hb_deferral)))
   #donation$Hb_deferral <- as.integer(as.character(donation$Hb_deferral))   # Fix Hb_deferral everywhere !!!!!!!!!!!!!!!!!
 
-  donation <- donation %>% 
-    select(-c("first",    "family",   "language")) #%>% 
+  # donation <- donation %>% 
+  #   select(-c("first",    "family",   "language")) #%>% 
   
 
   donation <- donation %>% mutate(dateonly = date(date))
@@ -389,6 +422,12 @@ decorateData <- function(data) {
               old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
   
   # Select only the interesting variables, rename some of them and change the types
+  variables <- c("don_id", "donor", "Hb", "dateonly", "previous_Hb_def", "days_to_previous_fb", "donat_phleb", "sex", "age",
+                 "Hb_deferral", "nb_donat_progesa", "nb_donat_outside",
+                 "first_event", "previous_Hb", "year", "warm_season", "Hb_first", "hour", "consecutive_deferrals", "recent_donations",
+                 "recent_deferrals")
+  # Keep label column, if it is in the input
+  variables <- c(variables, intersect(names(data), "label"))
   tic("Final selection")
   data <- data %>%
     mutate(don_id = as.factor(don_id), 
@@ -398,10 +437,11 @@ decorateData <- function(data) {
            consecutive_deferrals = as.integer(consecutive_deferrals),
            nb_donat_progesa = as.integer(nb_donat_progesa),
            nb_donat_outside = as.integer(nb_donat_outside)) %>%
-    select(don_id, donor, Hb, dateonly, previous_Hb_def, days_to_previous_fb, donat_phleb, sex, age,
-           Hb_deferral, nb_donat_progesa, nb_donat_outside,
-           first_event, previous_Hb, year, warm_season, Hb_first, hour, consecutive_deferrals, recent_donations,
-           recent_deferrals) %>%
+    select(!!!variables) %>%
+    # select(don_id, donor, Hb, dateonly, previous_Hb_def, days_to_previous_fb, donat_phleb, sex, age,
+    #        Hb_deferral, nb_donat_progesa, nb_donat_outside,
+    #        first_event, previous_Hb, year, warm_season, Hb_first, hour, consecutive_deferrals, recent_donations,
+    #        recent_deferrals) %>%
     arrange(donor)
   toc()
   
@@ -489,10 +529,16 @@ myjoin <- function(df1, df2, by="donation", values=NULL) {
 
 
 
-preprocess <- function(donation.file, donor.file, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl") {
+preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl") {
   tic()
   tic()
-  data <- freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
+  if (is.character(donations)) {   # is a filename instead of a dataframe?
+    donations <- read_sanquin_donations(donations)
+  }
+  if (is.character(donors)) {   # is a filename instead of a dataframe?
+    donors <- read_sanquin_donors(donors)
+  }
+  data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
   toc()
   tic()
   data <- decorateData(data)
@@ -506,70 +552,45 @@ preprocess_helper <- function(dir, Hb_cutoff_male = 135, Hb_cutoff_female = 125,
   tic()
   donation.file <- paste0(dir,"/FRC.DW_DONATION.dat")
   donor.file <- paste0(dir,"/FRC.DW_DONOR.dat")
-  data <- freadFRC(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
-  toc()
-  tic()
-  data <- decorateData(data)
+  preprocess(donation.file, donor.file, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
   toc()
   toc()
   return(data)
 }
 
-sample_raw_progesa <- function(donation.file, donor.file, donation.out = donation.file, donor.out = donor.file, ndonor = 1.0) {
+sample_raw_progesa <- function(donations, donors, donation.out = NULL, donor.out = NULL, ndonor = 1.0) {
   
-  # In the full dataset there lots of missing values. This causes automatic recognition of column types to fail.
-  # Therefore we give them explicitly here.
-  input_col_types <- list(
-    X1 = col_character(),
-    X2 = col_character(),
-    X3 = col_character(),
-    X4 = col_double(),
-    X5 = col_character(),
-    X6 = col_character(),
-    X7 = col_character(),
-    X8 = col_character(),
-    X9 = col_character(),
-    X10 = col_character(),
-    X11 = col_double(),
-    X12 = col_double()
-  )
+  if (is.character(donations)) {   # is a filename instead of a dataframe?
+    donations <- read_sanquin_donations(donations)
+  }
   
-  donation <- read_delim(donation.file, col_names=FALSE, delim='|', col_types=input_col_types)
-  names(donation)=c('donation', 'donor', 'site', 'date', 'phleb_start',
-                    'status', 'donat_phleb', 
-                    'directed', 'donStartTime', 'volume_drawn', 'index_test', 
-                    'Hb')
-  cat(sprintf("Read %i rows from file %s\n", nrow(donation), donation.file))
-
-  donor <- read_delim(donor.file, col_names=FALSE, delim="|")
-  names(donor)=c('donor','first','family', 'sex', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
-                 'tel','email', 'mobile',
-                 'notifiable', 'notification_method_1', 'notification_method_2', 'notification_method_3', 
-                 'nb_donations', 'nb_donat_progesa', 'nb_donat_outside', 
-                 'date_first_donation', 'nb_wb', 'nb_pla',
-                 'nb_thr', 'last_donat_phleb', 'last_collect'
-                 
-  )
-  cat(sprintf("Read %i rows from file %s\n", nrow(donor), donor.file))
+  if (is.character(donors)) {   # is a filename instead of a dataframe?
+    donors <- read_sanquin_donors(donors)
+  }
   
   cat(sprintf("Sampling to %f\n", ndonor))
   if (ndonor > 1.0) {   # is a count instead of proportion?
-    donor <- slice_sample(donor, n=ndonor)
+    donors <- slice_sample(donors, n=ndonor)
   } else {
-    donor <- slice_sample(donor, prop=ndonor)
+    donors <- slice_sample(donors, prop=ndonor)
   }
-  donor_ids <- donor$donor
+  donor_ids <- donors$donor
   
-  donation <- donation %>% filter(donor %in% donor_ids)  
+  if (ndonor != 1.0)
+    donations <- donations %>% filter(KEY_DONOR %in% donor_ids)  
+  #donation <- donation %>% filter(donor %in% donor_ids)  
   
-  #if (!file.exists(donation.out)) {
-    write_delim(donation, donation.out, delim="|", col_names = FALSE)
-  #}
-  #if (!file.exists(donor.out)) {
-    write_delim(donor, donor.out, delim="|", col_names = FALSE)
-  #}
   
-  return(list(donation=donation, donor=donor))
+  if (!is.null(donation.out)) {
+    write_delim(donations, donation.out, delim="|", col_names = TRUE)
+    cat(sprintf("Wrote %i rows to file %s\n", nrow(donations), donation.out))
+  }
+  if (!is.null(donor.out)) {
+    write_delim(donors, donor.out, delim="|", col_names = TRUE)
+    cat(sprintf("Wrote %i rows to file %s\n", nrow(donors), donor.out))
+  }
+  
+  return(list(donations=donations, donors=donors))
 }
 
 

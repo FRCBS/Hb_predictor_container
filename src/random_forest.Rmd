@@ -191,6 +191,7 @@ create_summary_plots(data, donor_specific_variables, params$sex, descript, donor
 ```{r Partition and enrich, echo=FALSE}
 debug <- TRUE
 
+donors <- ndonor(data)
 message(sprintf("Number of donors is %i\n", length(donors)))
 old_count <- nrow(data); old_count2 <- ndonor(data)
 

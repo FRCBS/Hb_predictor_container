@@ -225,10 +225,10 @@ sample_set <- function(data, fraction) {
 # the parameter 'size' can be either a fraction or an integer. In the latter case,
 # There are either 'size' donors or 'size' male donors and 'size' female donors in the returned dataset, depending on
 # the stratify_by_sex parameter.
-stratified_sample <- function(df, stratify_by_sex, size) {
+stratified_sample <- function(df, stratify_by_sex, size,
+                              donor_field = "KEY_DONOR",
+                              sex_field   = "KEY_DONOR_SEX") {
   message("In function stratified_sample")
-  donor_field <- "KEY_DONOR"
-  sex_field <- "KEY_DONOR_SEX"
   donors <- df %>% 
     select(all_of(donor_field), label, all_of(sex_field)) %>%
     distinct()
@@ -236,7 +236,7 @@ stratified_sample <- function(df, stratify_by_sex, size) {
     prop <- size
     if (stratify_by_sex) {
       g <- donors %>% 
-        group_by(label, all_of(sex))
+        group_by(label, all_of(sex_field))
     } else {
       g <- donors %>% 
         group_by(label)
@@ -254,7 +254,7 @@ stratified_sample <- function(df, stratify_by_sex, size) {
     n <- n_distinct(df[[donor_field]])
     if (stratify_by_sex) {
       g <- donors %>%
-        group_by(label, all_of(sex)) 
+        group_by(label, all_of(sex_field)) 
     } else {
       g <- donors %>%
         group_by(label) 

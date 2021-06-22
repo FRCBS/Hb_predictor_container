@@ -315,15 +315,20 @@ hb_predictor3 <- function(ws) {
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
     if (sf != 1.0) {
-      fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf)
+      fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, donor_field = "donor", sex_field = "sex")
     }
   } else {
     # Do the preprocessing
     tic("Preprocessing data")
     if (input_format == "FRCBS") {
-      if (sf != 1.0)
-        sample_raw_progesa(donations_o$tempfile, donors_o$tempfile, donations_o$tempfile, donors_o$tempfile, ndonor=sf)
-      fulldata_preprocessed <- preprocess(donations_o$tempfile, donors_o$tempfile,
+      donations <- read_donations(donations_o$tempfile)
+      donors <- read_donors(donors_o$tempfile)
+      donors <- split_set3(donors)  # label the donors to either train, validate, or test
+      if (sf != 1.0) {
+        donors <- stratified_sample(donors, stratify_by_sex, sf)
+        donations <- semi_join(donations, donors, by="KEY_DONOR")
+      }
+      fulldata_preprocessed <- preprocess(donations, donors,
                                           myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit)
     } else {  # Sanquin
       donations <- read_sanquin_donations(donations_o$tempfile)
@@ -331,7 +336,7 @@ hb_predictor3 <- function(ws) {
       donors <- split_set3(donors)  # label the donors to either train, validate, or test
       if (sf != 1.0) {
         donors <- stratified_sample(donors, stratify_by_sex, sf)
-        donations <- semi_join(donations, donors, by="donor")
+        donations <- semi_join(donations, donors, by="KEY_DONOR")
       }
       fulldata_preprocessed <- sanquin_preprocess(donations, donors,
                                                   #donations_o$tempfile, donors_o$tempfile,
