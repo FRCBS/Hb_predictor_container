@@ -84,6 +84,43 @@ med_iq <- function(vec) {
   return(os)
 }
 
+# Returns filename and line number where this function was called.
+# returns a list, unless fmtstring is specified
+# level: 1 - caller of the caller of this function; 2 - its parent, 3 - its grand-parent etc.
+# fmtstring: return format string: %f (function), %s (source file), %l (line)
+# 
+# example: str <- caller_info("Called from %f at %s#%l\n")
+# !!! it won't work with e.g. cat(caller_info("Called from %f at %s#%l\n"))
+# or cat(paste0(caller_info("Called from %f at %s#%l\n"))) !!!
+caller_info <- function (fmtstring = NULL, level = 1) # https://stackoverflow.com/q/59537482/684229
+{
+  x <- .traceback(x = level + 1)
+  
+  i <- 1
+  repeat { # loop for subexpressions case; find the first one with source reference
+    srcref <- getSrcref(x[[i]])
+    if (is.null(srcref)) {
+      if (i < length(x)) {
+        i <- i + 1
+        next;
+      } else {
+        warning("caller_info(): not found\n")
+        return (NULL)
+      }
+    }
+    srcloc <- list(fun = getSrcref(x[[i+1]]), file = getSrcFilename(x[[i]]), line = getSrcLocation(x[[i]]))
+    break;
+  }
+  
+  if (is.null(fmtstring))
+    return (srcloc)
+  
+  fmtstring <- sub("%f", paste0(srcloc$fun, collapse = ""), fmtstring)
+  fmtstring <- sub("%s", srcloc$file, fmtstring)
+  fmtstring <- sub("%l", srcloc$line, fmtstring)
+  fmtstring
+}
+
 mean_sd <- function(vec) {
   # Returns the mean and standard deviation
   # of a variable as a string in format:

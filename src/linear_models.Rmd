@@ -475,11 +475,6 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model) {
                       original_value=original_Hb, original_label=test_labels, Hb_cutoff=Hb_cutoff, score=scores,
                       params=stan_parameters, pnames=pretty_variables, metric = "mean", cat.plot = FALSE)
 
-  val$posterior.plot
-  val$scatter_plot
-  val$confusion.matrix.plot
-  val$roc_plot
-  val$pr_plot
   
   d <- val$df %>% 
     mutate(id=Id, model=Model, sex=Sex) %>% 
@@ -493,7 +488,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model) {
   e <- val$posterior.plot$cis %>% mutate(Id=Id)
   
   save(val, file = sprintf("%s/raw_result_%s_%s_%s.rdata", rawresultdir, Sex, Model, fit_id))
-  return(list(summary=t, effect_size=e, prediction=d))
+  return(list(summary=t, effect_size=e, prediction=d, val=val))
 }
 
 id <- sprintf("lmm-%s", params$sex)
@@ -501,6 +496,13 @@ res <- run_linear_model(Id=id, Model = "lmm", Pretty="Linear mixed model", Sex=p
 summary_rows[[length(summary_rows)+1]] <- res$summary
 effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction
+
+val <- res$val
+val$posterior.plot
+val$scatter_plot
+val$confusion.matrix.plot
+val$roc_plot
+val$pr_plot
 
 ```
 
@@ -581,6 +583,14 @@ res <- run_linear_model(Id=id, Model = "dlmm", Pretty="Dynamic linear mixed mode
 summary_rows[[length(summary_rows)+1]] <- res$summary
 effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction
+
+val <- res$val
+val$posterior.plot
+val$scatter_plot
+val$confusion.matrix.plot
+val$roc_plot
+val$pr_plot
+
 ```
 
 
