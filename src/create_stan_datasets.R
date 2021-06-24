@@ -161,7 +161,7 @@ drop_some_fields <- function(df, sex2) {
 }
 
 
-create_datasets <- function(data, rdatadir, dumpdir, id, hlen=NULL, hlen_exactly=FALSE, 
+create_stan_datasets <- function(data, rdatadir, dumpdir, id, hlen=NULL, hlen_exactly=FALSE, 
                             Hb_cutoff_male = 135, Hb_cutoff_female = 125, 
                             basic_variables, basic_variables_dlmm,
                             donor_variables=NULL,

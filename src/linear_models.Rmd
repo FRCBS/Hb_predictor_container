@@ -1,5 +1,4 @@
 ---
-#title: "Subset analyses"
 output: md_document
 params:
   input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
@@ -201,36 +200,7 @@ data <- data %>%
   mutate(days_to_previous_fb = as.double(days_to_previous_fb),
          donor = as.character(donor))   # For some reason this cannot be a factor
 
-#variables_to_log <- c("days_to_previous_fb",
-#                                "consecutive_deferrals", "recent_donations",
-#                                "recent_deferrals")
 
-#data <- data %>%
-#  mutate_at(variables_to_log, function(x) log(x+1))
-
-# sample_fraction <- params$sample_fraction
-# 
-# is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
-# 
-# if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If instead of fraction a sample size is given, convert it to sample fraction
-#   low_limit <- ifelse(params$method=="no-fix", 2, 1)
-#   data <- data %>% group_by(donor) %>%
-#     filter(n() > low_limit) %>%
-#     ungroup()
-#   
-#   if (params$sex == "male") {
-#     temp <- data %>% filter(sex=="male")
-#   }
-#   else if (params$sex == "female") {
-#     temp <- data %>% filter(sex=="female")
-#   } else {
-#     temp <- data
-#   }
-#   n <- length(unique(temp$donor))  # number of donors
-#   rm(temp)
-#   sample_fraction <- sample_fraction / n
-#   message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
-# }
 
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
   #donor_variables <- c("smoking", "bmi", "RNF43_mutant", "prs")
@@ -288,17 +258,11 @@ if (!is.null(donor_variables)) {
   data <- data %>% select(all_of(variables_in_order), everything())
 }
 
-#data <- data %>% select(-label)
 
-# if (params$sex=="male") {
-#   data <- data %>% filter(sex == "male")
-# } else if (params$sex=="female") {
-#   data <- data %>% filter(sex == "female")
-# }
 
 if (create_datasets_bool) {
-  source("jarkko_create_datasets.R")
-  lst <- create_datasets(data, datadir, dumpdir, data_id, hlen=params$hlen, params$hlen_exactly,
+  source("create_stan_datasets.R")
+  lst <- create_stan_datasets(data, datadir, dumpdir, data_id, hlen=params$hlen, params$hlen_exactly,
                          Hb_cutoff_male = params$Hb_cutoff_male,
                          Hb_cutoff_female = params$Hb_cutoff_female, 
                          basic_variables=basic_variables, basic_variables_dlmm=basic_variables_dlmm, donor_variables=donor_variables,
@@ -349,40 +313,7 @@ cat(sprintf("### Summary plot of variables (%s)\n", params$sex))
 ```{r Summary plots, echo = FALSE}
 #Plot distributions
 
-# g <- params$sex
-# color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "green")
-# 
-# #convert_to_integer <- c("Hb_deferral", "warm_season", "previous_Hb_def")
-# temp_donors <- data$donor
-# 
-# # Find out do donors have at least one deferral
-# at_least_one_deferral <- data %>% 
-#   group_by(donor) %>% 
-#   summarise(one_deferral=max(Hb_deferral))
-# 
-# if ("sex" %in% colnames(data) && params$sex == "both") {
-#   data <- data %>% mutate(sex=ifelse(sex=="male", 0, 1))
-# }
-# pdata <- data %>%
-#   filter(first_event == FALSE) %>%
-#   select(all_of(descript$Variable))
-#   #mutate(across(convert_to_integer, as.integer))
-# 
-# pdata <- summary_plotter(pdata, descript, color)  
-# pdata
-# 
-# temp_donor_specific <- at_least_one_deferral
-# if (!is.null(params$donor_specific_file)) {
-#   temp_donor_specific <- donor_specific_variables %>% 
-#     inner_join(at_least_one_deferral, by="donor")
-# }
-# pdata2 <- temp_donor_specific %>%
-#   filter(donor %in% temp_donors)
-# pdata2 <- summary_plotter(pdata2, donor_descript, color)
-# pdata2
-# 
-# time_series_length_plotter(data, color)
-#rm(data.male2);
+
 
 create_summary_plots(data, donor_specific_variables, params$sex, descript, donor_descript)
 ```
@@ -514,69 +445,7 @@ val$pr_plot
 ```
 
 ```{r Dynamic linear mixed model, results="hide", eval=compute_dlmm}
-# message("heipparallaa")
-# if (!exists("stan.preprocessed.dlmm"))
-#   load(paste(datadir,"stan_preprocessed_datasets_",data_id,".RData", sep = ''))
-# if (!exists("stan.lists.dlmm"))
-#   load(paste(datadir,"stan_lists_dlmm_",data_id,".RData", sep = ''))
-# message("taalla ollaan")
-# stan_fit_file <- paste(stanfitpath, "small_model1_dlmm", fit_id, ".RData", sep = '')
-# if (skip_train == TRUE) {
-#   load(stan_fit_file)
-# } else {
-#   fit <- stan(file = stanf1.dlmm, 
-#             data = stan.lists.dlmm,
-#             save_warmup = TRUE,
-#             iter = params$iterations,
-#             open_progress = FALSE,
-#             verbose = TRUE,
-#             control = list(max_treedepth = 12))
-#   save(fit, file = stan_fit_file)
-# }
-# 
-# rhats <- bayesplot::rhat(fit)
-# message(sprintf("Maximum rhat is %f for %s dlmm\n", max(rhats), params$sex))
-# 
-# 
-# v <- 0
-# if (params$sex == "both") {
-#   message(sprintf("Length of x_test$sex: %i, mean: %f\n", length(stan.preprocessed.dlmm$x_test$sex), mean(stan.preprocessed.dlmm$x_test$sex)))
-#   # For some reason I have to do this inside the 'if' expression
-#   v <- ifelse(stan.preprocessed.dlmm$x_test$sex == 0, params$Hb_cutoff_male, params$Hb_cutoff_female)
-# }
-# 
-# # If sex=="both then Hb_cutoff is vector, otherwise it is scalar
-# Hb_cutoff <- case_when(params$sex=="male" ~ params$Hb_cutoff_male, 
-#                        params$sex=="female" ~ params$Hb_cutoff_female,
-#                        TRUE ~ v)
-# message(sprintf("Length of Hb_cutoff: %i, mean: %f\n", length(Hb_cutoff), mean(Hb_cutoff)))
-# original_Hb <- denormalize_vector(stan.preprocessed.dlmm$y_test, stan.preprocessed.dlmm$par_means["Hb"], stan.preprocessed.dlmm$par_sds["Hb"]) 
-# message(sprintf("Length of original_Hb: %i, mean: %f\n", length(original_Hb), mean(original_Hb)))
-# 
-# scores <- get_scores(fit, Hb_cutoff, stan.preprocessed.dlmm$par_means[["Hb"]], stan.preprocessed.dlmm$par_sds[["Hb"]])
-# test_labels <- ifelse(original_Hb >= Hb_cutoff, 0, 1)
-# 
-# val <- validate_fit(fit, 
-#                            original_value=original_Hb, original_label=test_labels, Hb_cutoff=Hb_cutoff, score=scores,
-#                            params=stan_parameters_dlmm, pnames=pretty_variables_dlmm, metric = "mean", cat.plot = FALSE)
-# 
-# val$posterior.plot
-# val$scatter_plot
-# val$confusion.matrix.plot
-# val$roc_plot
-# val$pr_plot
-# 
-# id <- sprintf("%s-dlmm", params$sex)
-# t <- tibble(Id=id, Model="Dynamic linear mixed model", Sex=params$sex, 
-#             MAE=val$mae, RMSE=val$rmse, 
-#             MAE2=val$mae2, RMSE2=val$rmse2)
-# t <- bind_cols(c(t, val$roc_ci, val$pr_ci, val$f1_ci))
-# summary_rows[[length(summary_rows)+1]] <- t
-# effect_size_rows[[length(effect_size_rows)+1]] <- val$posterior.plot$cis %>% mutate(Id=id)
-# 
-# save(val, file = sprintf("%s/raw_result_%s_dlmm_%s.rdata", rawresultdir, params$sex, fit_id))
-# 
-# if (knit == TRUE) {rm(stan.lists.dlmm, val, fit); invisible(gc(reset = TRUE))}
+
 
 id <- sprintf("dlmm-%s", params$sex)
 res <- run_linear_model(Id=id, Model = "dlmm", Pretty="Dynamic linear mixed model", Sex=params$sex, stan_model_file_dlmm)

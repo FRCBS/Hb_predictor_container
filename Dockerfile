@@ -33,7 +33,6 @@ COPY /static/FundedbyEBA.jpg /static/FundedbyEBA.jpg
 # COPY /src/sanquin_preprocess.R /src/sanquin_preprocess.R
 # COPY /src/helper_functions.R /src/helper_functions.R
 # COPY /src/validate_stan_fit.R /src/validate_stan_fit.R
-# COPY /src/jarkko_create_datasets.R /src/jarkko_create_datasets.R
 # COPY /src/hb-predictor.sh /src/hb-predictor.sh
 # COPY /src/hb-predictor-helper.R /src/hb-predictor-helper.R
 # COPY /src/linear_models.Rmd /src/linear_models.Rmd
@@ -42,7 +41,7 @@ COPY /static/FundedbyEBA.jpg /static/FundedbyEBA.jpg
 # COPY /src/Makefile /src/Makefile
 # COPY /src/parse.cpp /src/parse.cpp
 
-COPY /src/docker-server-plumber.R /src/docker-apps-plumber.R /src/enrich_deferrals_rf.R /src/new_preprocess.R /src/sanquin_preprocess.R /src/helper_functions.R /src/validate_stan_fit.R /src/jarkko_create_datasets.R /src/hb-predictor.sh /src/hb-predictor-helper.R /src/linear_models.Rmd /src/template.Rmd /src/random_forest.Rmd /src/Makefile /src/parse.cpp /src/common.R /src/svm.Rmd /src/
+COPY /src/docker-server-plumber.R /src/docker-apps-plumber.R /src/enrich_deferrals_rf.R /src/new_preprocess.R /src/sanquin_preprocess.R /src/helper_functions.R /src/validate_stan_fit.R /src/create_stan_datasets.R /src/hb-predictor.sh /src/hb-predictor-helper.R /src/linear_models.Rmd /src/template.Rmd /src/random_forest.Rmd /src/Makefile /src/parse.cpp /src/common.R /src/svm.Rmd /src/
 
 RUN make -C src
 
