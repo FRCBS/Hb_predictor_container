@@ -563,18 +563,18 @@ hb_predictor3 <- function(ws) {
   ####################
   
   summary_table <- bind_rows(summary_tables)
-  write_csv(summary_table, "../output/summary.csv")
+  write_excel_csv(summary_table, "../output/summary.csv")
   summary_table_string <- create_summary_table(summary_table)
   ws$send(rjson::toJSON(list(type="summary", summary_table_string = summary_table_string)))
   
   effect_size_table <- bind_rows(effect_size_tables)
-  write_csv(effect_size_table, "../output/effect-size.csv")
+  write_excel_csv(effect_size_table, "../output/effect-size.csv")
   
   variable_importance_table <- bind_rows(variable_importance_tables, .id="Id")
-  write_csv(variable_importance_table, "../output/variable-importance.csv")
+  write_excel_csv(variable_importance_table, "../output/variable-importance.csv")
   
   prediction_table <- bind_rows(prediction_tables)
-  write_csv(prediction_table, "../output/prediction.csv")
+  write_excel_csv(prediction_table, "../output/prediction.csv")
   
   ws$send(rjson::toJSON(list(type="status", status="Ready")))
   
