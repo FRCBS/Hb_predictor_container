@@ -325,7 +325,7 @@ hyperparameters <- read_hyperparameters(params$hyperparameters)
 rf_hyperparameters <- hyperparameters %>% filter(Model=="rf", Sex==params$sex) %>% pull(Value)
 if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for this model yet
   #Define search grid
-  quick <- TRUE
+  quick <- FALSE
   if (quick) {
     # Small grid for testing purposes
     rf_grid <-  expand.grid(

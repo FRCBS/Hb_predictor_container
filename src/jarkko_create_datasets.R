@@ -153,15 +153,15 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
 drop_some_fields <- function(df, sex2) {
   #df <- df %>% select(-don_id, -sex, -previous_Hb)
   if (sex2=="both") {
-    df <- df %>% select(-don_id) %>% mutate(sex = ifelse(sex=="female", TRUE, FALSE))
+    df <- df %>% select(-don_id, -label) %>% mutate(sex = ifelse(sex=="female", TRUE, FALSE))
   } else {
-    df <- df %>% select(-don_id, -sex)
+    df <- df %>% select(-don_id, -label, -sex)
   }
   return(df)
 }
 
 
-create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=NULL, hlen_exactly=FALSE, 
+create_datasets <- function(data, rdatadir, dumpdir, id, hlen=NULL, hlen_exactly=FALSE, 
                             Hb_cutoff_male = 135, Hb_cutoff_female = 125, 
                             basic_variables, basic_variables_dlmm,
                             donor_variables=NULL,
@@ -195,11 +195,9 @@ create_datasets <- function(data, rdatadir, dumpdir, id, sample_fraction, hlen=N
   message(sprintf("%s dataset size: %i", sex, ndonor(data)))
 
   # Take a sample
-  small <- sample_set(data, sample_fraction)
-  message(sprintf("%s dataset size after sample_fraction split: %i", sex, ndonor(small)))
-
-    
-
+  #small <- sample_set(data, sample_fraction)
+  #message(sprintf("%s dataset size after sample_fraction split: %i", sex, ndonor(small)))
+  small <- data
 
   stan_preprocessed_objects <- c()  
   Hb_index <- which(colnames(data)=="Hb")

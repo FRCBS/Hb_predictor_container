@@ -17,6 +17,9 @@ source("common.R")
 library(readr)
 library(rjson)
 
+
+
+
 # default values for parameters
 default_max_diff_date_first_donation <- 60
 default_Hb_cutoff_male   <- 135
@@ -83,7 +86,7 @@ Sanquin_hyperparameters <- FRCBS_hyperparameters
 
 #learn_hyperparameters <- tibble(Model=character(0), Sex=character(0), Value=list())
 # If empty tibble, we cannot save it to json
-learn_hyperparameters <- tibble(Model="dummy", Sex="dummy", Value=list(list()))  
+empty_hyperparameters <- tibble(Model="dummy", Sex="dummy", Value=list(list()))  
 
 
 #' Upload the datas and parameters
@@ -143,6 +146,8 @@ hb_predictor3 <- function(ws) {
   unlink("/tmp/raw_form_data.bin")
   unlink("/tmp/parsed.json")
   toc()
+  
+  ws$send(rjson::toJSON(list(type="status", status="Reading parameters")))
   
   #saveRDS(post, file="~/test_multipart_form_data/post.rds")
   cat("After multipart$parse\n")
@@ -320,6 +325,7 @@ hb_predictor3 <- function(ws) {
   } else {
     # Do the preprocessing
     tic("Preprocessing data")
+    ws$send(rjson::toJSON(list(type="status", status="Preprocessing")))
     if (input_format == "FRCBS") {
       donations <- read_donations(donations_o$tempfile)
       donors <- read_donors(donors_o$tempfile)
@@ -413,7 +419,7 @@ hb_predictor3 <- function(ws) {
   } else if (hyperparameters == "dutch") {
     write_hyperparameters(Sanquin_hyperparameters, myparams$hyperparameters)
   } else if (hyperparameters == "learn") {
-    write_hyperparameters(learn_hyperparameters, myparams$hyperparameters)  # Empty dataframe
+    write_hyperparameters(empty_hyperparameters, myparams$hyperparameters)  # Empty dataframe
   } else if (hyperparameters == "upload") {
     cmd <- sprintf("cp %s %s", post$hyperparameter_fileUpload$tempfile, myparams$hyperparameters)
     system(cmd)
@@ -466,6 +472,7 @@ hb_predictor3 <- function(ws) {
     sexes <- if (stratify_by_sex)  c("male", "female") else c("both")
     for (sex in sexes) {
       cat(sprintf("Running sex %s\n", sex))
+      ws$send(rjson::toJSON(list(type="status", status=sprintf("Running %s %s", ifelse(sex=="both", "", sex), pretty))))
       myparams["sex"] <- sex
       myparams$input_file <- case_when(sex=="both" ~ donation_specific_filename,
                                        sex == "male" ~ male_donation_specific_filename,
@@ -508,16 +515,23 @@ hb_predictor3 <- function(ws) {
       )
       if (!is.null(error_messages)) {
         cat(paste0(error_messages))
+        cat("\n")
         ws$send(rjson::toJSON(list(type="error", error_messages=error_messages)))
-        break
+        continue  # break
       }
+      
+      message("x1")
       
       s <- read_csv(temp_filename)
       summary_tables[[paste(m, sex, sep="-")]] <- s
       ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
       
+      message("x2")
+
       p <- read_csv(prediction_filename)
       prediction_tables[[paste(m, sex, sep="-")]] <- p
+      
+      message("x3")
       
       t <-
         tibble(id=sprintf("detail-%s-%s", m, sex), 
@@ -528,14 +542,15 @@ hb_predictor3 <- function(ws) {
       details_dfs[[length(details_dfs)+1]] <- t
       ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
       
-
+      message("x4")
+      
       if (is_linear_model) {
         effect_size_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
       } else {
         variable_importance_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
       }
-    }
-  }
+    } # end for sexes
+  } # end for models
   
   #unlink(donation_specific_filename)
   if (FALSE && !is.null(donor_specific_filename))
@@ -561,7 +576,8 @@ hb_predictor3 <- function(ws) {
   prediction_table <- bind_rows(prediction_tables)
   write_csv(prediction_table, "../output/prediction.csv")
   
-
+  ws$send(rjson::toJSON(list(type="status", status="Ready")))
+  
   details_df <- bind_rows(details_dfs)
   return(list(type="final", summary_table=as.character(summary_table_string), details_df = purrr::transpose(details_df)))
   
@@ -720,6 +736,7 @@ hb_predictor <- function(req){
         <p>Computation started: <span id="start-time"></span></p>
         <p id="finish-time-container">Computation finished: <span id="finish-time"></span></p>
         <p>Elapsed time: <span id="time"></span></p>
+        <p>Status: <span id="status"></span></p>
         <div id="spinner-container">
           <div class="lds-spinner" hidden ><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
         </div>
@@ -735,12 +752,15 @@ hb_predictor <- function(req){
         <div id="table_container"></div>
         <table id="summary-table" class="table table-condensed">
         </table>
-        <p>Load the summary table in CSV form from <a href="/output/summary.csv">here.</a></p>
-        <p id="effect-size">Load the effect size table in CSV form from <a href="/output/effect-size.csv">here.</a></p>
-        <p id="variable-importance">Load the variable importance table in CSV form from <a href="/output/variable-importance.csv">here.</a></p>
-        <p id="prediction">Load the prediction data in CSV form from <a href="/output/prediction.csv">here.</a></p>
-        <p id="download_hyperparameters">Load the learned hyperparameters in JSON form from <a href="/output/hyperparameters.json" target="_blank">here.</a></p>
-        <p id="preprocessed">Load the preprocessed data from <a href="/output/preprocessed.rdata">here.</a></p>
+        <h3>Download the results</h3>
+        <ul>
+        <li> <a href="/output/summary.csv">Summary table</a> (CSV)</li>
+        <li id="effect-size"> <a href="/output/effect-size.csv">Effect size table</a> (CSV)</li>
+        <li id="variable-importance"> <a href="/output/variable-importance.csv">Variable importance table</a> (CSV)</li>
+        <li id="prediction"> <a href="/output/prediction.csv">Prediction data</a> (CVS)</li>
+        <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
+        <li id="preprocessed"> <a href="/output/preprocessed.rdata">Preprocessed data</a> (R binary)</li>
+        </ul>
         
         <h3>Detailed result pages</h3>
         <table id="detailed-results" class="table table-condensed">

@@ -195,6 +195,7 @@ tvt_ratios <- c(train=0.64, validate=0.16, test=0.20)
 # Can be used to split data set to train, validate, and test parts in given fraction
 split_set3 <- function(df, prob=tvt_ratios) {
   message("In function split_set3")
+  set.seed(78)
   donors <- unique(df$KEY_DONOR)
   n <- length(donors)
   if (FALSE) {

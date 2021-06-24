@@ -30,6 +30,12 @@ function handle_hb_unit(e) {
     old_unit = v;
 }
 
+function set_hb_unit(unit_string) {
+    unit = document.getElementById("unit");
+    unit.value = unit_string; // Because Sanquin is the default input format, set this to its unit
+    unit.dispatchEvent(new Event('change', { 'bubbles': true }));  // trigger the change event
+}
+
 function handle_input_format(e) {
     value = document.querySelector('input[name="input_format"]:checked').value;
     e1 = document.getElementById("donations_row");
@@ -39,12 +45,14 @@ function handle_input_format(e) {
     e5 = document.getElementById("max_diff_date_first_donation_row");
     
     if (value == "FRCBS") {
+	set_hb_unit("gperl");
 	e1.style.display = "table-row";
 	e2.style.display = "table-row";
 	e3.style.display = "table-row";
 	e4.style.display = "none";
 	e5.style.display = "none";
     } else if (value == "Sanquin") {
+	set_hb_unit("gperdl");
 	e1.style.display = "table-row";
 	e2.style.display = "table-row";
 	e3.style.display = "none";
@@ -151,6 +159,10 @@ document.onreadystatechange = function() {
 	el.innerHTML="";
 	var el = document.getElementById("info");
 	el.innerHTML="";
+	var el = document.getElementById("detailed-results").firstElementChild;  // the table body
+	for (i=el.childElementCount-1; i > 0; --i) {  // Remove table rows except the header row
+	    el.children[i].remove()
+	}	
 	document.getElementById("results-container").hidden = true;
 	
 	httpRequest.onreadystatechange = handleResponseForUpload;
@@ -316,6 +328,9 @@ document.onreadystatechange = function() {
 	    
 	    if (document.querySelector('input[name="input_format"]:checked').value == "Preprocessed")
 		document.getElementById("preprocessed").style.display = "none";
+	} else if (data.type == "status") {
+	    // Show status
+	    document.getElementById("status").innerHTML = data.status;
 	} else if (data.type == "info") {
             // Show information about input and preprocessed dataframes
 	    document.getElementById("info").innerHTML += data.result;

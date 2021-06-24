@@ -72,7 +72,7 @@ s <- runServer("0.0.0.0", 8080,
                        #result <- list()
                        result <- tryCatch(
                          error = function(cnd) {
-                           message("In error handler\n")
+                           message("In error handler of docker-server-plumber.R\n")
                            error_messages <- c(sprintf("Error in %s call:", "hb_predictor3"), cnd$message)
                            cat(paste(error_messages, collapse="\n"))
                            cat("\n")
