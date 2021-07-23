@@ -77,9 +77,9 @@ FRCBS_hyperparameters <- tribble(
   "rf",            "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
   "rf",            "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
   "rf",            "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
-  "svm",           "male",   list(degree=8, scale=1, C=1),
-  "svm",           "female", list(degree=8, scale=1, C=1),
-  "svm",           "both",   list(degree=8, scale=1, C=1)
+  "svm",           "male",   list(degree=3, scale=0.1, C=1),
+  "svm",           "female", list(degree=3, scale=0.1, C=1),
+  "svm",           "both",   list(degree=3, scale=0.1, C=1)
 )
 
 Sanquin_hyperparameters <- FRCBS_hyperparameters
@@ -517,7 +517,7 @@ hb_predictor3 <- function(ws) {
         cat(paste0(error_messages))
         cat("\n")
         ws$send(rjson::toJSON(list(type="error", error_messages=error_messages)))
-        continue  # break
+        next  # break
       }
       
       message("x1")
@@ -757,9 +757,10 @@ hb_predictor <- function(req){
         <li> <a href="/output/summary.csv">Summary table</a> (CSV)</li>
         <li id="effect-size"> <a href="/output/effect-size.csv">Effect size table</a> (CSV)</li>
         <li id="variable-importance"> <a href="/output/variable-importance.csv">Variable importance table</a> (CSV)</li>
-        <li id="prediction"> <a href="/output/prediction.csv">Prediction data</a> (CVS)</li>
         <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
         <li id="preprocessed"> <a href="/output/preprocessed.rdata">Preprocessed data</a> (R binary)</li>
+        <li id="train"> <a href="/output/train.csv">Train</a> </li>
+        <li id="validate"> <a href="/output/validate.csv">Validate</a> </li>
         </ul>
         
         <h3>Detailed result pages</h3>

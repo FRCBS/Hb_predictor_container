@@ -50,6 +50,8 @@ suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
 suppressPackageStartupMessages(library(sn))
 suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(shapper))
+suppressPackageStartupMessages(library(DALEX))
 set.seed(123)
 
 
@@ -374,9 +376,25 @@ rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train,
                 #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
                 #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
                 )
+
 sink(file=stderr(), type="output"); toc(); sink()
+
+write_csv(train, '../output/train.csv')
+write_csv(validate, '../output/validate.csv')
+
 ```
 
+## SHAP values
+
+```{r}
+message(colnames(train))
+message(colnames(validate))
+
+
+exp_rf <- explain(rrfFit_roc, data = train)
+ive_rf <- shap(exp_rf, new_observation = validate[-c(15)])
+plot(ive_rf)
+```
 
 
 
@@ -428,10 +446,17 @@ rf_variable_importances_plot
 
 
 ```{r Predict deferral classes and probabilities}
+# prediction_vl <- predict(rrfFit_roc, newdata = validate)
+# prediction_probs <- predict(rrfFit_roc, newdata = validate, type="prob")
+
+
+train$pred <- predict(rrfFit_roc, newdata = train)
 prediction_vl <- predict(rrfFit_roc, newdata = validate)
-prediction_probs <- predict(rrfFit_roc, newdata = validate, type="prob")
+prediction_probs <- as.data.frame(predict(rrfFit_roc, newdata = validate, type="prob"))
 
-
+write_csv(train, '../output/predtrain.csv')
+write_csv(as.data.frame(prediction_vl), '../output/predvl.csv')
+write_csv(prediction_probs, '../output/predprobs.csv')
 ```
 
 
@@ -452,7 +477,6 @@ sink(file=stderr(), type="output"); summary(df %>% mutate_at(c("original_label",
 if (!is.null(params$prediction_table_file)) {
   write_csv(df, params$prediction_table_file)   # Pass the table to the web app as well
 }
-
 ```
 
 

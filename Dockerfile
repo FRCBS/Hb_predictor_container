@@ -1,7 +1,7 @@
 # Create the application image using the following command:
 # docker build -f Dockerfile -t toivoja/hb-predictor .
 
-FROM toivoja/r-base-tidyverse:latest
+FROM vinkenoogm/r-base-tidyverse:latest
 
 #RUN apt-get update -qq && apt-get -y --no-install-recommends install \
 #r-cran-bh

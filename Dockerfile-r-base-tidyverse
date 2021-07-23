@@ -1,5 +1,5 @@
 # You can use, for example, the following command to build the intermediate image:
-# docker build -f Dockerfile-r-base-tidyverse -t toivoja/r-base-tidyverse .
+# docker build -f Dockerfile-r-base-tidyverse -t vinkenoogm/r-base-tidyverse .
 
 # Base image https://hub.docker.com/u/rocker/
 #FROM rocker/r-base:latest
@@ -64,6 +64,10 @@ r-cran-bayestestr
 #r-cran-cutpointr  # not available in binary
 
 RUN apt-get -y --no-install-recommends install time
+
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev python3.8 python3-pip python3-setuptools python3-dev
+RUN pip3 install --upgrade pip
+RUN pip3 install shap
 
 ## copy files
 COPY src/docker-create-r-toolchain.R /docker-create-r-toolchain.R
