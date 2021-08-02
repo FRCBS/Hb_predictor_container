@@ -82,6 +82,10 @@ fieldset {
   /*border: 3px solid #73AD21; */
 }
 
+#status-container {
+  background-color: LightSalmon;
+}
+
 #error_messages {
   max-width: 40em;
 }
@@ -89,6 +93,7 @@ fieldset {
 #error_messages p {
   color: red;
 }
+
 
 #warning_messages p {
   color: gold;

@@ -736,7 +736,7 @@ hb_predictor <- function(req){
         <p>Computation started: <span id="start-time"></span></p>
         <p id="finish-time-container">Computation finished: <span id="finish-time"></span></p>
         <p>Elapsed time: <span id="time"></span></p>
-        <p>Status: <span id="status"></span></p>
+        <p id="status-container">Status: <span id="status"></span></p>
         <div id="spinner-container">
           <div class="lds-spinner" hidden ><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
         </div>
@@ -757,6 +757,7 @@ hb_predictor <- function(req){
         <li> <a href="/output/summary.csv">Summary table</a> (CSV)</li>
         <li id="effect-size"> <a href="/output/effect-size.csv">Effect size table</a> (CSV)</li>
         <li id="variable-importance"> <a href="/output/variable-importance.csv">Variable importance table</a> (CSV)</li>
+        <li id="prediction"> <a href="/output/prediction.csv">Prediction data</a> (CSV)</li>
         <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
         <li id="preprocessed"> <a href="/output/preprocessed.rdata">Preprocessed data</a> (R binary)</li>
         <li id="train"> <a href="/output/train.csv">Train</a> </li>

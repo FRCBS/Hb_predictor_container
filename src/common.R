@@ -328,3 +328,30 @@ create_summary_plots <- function(data, donor_specific_variables, sex, donation_d
   lengths <- time_series_length_plotter(data, color)
   return(list(pboth, pdata2, lengths))
 }
+
+prettify_variables <- function(df, variables_renamed) {
+  if (variables_renamed) {
+    df <- df %>%
+      mutate(Pretty = case_when(
+        Variable == "previous_Hb_defTRUE" ~ "Previous donation deferred",
+        Variable == "warm_seasonTRUE"     ~ "Warm season",
+        Variable == "smokingTRUE"         ~ "Smoking",
+        Variable == "RNF43_mutantTRUE"    ~ "RNF43 minor allele",
+        Variable == "sexfemale"       ~ "Sex",
+        Variable == "nb_donat"            ~ "Number of donations",
+        TRUE                              ~ Pretty
+      ))
+  } else {
+    df <- df %>%
+      mutate(Pretty = case_when(
+        Variable == "previous_Hb_def" ~ "Previous donation deferred",
+        Variable == "warm_season"     ~ "Warm season",
+        Variable == "smoking"         ~ "Smoking",
+        Variable == "RNF43_mutant"    ~ "RNF43 minor allele",
+        Variable == "sex"       ~ "Sex",
+        Variable == "nb_donat"            ~ "Number of donations",
+        TRUE                              ~ Pretty
+      ))
+  }
+  return(df)
+}

@@ -2,8 +2,10 @@ var old_unit = "gperl";
 
 function convert_hb_unit(from, to, hb) {
     hb = parseFloat(hb);
-    console.log(`In convert_hb_unit: from="${from}" to="${to}"" hb="${hb}"`);
-    if (from=="gperl" && to=="gperdl") {
+    console.log(`In convert_hb_unit: from="${from}" to="${to}" hb="${hb}"`);
+    if (from == to) {
+	return(hb);
+    }  else if (from=="gperl" && to=="gperdl") {
 	return(hb/10.0);
     }  else if (from=="gperl" && to == "mmolperl") {
 	return(hb * 0.01551 * 4);
@@ -59,6 +61,7 @@ function handle_input_format(e) {
 	e4.style.display = "none";
 	e5.style.display = "table-row";
     } else {
+	set_hb_unit("gperl");
 	e1.style.display = "none";
 	e2.style.display = "none";
 	e3.style.display = "none";
@@ -70,7 +73,7 @@ function handle_input_format(e) {
 }
 
 function handle_hyperparameters(e) {
-    console.log("In handle_hyperparameters")
+    console.log("In handle_hyperparameters");
     //value = document.querySelector('input[name="hyperparameters"]:checked').value;
     value = e.srcElement.value;
     e1 = document.getElementById("hyperparameter_file_row");

@@ -361,15 +361,21 @@ if (nrow(train) <= rf_hyperparameters$min.node.size) {
                   nrow(train), rf_hyperparameters$min.node.size))
 }
 
-rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
-                 method = "ranger", 
+saveRDS(train, file="../output/train.rds")
+saveRDS(validate, file="../output/validate.rds")
+
+# If formula is given as the first parameter, then the variables get recoded and renamed:
+# https://stackoverflow.com/questions/30097730/error-when-using-predict-on-a-randomforest-object-trained-with-carets-train
+#rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
+rrfFit_roc <- caret::train(x = train %>% select(-Hb_deferral), y = train %>% pull(Hb_deferral),
+                           method = "ranger", 
                  trControl = caret::trainControl(method="none", classProbs = TRUE), 
                  verbose = FALSE, 
                  ## Now specify the exact models 
                  ## to evaluate:
                  #tuneLength=1,
-                 tuneGrid = as_tibble(rf_hyperparameters),
-
+                 #tuneGrid = as_tibble(rf_hyperparameters),
+                  tuneGrid = tibble(mtry=3, splitrule="gini", min.node.size=10),
                  #metric="ROC",
                 #should we use Kappa or ROC?
                 importance = "permutation"
@@ -384,23 +390,55 @@ write_csv(validate, '../output/validate.csv')
 
 ```
 
-## SHAP values
 
-```{r}
-message(colnames(train))
-message(colnames(validate))
-
-
-exp_rf <- explain(rrfFit_roc, data = train)
-ive_rf <- shap(exp_rf, new_observation = validate[-c(15)])
-plot(ive_rf)
-```
 
 
 
 
 ## Results
 
+
+```{r SHAP values}
+message(colnames(train))
+message(colnames(validate))
+
+
+exp_rf <- DALEX::explain(rrfFit_roc$finalModel, data = train)
+#ive_rf <- shap(exp_rf, new_observation = validate[-c(15)])
+#ive_rf <- shap(exp_rf, new_observation = as.data.frame(train %>% select(-Hb)))
+if ("sex" %in% variables) {
+  validate2 <- validate %>% select(-c(Hb))
+} else {
+  validate2 <- validate %>% select(-c(Hb, sex))
+}
+validate2 <- as.data.frame(validate2)
+shap_filename <- sprintf("/tmp/shap_values_%s_%s.rds", params$model, params$sex)
+if (use_pdf) {     
+  res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
+} else {
+  # It seems that I have iterate over the rows of validate2 to get all local attributions
+  res <- map_dfr(1:nrow(validate2), function(i) as_tibble(shap(exp_rf, new_observation = validate2[i,])), .id="myid")
+  saveRDS(res, shap_filename)
+}
+# The global attribution of a variable is the average of the absolute values of local attributions 
+res2 <- res %>% 
+  select(Variable=`_vname_`, attribution=`_attribution_`, sign=`_sign_`) %>% 
+  mutate(attribution=abs(attribution)) %>% 
+  group_by(Variable) %>% 
+  summarise(attribution=mean(attribution))
+res2 <- left_join(res2, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>% 
+  select(Variable, Pretty, attribution)
+variables_renamed <- FALSE
+res2 <- prettify_variables(res2, variables_renamed)
+
+shap_plot_rf <- res2 %>% ggplot(aes(x=reorder(Pretty, attribution), y=attribution)) +
+  geom_col(alpha=0.7) + 
+  coord_flip() + 
+  xlab("Variable") + ylab("Mean absolute attribution")
+#ive_rf <- shapper::shap(exp_rf, new_observation = validate2[1,], nsamples=50)
+#plot(ive_rf)
+shap_plot_rf
+```
 
 ```{r Create variable importances plot}
 rrfFit_rocImp <- caret::varImp(rrfFit_roc, scale = FALSE)
@@ -418,16 +456,8 @@ message(paste(rf_variable_importances$Variable, collapse=" "))
 
 # Fix some pretty variables names
 
-rf_variable_importances <- rf_variable_importances %>%
-  mutate(Pretty = case_when(
-    Variable == "previous_Hb_defTRUE" ~ "Previous donation deferred",
-    Variable == "warm_seasonTRUE"     ~ "Warm season",
-    Variable == "smokingTRUE"         ~ "Smoking",
-    Variable == "RNF43_mutantTRUE"    ~ "RNF43 minor allele",
-    Variable == "sexfemale"       ~ "Sex",
-    Variable == "nb_donat"            ~ "Number of donations",
-    TRUE                              ~ Pretty
-  ))
+variables_renamed <- FALSE
+rf_variable_importances <- prettify_variables(rf_variable_importances, variables_renamed)
 
 if (!is.null(params$effect_size_table_file)) {
   write_csv(rf_variable_importances, params$effect_size_table_file)   # Pass the table to the web app as well
