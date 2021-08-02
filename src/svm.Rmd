@@ -323,58 +323,60 @@ tic("Training svm")
 
 # Read or learn hyperparameters
 
-message(params$hyperparameters)
+#message(params$hyperparameters)
 
-if (TRUE) {
-  quick <- TRUE
+# if (TRUE) {
+#   quick <- TRUE
+#   if (quick) {
+#     svm_grid <- expand.grid(degree = c(3:5),
+#                             scale = c(0.1, 1),
+#                             C = c(1, 2))
+#   } else {
+#     svm_grid <- expand.grid(degree = c(3:5),
+#                             scale = c(0.001, 0.01, 0.1, 1),
+#                             C = seq(1,5,by=0.25))  
+#   }
+#   svm_hyperparameters <- learn_hyperparameters(train, "svmPoly", svm_grid, number_of_cores)
+# } else {
+#   hyperparameters <- read_hyperparameters(params$hyperparameters)
+#   svm_hyperparameters <- hyperparameters %>% filter(Model=="svm", Sex==params$sex) %>% pull(Value)
+#   svm_hyperparameters <- svm_hyperparameters[[1]]
+# }
+# 
+# message(svm_hyperparameters)
+
+
+
+hyperparameters <- read_hyperparameters(params$hyperparameters)
+svm_hyperparameters <- hyperparameters %>% filter(Model=="svm", Sex==params$sex) %>% pull(Value)
+
+
+if (length(svm_hyperparameters) == 0) {   # Hyperparameters not available for this model yet
+  #Define search grid
+  quick <- FALSE
   if (quick) {
-    svm_grid <- expand.grid(degree = c(3:5),
-                            scale = c(0.1, 1),
-                            C = c(1, 2))
+    # Small grid for testing purposes
+    svm_grid <-  expand.grid(
+      degree = c(3:5),
+      scale = c(0.001, 0.01, 0.1, 1),
+      C = seq(1,5,by=0.25)
+    )
   } else {
-    svm_grid <- expand.grid(degree = c(3:5),
-                            scale = c(0.001, 0.01, 0.1, 1),
-                            C = seq(1,5,by=0.25))  
+    svm_grid <-  expand.grid(
+      degree = c(3:5),
+      scale = c(0.001, 0.01, 0.1, 1),
+      C = seq(1,5,by=0.25)
+    )
   }
+
   svm_hyperparameters <- learn_hyperparameters(train, "svmPoly", svm_grid, number_of_cores)
+  hyperparameters <- hyperparameters %>% add_row(Model="svm", Sex=params$sex, Value=list(svm_hyperparameters))
+  write_hyperparameters(hyperparameters, params$hyperparameters)
 } else {
-  hyperparameters <- read_hyperparameters(params$hyperparameters)
-  svm_hyperparameters <- hyperparameters %>% filter(Model=="svm", Sex==params$sex) %>% pull(Value)
   svm_hyperparameters <- svm_hyperparameters[[1]]
 }
 
-message(svm_hyperparameters)
-
-
-# 
-# hyperparameters <- read_hyperparameters(params$hyperparameters)
-# svm_hyperparameters <- hyperparameters %>% filter(Model=="svm", Sex==params$sex) %>% pull(Value)
-# 
-# 
-# if (length(svm_hyperparameters) == 0) {   # Hyperparameters not available for this model yet
-#   #Define search grid
-#   quick <- FALSE
-#   if (quick) {
-#     # Small grid for testing purposes
-#     svm_grid <-  expand.grid(
-#       degree = c(3:5),
-#       scale = c(0.001, 0.01, 0.1, 1),
-#       C = seq(1,5,by=0.25)
-#     )
-#   } else {
-#     svm_grid <-  expand.grid(
-#       degree = c(3:5),
-#       scale = c(0.001, 0.01, 0.1, 1),
-#       C = seq(1,5,by=0.25)
-#     )
-#   }
-#     
-#   svm_hyperparameters <- learn_hyperparameters(train, "svmPoly", svm_grid, number_of_cores)
-#   hyperparameters <- hyperparameters %>% add_row(Model="svm", Sex=params$sex, Value=list(svm_hyperparameters))
-#   write_hyperparameters(hyperparameters, params$hyperparameters)
-# } else {
-#   svm_hyperparameters <- svm_hyperparameters[[1]]
-# }
+sink(file=stderr(), type="output"); print(svm_hyperparameters); sink()
 
 train <- train %>% select(-label)   # Not needed anymore
 
