@@ -374,8 +374,8 @@ rrfFit_roc <- caret::train(x = train %>% select(-Hb_deferral), y = train %>% pul
                  ## Now specify the exact models 
                  ## to evaluate:
                  #tuneLength=1,
-                 #tuneGrid = as_tibble(rf_hyperparameters),
-                  tuneGrid = tibble(mtry=3, splitrule="gini", min.node.size=10),
+                 tuneGrid = as_tibble(rf_hyperparameters),
+                  #tuneGrid = tibble(mtry=3, splitrule="gini", min.node.size=10),
                  #metric="ROC",
                 #should we use Kappa or ROC?
                 importance = "permutation"
