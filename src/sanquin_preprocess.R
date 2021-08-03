@@ -42,7 +42,8 @@ read_sanquin_donors <- function(donor_file) {
 
 # max_diff_date_first_donation is a non-negative integer, which specifies the maximum allowed difference
 # between min(KEY_DONAT_INDEX_DATE) and DONOR_DATE_FIRST_DONATION
-sanquin_freadFRC <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
+sanquin_freadFRC <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
+                             max_diff_date_first_donation)
 {
   
   
@@ -286,7 +287,7 @@ sanquin_freadFRC <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female
 
 
 
-sanquin_decorate_data <- function(data) {
+sanquin_decorate_data <- function(data, southern_hemisphere) {
   
   #Take all donations events (regardless of type)
   data$Hb[is.nan(data$Hb)] <- NA
@@ -358,7 +359,8 @@ sanquin_decorate_data <- function(data) {
   data <- data %>%
     mutate(hour = hours_to_numeric(date)) %>%
     mutate(year = as.integer(year(dateonly))) %>%
-    mutate(warm_season = as.logical(unlist(lapply(month(dateonly), FUN = get_season))))
+    #mutate(warm_season = as.logical(unlist(lapply(month(dateonly), FUN = get_season))))
+    mutate(warm_season = get_season(month(dateonly), {{southern_hemisphere}}))
   toc()
   
   # Fix values where hour is 0
@@ -433,7 +435,8 @@ sanquin_decorate_data <- function(data) {
 }
 
 # The first two parameters can be either filenames or dataframes
-sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation) {
+sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, southern_hemisphere,
+                               max_diff_date_first_donation) {
   tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
@@ -443,10 +446,11 @@ sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_fema
     donors <- read_sanquin_donors(donors)
   }
   
-  data <- sanquin_freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, max_diff_date_first_donation)
+  data <- sanquin_freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
+                           max_diff_date_first_donation)
   toc()
   tic()
-  data <- sanquin_decorate_data(data)
+  data <- sanquin_decorate_data(data, southern_hemisphere)
   toc()
   toc()
   return(data)

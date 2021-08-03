@@ -303,7 +303,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
 
 
 
-decorateData <- function(data) {
+decorateData <- function(data, southern_hemisphere) {
   
   #Take all donations events (regardless of type)
   data$Hb[is.nan(data$Hb)] <- NA
@@ -375,7 +375,8 @@ decorateData <- function(data) {
   data <- data %>%
     mutate(hour = hours_to_numeric(date)) %>%
     mutate(year = as.integer(year(dateonly))) %>%
-    mutate(warm_season = as.logical(unlist(lapply(month(dateonly), FUN = get_season))))
+    #mutate(warm_season = as.logical(unlist(lapply(month(dateonly), FUN = get_season))))
+    mutate(warm_season = get_season(month(dateonly), southern_hemisphere))
   toc()
   
   # Fix values where hour is 0
@@ -529,7 +530,8 @@ myjoin <- function(df1, df2, by="donation", values=NULL) {
 
 
 
-preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl") {
+preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl",
+                       southern_hemisphere=FALSE) {
   tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
@@ -541,7 +543,7 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
   data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
   toc()
   tic()
-  data <- decorateData(data)
+  data <- decorateData(data, southern_hemisphere)
   toc()
   toc()
   return(data)

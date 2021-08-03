@@ -210,6 +210,9 @@ hb_predictor3 <- function(ws) {
   stratify_by_sex <- "stratify-by-sex" %in% names(post)
   cat(sprintf("The parameter stratify_by_sex is %s\n", as.character(stratify_by_sex)))
   
+  southern_hemisphere <- "southern-hemisphere" %in% names(post)
+  cat(sprintf("The parameter southern_hemisphere is %s\n", as.character(southern_hemisphere)))
+
   max_diff_date_first_donation <- ifelse ("max_diff_date_first_donation" %in% names(post), 
                                           as.integer(post$max_diff_date_first_donation), default_max_diff_date_first_donation)
   cat(sprintf("The parameter max_diff_date_first_donation is %i\n", max_diff_date_first_donation))
@@ -335,7 +338,7 @@ hb_predictor3 <- function(ws) {
         donations <- semi_join(donations, donors, by="KEY_DONOR")
       }
       fulldata_preprocessed <- preprocess(donations, donors,
-                                          myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit)
+                                          myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit, southern_hemisphere)
     } else {  # Sanquin
       donations <- read_sanquin_donations(donations_o$tempfile)
       donors <- read_sanquin_donors(donors_o$tempfile)
@@ -346,7 +349,7 @@ hb_predictor3 <- function(ws) {
       }
       fulldata_preprocessed <- sanquin_preprocess(donations, donors,
                                                   #donations_o$tempfile, donors_o$tempfile,
-                                                  myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit,
+                                                  myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit, southern_hemisphere,
                                                   max_diff_date_first_donation)
       if ("FERRITIN_FIRST" %in% names(donors)) {
         cat("hep\n")
@@ -589,6 +592,54 @@ hb_predictor3 <- function(ws) {
 #' @get /hb-predictor
 #' @serializer html
 hb_predictor <- function(req){
+  
+  # I had to break the html page into multiple parts because the format string for sprint can only be 8192 characters long
+  
+  info <- '
+  <div id="info-container" hidden>
+    <h2>Progress info</h2>    
+    <p>Computation started: <span id="start-time"></span></p>
+      <p id="finish-time-container">Computation finished: <span id="finish-time"></span></p>
+        <p>Elapsed time: <span id="time"></span></p>
+          <p id="status-container">Status: <span id="status"></span></p>
+            <div id="spinner-container">
+              <div class="lds-spinner" hidden ><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+                </div>
+                <div id="error_messages"></div>
+                  <div id="warning_messages"></div>
+                    <div id="info"></div>
+                      </div>
+           '           
+                      
+  results <- '
+    <div id="results-container" hidden>
+      <h2>Results</h2>
+      
+      <h3>Summary</h3>
+      <div id="table_container"></div>
+        <table id="summary-table" class="table table-condensed">
+          </table>
+          <h3>Download the results</h3>
+          <ul>
+          <li> <a href="/output/summary.csv">Summary table</a> (CSV)</li>
+            <li id="effect-size"> <a href="/output/effect-size.csv">Effect size table</a> (CSV)</li>
+              <li id="variable-importance"> <a href="/output/variable-importance.csv">Variable importance table</a> (CSV)</li>
+                <li id="prediction"> <a href="/output/prediction.csv">Prediction data</a> (CSV)</li>
+                  <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
+                    <li id="preprocessed"> <a href="/output/preprocessed.rdata">Preprocessed data</a> (R binary)</li>
+                      <li id="train"> <a href="/output/train.csv">Train</a> </li>
+                        <li id="validate"> <a href="/output/validate.csv">Validate</a> </li>
+                          </ul>
+                          
+                          <h3>Detailed result pages</h3>
+                          <table id="detailed-results" class="table table-condensed">
+                            <tr> <th>Model</th> <th>Sex</th> <th>html</th> <th>pdf</th> </tr>
+                            </table>
+                            </div>
+                            
+                            </div>  
+  '
+  
   response = sprintf('
   <html>
   
@@ -661,6 +712,11 @@ hb_predictor <- function(req){
             <input type="checkbox" value="on", id="stratify-by-sex" name="stratify-by-sex" checked />
             </td>
         </tr>
+        <tr id="southern_hemisphere_row"><td>Southern hemisphere</td>
+            <td>
+            <input type="checkbox" value="on", id="southern-hemisphere" name="southern-hemisphere" />
+            </td>
+        </tr>
         
         <tr><td>Hyperparameters</td>                <td>
         <select id="hyperparameters" name="hyperparameters">
@@ -730,52 +786,14 @@ hb_predictor <- function(req){
         </form>
       </div> <!-- id="form-container -->
       
-
-      <div id="info-container" hidden>
-        <h2>Progress info</h2>    
-        <p>Computation started: <span id="start-time"></span></p>
-        <p id="finish-time-container">Computation finished: <span id="finish-time"></span></p>
-        <p>Elapsed time: <span id="time"></span></p>
-        <p id="status-container">Status: <span id="status"></span></p>
-        <div id="spinner-container">
-          <div class="lds-spinner" hidden ><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
-        </div>
-        <div id="error_messages"></div>
-        <div id="warning_messages"></div>
-        <div id="info"></div>
-      </div>
+      %s
       
-      <div id="results-container" hidden>
-        <h2>Results</h2>
-
-        <h3>Summary</h3>
-        <div id="table_container"></div>
-        <table id="summary-table" class="table table-condensed">
-        </table>
-        <h3>Download the results</h3>
-        <ul>
-        <li> <a href="/output/summary.csv">Summary table</a> (CSV)</li>
-        <li id="effect-size"> <a href="/output/effect-size.csv">Effect size table</a> (CSV)</li>
-        <li id="variable-importance"> <a href="/output/variable-importance.csv">Variable importance table</a> (CSV)</li>
-        <li id="prediction"> <a href="/output/prediction.csv">Prediction data</a> (CSV)</li>
-        <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
-        <li id="preprocessed"> <a href="/output/preprocessed.rdata">Preprocessed data</a> (R binary)</li>
-        <li id="train"> <a href="/output/train.csv">Train</a> </li>
-        <li id="validate"> <a href="/output/validate.csv">Validate</a> </li>
-        </ul>
-        
-        <h3>Detailed result pages</h3>
-        <table id="detailed-results" class="table table-condensed">
-        <tr> <th>Model</th> <th>Sex</th> <th>html</th> <th>pdf</th> </tr>
-        </table>
-      </div>
-      
-    </div>  
-  
+      %s  
   </div>
   </body>
   </html>
-  ', container_version, round(default_Hb_cutoff_male), round(default_Hb_cutoff_female), default_max_diff_date_first_donation)
+  ', container_version, round(default_Hb_cutoff_male), round(default_Hb_cutoff_female), default_max_diff_date_first_donation, 
+                     info, results)
 
   response
 }

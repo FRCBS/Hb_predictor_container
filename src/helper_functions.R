@@ -134,11 +134,16 @@ mean_sd <- function(vec) {
   return(os)
 }
 
-get_season <- function(mon) {
+get_season <- function(mon, southern_hemisphere=FALSE) {
   # Helper function for getting the season as a factor
-  if (mon %in% c(1,2,3,10,11,12)) {return(0)}
-  else if (mon %in% 4:9) {return(1)}
-  else {return(NULL)}
+  # if (mon %in% c(1,2,3,10,11,12)) {return(0)}
+  # else if (mon %in% 4:9) {return(1)}
+  # else {return(NULL)}
+  warm_season <- mon %in% 4:9
+  if (southern_hemisphere) {
+    warm_season <- ! warm_season
+  }
+  return(warm_season)
 }
 
 extra_factor <- 2  # Andrew Gelman recommends scaling continuous variables by dividing by 2*stddev. This
