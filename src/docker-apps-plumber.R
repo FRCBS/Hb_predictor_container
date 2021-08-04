@@ -324,6 +324,9 @@ hb_predictor3 <- function(ws) {
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
     if (sf != 1.0) {
       fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, donor_field = "donor", sex_field = "sex")
+      donation_specific_filename <- "../output/preprocessed.rdata"
+      save(fulldata_preprocessed, file=donation_specific_filename)  # Save the sample
+      post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
     }
   } else {
     # Do the preprocessing

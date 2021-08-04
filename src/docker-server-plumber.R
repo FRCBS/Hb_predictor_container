@@ -3,8 +3,8 @@ suppressPackageStartupMessages(library(plumber))
 suppressPackageStartupMessages(library(magrittr))
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(knitr))
-library(httpuv)
-library(rjson)
+suppressPackageStartupMessages(library(httpuv))
+suppressPackageStartupMessages(library(rjson))
 
 #pr <- plumber::plumb("docker-apps-plumber.R")
 
@@ -17,6 +17,7 @@ options(warn=1)
 
 source("docker-apps-plumber.R")
 
+# Not used
 multiplexer <- function(req) {
   body <- paste0("Time: ", Sys.time(), "<br>Path requested: ", req$PATH_INFO)
   
@@ -35,10 +36,11 @@ cat("Here\n")
 s <- runServer("0.0.0.0", 8080,
                  list(
                    call = function(req) {
+                     cat(sprintf("Got http request %s\n", req$PATH_INFO))
                      print(names(req))
                      cat("User agent is:\n")
                      print(req$HTTP_USER_AGENT)
-                     print(req$.bodyData)
+                     print(req$.bodyData)  # NULL
                      cat("moi\n")
                      if (req$PATH_INFO == "/hb-predictor") {
                        body <- hb_predictor(req)

@@ -232,6 +232,7 @@ document.onreadystatechange = function() {
 		parsed = JSON.parse(event.data);
 		process_json_result(parsed);
 		console.log("Got message from server of type " + parsed.type);
+		if (parsed.type == "final") exampleSocket.close()
 		//divi.innerHTML += p("Received: " + event.data);
 	    }
 	    exampleSocket.onopen = function (event) {

@@ -399,8 +399,8 @@ write_csv(validate, '../output/validate.csv')
 
 
 ```{r SHAP values}
-message(colnames(train))
-message(colnames(validate))
+message(paste(colnames(train), collapse=" "))
+message(paste(colnames(validate), collapse=" "))
 
 
 exp_rf <- DALEX::explain(rrfFit_roc$finalModel, data = train)
