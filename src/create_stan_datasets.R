@@ -27,36 +27,17 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
   # Takes output of stan_preprocess or stan_preprocess_icp as input
   
   # Create the list without slope
-  if (is.null(slopevar)) {
-    x_train <- df$x_train
-    y_train <- df$y_train
-    x_test <- unname(as.matrix(df$x_test))
-    y_test <- df$y_test
-    train_donors <- df$train_donors
-    test_donors <- df$test_donors
-    C <- df$C
-    M = ncol(C)
-    first_events = df$first_events
-  } else {
-    # Create the list with given slope variable
-    x_train <- df$x_train
-    slope_train <- pull(x_train, slopevar)
-    x_train <- select(x_train, -slopevar)
-    
-    y_train <- df$y_train
-    
-    x_test <- df$x_test
-    slope_test <- pull(x_test, slopevar)
-    x_test <- select(x_test, -slopevar)
-    x_test <- unname(as.matrix(x_test))
-    
-    y_test <- df$y_test
-    train_donors <- df$train_donors
-    test_donors <- df$test_donors
-    C <- df$C
-    M = ncol(C)
-    first_events = df$first_events
-  }
+
+  x_train <- df$x_train
+  y_train <- df$y_train
+  x_test <- unname(as.matrix(df$x_test))
+  y_test <- df$y_test
+  train_donors <- df$train_donors
+  test_donors <- df$test_donors
+  C <- df$C
+  M = ncol(C)
+  first_events = df$first_events
+
   #x_train <- x_train %>% select(-don_id, -sex)
   # All models use QR-reparametrizarion so it will be done here
   tryCatch(
@@ -93,13 +74,6 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
     Z <- df$Z
     Hb0 <- df$Hb0
     stanlist <- c(stanlist, list(L = ncol(Z), Z = Z, Hb_0 = unname(as.numeric(unlist(Hb0))), first_events=first_events))
-  }
-  # Check if slope variable has to be added to the list
-  if (!is.null(slopevar)) {
-    stanlist$x1 <- slope_train
-    stanlist$x_1_test <- slope_test
-    stanlist$x_2_test <- x_test
-    stanlist$x_test <- NULL
   }
   
   if (rdump == FALSE) {return(stanlist)}

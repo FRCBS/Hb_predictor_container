@@ -20,7 +20,7 @@ data {
 }
 parameters {
     vector[K] beta_tilde; // Coefficients on Q_star
-    vector[M] phi;
+    vector[M] phi;        // Coefficients of donor specific variables
     real<lower=0> sigmab; // Variance of the individual variation parameter b
     real<lower=0> sigmaeps; // Variance of the random noise
     vector[Ndon] donb; // Donor specific random effect
@@ -38,7 +38,7 @@ model {
     Hb ~ normal(Q_star * beta_tilde + donb[donor] + C[donor,] * phi, sigmaeps);   
 }
 generated quantities {
-    vector[N] log_lik;
-    for (n in 1:N) log_lik[n] = normal_lpdf(Hb[n] | Q_star[n, ] * beta_tilde + donb[donor[n]] + C[donor[n],] * phi, sigmaeps);
+    //vector[N] log_lik;
+    //for (n in 1:N) log_lik[n] = normal_lpdf(Hb[n] | Q_star[n, ] * beta_tilde + donb[donor[n]] + C[donor[n],] * phi, sigmaeps);
 }
 

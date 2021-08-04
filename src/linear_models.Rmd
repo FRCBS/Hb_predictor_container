@@ -337,12 +337,7 @@ rm(data); invisible(gc(reset = TRUE))
 
 ## Results
 
-
-```{asis, echo=TRUE, eval=compute_lmm}
-### Linear mixed model
-```
-
-```{r Linear mixed model, results="hide", eval=compute_lmm}
+```{r Run linear model helper function}
 run_linear_model <- function(Id, Model, Pretty, Sex, stan_model) {
   # Load first datasets
   message("0")
@@ -421,6 +416,14 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model) {
   save(val, file = sprintf("%s/raw_result_%s_%s_%s.rdata", rawresultdir, Sex, Model, fit_id))
   return(list(summary=t, effect_size=e, prediction=d, val=val))
 }
+
+```
+
+```{asis, echo=TRUE, eval=compute_lmm}
+### Linear mixed model
+```
+
+```{r Linear mixed model, results="hide", eval=compute_lmm}
 
 id <- sprintf("lmm-%s", params$sex)
 res <- run_linear_model(Id=id, Model = "lmm", Pretty="Linear mixed model", Sex=params$sex, stan_model_file_lmm)

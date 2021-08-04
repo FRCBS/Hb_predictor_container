@@ -35,12 +35,12 @@ transformed parameters {
     vector[K] beta = R_star_inv * beta_tilde;
 }
 model {
+    beta ~ std_normal();
     sigma_b ~ inv_gamma(0.01, 0.01);
     sigma_eps ~ inv_gamma(0.01, 0.01);
     sigma_eeta ~ inv_gamma(0.01, 0.01);
     theta ~ std_normal();
     ups ~ std_normal();
-    beta ~ std_normal();
     don_b ~ normal(0, sigma_b);
 
     for (i in 1:N) {
@@ -53,15 +53,15 @@ model {
     } 
 }
 generated quantities {
-    vector[N] log_lik;
+    //vector[N] log_lik;
 
-    for (i in 1:N) {
-        if (i == first_events[donor[i]]) {
-            log_lik[i] = normal_lpdf(Hb[i] | Z[donor[i]] * ups + theta + don_b[donor[i]], sigma_eeta);
-        } 
-        else {
-            log_lik[i] = normal_lpdf(Hb[i] | Q_star[i,] * beta_tilde + don_b[donor[i]], sigma_eps);
-        }
-    }
+    //for (i in 1:N) {
+    //    if (i == first_events[donor[i]]) {
+    //        log_lik[i] = normal_lpdf(Hb[i] | Z[donor[i]] * ups + theta + don_b[donor[i]], sigma_eeta);
+    //    } 
+    //    else {
+    //        log_lik[i] = normal_lpdf(Hb[i] | Q_star[i,] * beta_tilde + don_b[donor[i]], sigma_eps);
+    //    }
+    //}
 }
 
