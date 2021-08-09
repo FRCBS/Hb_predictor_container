@@ -380,7 +380,9 @@ sink(file=stderr(), type="output"); print(svm_hyperparameters); sink()
 
 train <- train %>% select(-label)   # Not needed anymore
 
-svmFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
+saveRDS(train, sprintf("/tmp/svm-train-%s.rds", params$sex))   # remove
+
+svmFit_roc <- caret::train(Hb_deferral ~ ., data = as.data.frame(train), 
                  method = "svmPoly", 
                  trControl = caret::trainControl(method="none", 
                                                  classProbs = TRUE,
@@ -389,7 +391,7 @@ svmFit_roc <- caret::train(Hb_deferral ~ ., data = train,
                  tuneGrid = data.frame(svm_hyperparameters),
                  preProcess = c("center","scale"),
                  metric="ROC")
-
+saveRDS(svmFit_roc, sprintf("/tmp/svmfit-%s.rds", params$sex))
 sink(file=stderr(), type="output"); toc(); sink()
 ```
 
@@ -399,23 +401,51 @@ sink(file=stderr(), type="output"); toc(); sink()
 
 ## Results
 
+```{r SHAP values, eval=FALSE}
+message(paste(colnames(train), collapse=" "))
+message(paste(colnames(validate), collapse=" "))
+
+
+shap_filename <- sprintf("/tmp/shap_values_%s_%s.rds", params$model, params$sex)
+if (use_pdf) {     
+  res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
+} else {
+  res <- compute_shap_values(svmFit_roc$finalModel, train, validate, variables)
+  saveRDS(res, shap_filename)
+}
+
+variables_renamed <- FALSE
+  
+shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)
+#ive_rf <- shapper::shap(exp_rf, new_observation = validate2[1,], nsamples=50)
+#plot(ive_rf)
+shap_plot_rf
+```
 
 ```{r Create variable importances plot}
-# rrfFit_rocImp <- caret::varImp(rrfFit_roc, scale = FALSE)
-# #plot(rrfFit_rocImp)
-# 
-# 
-# #rrfFit.varimp <- as_tibble(cbind(rownames(rrfFit_rocImp$importance), rrfFit_rocImp$importance))
-# rf_variable_importances <- rownames_to_column(rrfFit_rocImp$importance)  # Cleaner than above
-# colnames(rf_variable_importances) <- c("Variable", "Importance")
-# rf_variable_importances <- left_join(rf_variable_importances, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>% 
-#   select(Variable, Pretty, Importance) %>% 
-#   arrange(Importance)
-# 
-# message(paste(rf_variable_importances$Variable, collapse=" "))
-# 
-# # Fix some pretty variables names
-# 
+message("test0")
+svmFit_rocImp <- caret::varImp(svmFit_roc, scale = FALSE)
+#plot(rrfFit_rocImp)
+
+message("test1")
+#rrfFit.varimp <- as_tibble(cbind(rownames(rrfFit_rocImp$importance), rrfFit_rocImp$importance))
+svm_variable_importances <- rownames_to_column(svmFit_rocImp$importance)  # Cleaner than above
+message("test2")
+
+colnames(svm_variable_importances) <- c("Variable", "Importance")
+message("test3")
+svm_variable_importances <- left_join(svm_variable_importances, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>%
+  select(Variable, Pretty, Importance) %>%
+  arrange(Importance)
+
+message("test4")
+
+message(paste(svm_variable_importances$Variable, collapse=" "))
+
+message("test5")
+
+# Fix some pretty variables names
+
 # rf_variable_importances <- rf_variable_importances %>%
 #   mutate(Pretty = case_when(
 #     Variable == "previous_Hb_defTRUE" ~ "Previous donation deferred",
@@ -426,20 +456,23 @@ sink(file=stderr(), type="output"); toc(); sink()
 #     Variable == "nb_donat"            ~ "Number of donations",
 #     TRUE                              ~ Pretty
 #   ))
-# 
-# if (!is.null(params$effect_size_table_file)) {
-#   write_csv(rf_variable_importances, params$effect_size_table_file)   # Pass the table to the web app as well
-# }
-# 
-# rf_variable_importances_plot <- rf_variable_importances %>%
-#   ggplot() + 
-#   geom_col(aes(y=Importance, x=reorder(Pretty, Importance)), alpha=0.7) + 
-#   coord_flip() + 
-#   xlab("Variable")
-# 
-# #filename="../results/rrfFit_roc_importance.pdf"
-# #ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
-# rf_variable_importances_plot
+
+variables_renamed <- FALSE
+svm_variable_importances <- prettify_variables(svm_variable_importances, variables_renamed)
+
+if (!is.null(params$effect_size_table_file)) {
+  write_csv(svm_variable_importances, params$effect_size_table_file)   # Pass the table to the web app as well
+}
+
+svm_variable_importances_plot <- svm_variable_importances %>%
+  ggplot() +
+  geom_col(aes(y=Importance, x=reorder(Pretty, Importance)), alpha=0.7) +
+  coord_flip() +
+  xlab("Variable")
+
+#filename="../results/rrfFit_roc_importance.pdf"
+#ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
+svm_variable_importances_plot
 ```
 
 

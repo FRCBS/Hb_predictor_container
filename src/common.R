@@ -355,3 +355,37 @@ prettify_variables <- function(df, variables_renamed) {
   }
   return(df)
 }
+
+compute_shap_values <- function(model, train, validate, variables) {
+  exp_rf <- DALEX::explain(model, data = train)
+  #ive_rf <- shap(exp_rf, new_observation = validate[-c(15)])
+  #ive_rf <- shap(exp_rf, new_observation = as.data.frame(train %>% select(-Hb)))
+  if ("sex" %in% variables) {
+    validate2 <- validate %>% select(-c(Hb))
+  } else {
+    validate2 <- validate %>% select(-c(Hb, sex))
+  }
+  validate2 <- as.data.frame(validate2)
+  # It seems that I have iterate over the rows of validate2 to get all local attributions
+  res <- map_dfr(1:nrow(validate2), function(i) as_tibble(shap(exp_rf, new_observation = validate2[i,])), .id="myid")
+  res <- res %>% 
+    select(Variable=`_vname_`, attribution=`_attribution_`, sign=`_sign_`)
+  return(res)
+}
+
+plot_summary_shap_values <- function(df, variables_renamed) {
+  # The global attribution of a variable is the average of the absolute values of local attributions 
+  res2 <- df %>% 
+    mutate(attribution=abs(attribution)) %>% 
+    group_by(Variable) %>% 
+    summarise(attribution=mean(attribution))
+  res2 <- left_join(res2, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>% 
+    select(Variable, Pretty, attribution)
+  res2 <- prettify_variables(res2, variables_renamed)
+  
+  shap_plot_rf <- res2 %>% ggplot(aes(x=reorder(Pretty, attribution), y=attribution)) +
+    geom_col(alpha=0.7) + 
+    coord_flip() + 
+    xlab("Variable") + ylab("Mean absolute attribution")
+  return(shap_plot_rf)
+}
