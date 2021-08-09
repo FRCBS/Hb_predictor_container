@@ -23,17 +23,21 @@ library(caret)
 
 
 # Helper function for creating stan-lists:
-subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE, rdump = FALSE, filename = NULL, dumpdir = NULL, threshold = NULL, date=NULL) {
+subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE, rdump = FALSE, filename = NULL, dumpdir = NULL, 
+                                             threshold = NULL, date=NULL, out_of_sample_predictions=FALSE) {
   # Takes output of stan_preprocess or stan_preprocess_icp as input
   
   # Create the list without slope
 
   x_train <- df$x_train
   y_train <- df$y_train
-  x_test <- unname(as.matrix(df$x_test))
-  y_test <- df$y_test
   train_donors <- df$train_donors
-  test_donors <- df$test_donors
+
+  if (! out_of_sample_predictions) {
+    x_test <- unname(as.matrix(df$x_test))
+    y_test <- df$y_test
+    test_donors <- df$test_donors
+  }
   C <- df$C
   M = ncol(C)
   first_events = df$first_events
@@ -65,15 +69,21 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
                    R_star = qr0$R_star,
                    R_star_inv = qr0$R_star_inv,
                    Hb = y_train,
-                   donor = train_donors,
-                   Ntest = nrow(x_test),
-                   #Ntest_don = length(unique(test_dons)),
-                   x_test = x_test,
-                   test_donor = test_donors)
+                   donor = train_donors)
+  
+  if (! out_of_sample_predictions) {
+    stanlist <- c(stanlist,
+                  Ntest = nrow(x_test),
+                  #Ntest_don = length(unique(test_dons)),
+                  x_test = x_test,
+                  test_donor = test_donors)
+  }
+  
   if (icpfix) {
     Z <- df$Z
-    Hb0 <- df$Hb0
-    stanlist <- c(stanlist, list(L = ncol(Z), Z = Z, Hb_0 = unname(as.numeric(unlist(Hb0))), first_events=first_events))
+    #Hb0 <- df$Hb0
+    stanlist <- c(stanlist, list(L = ncol(Z), Z = Z, #Hb_0 = unname(as.numeric(unlist(Hb0))), 
+                                 first_events=first_events))
   }
   
   if (rdump == FALSE) {return(stanlist)}
@@ -94,16 +104,16 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
     if (icpfix == TRUE) {
       L = ncol(Z)
       Z = Z
-      #Hb_0 = unname(as.numeric(unlist(Hb0_train)))
-      Hb_0 = unname(as.numeric(unlist(Hb0)))
+      ##Hb_0 = unname(as.numeric(unlist(Hb0_train)))
+      #Hb_0 = unname(as.numeric(unlist(Hb0)))
       #Z_test = Z_test
       #Hb_0_test = unname(as.numeric(unlist(Hb0_test)))
     }
-    if (!is.null(slopevar)) {
-      x1 <- slope_train
-      x_1_test <- slope_test
-      x_2_test <- x_test
-    }
+    # if (!is.null(slopevar)) {
+    #   x1 <- slope_train
+    #   x_1_test <- slope_test
+    #   x_2_test <- x_test
+    # }
     if (icpfix == TRUE & !is.null(slopevar)) {
       stan_rdump(c("N", "K", "Ndon", "L", "x1", "Q_star", "R_star", "R_star_inv", "Hb", "donor", "Z", "Hb_0", "Ntest", 
                   "x_1_test", "x_2_test", "test_donor", "threshold"),
@@ -140,7 +150,8 @@ create_stan_datasets <- function(data, rdatadir, dumpdir, id, hlen=NULL, hlen_ex
                             basic_variables, basic_variables_dlmm,
                             donor_variables=NULL,
                             compute_lmm, compute_dlmm,
-                            sex) {
+                            sex,
+                            out_of_sample_predictions=FALSE) {
   message("In create_datasets function")
   # Set the directory where the files will be saved:
   #dumpdir = "~/FRCBS/interval_prediction/data/rdump/"
@@ -164,7 +175,6 @@ create_stan_datasets <- function(data, rdatadir, dumpdir, id, hlen=NULL, hlen_ex
   stopifnot(nrow(temp) == 0)
   
   data <- data %>% select("Hb", everything())  # Move Hb to first column, because Yrjo's Hb_index stuff does not work
-  data <- data %>% select(-nb_donat_progesa, -nb_donat_outside)  # Drop these as they contain NAs
 
   message(sprintf("%s dataset size: %i", sex, ndonor(data)))
 
@@ -179,13 +189,15 @@ create_stan_datasets <- function(data, rdatadir, dumpdir, id, hlen=NULL, hlen_ex
   if (compute_lmm) {
     stan.preprocessed.lmm <- stan_preprocess_new(drop_some_fields(small, sex) %>% select(-previous_Hb), 
                                                         Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
-                                                        basic_variables=basic_variables, donor_variables = donor_variables)
+                                                        basic_variables=basic_variables, donor_variables = donor_variables, 
+                                                 test_data = ! out_of_sample_predictions)
     stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.lmm")
   }
   if (compute_dlmm) {
     stan.preprocessed.dlmm <- stan_preprocess_icp_new(drop_some_fields(small, sex) %>% select(-Hb_first), 
                                                              Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
-                                                             basic_variables=basic_variables_dlmm, donor_variables = donor_variables)
+                                                             basic_variables=basic_variables_dlmm, donor_variables = donor_variables,
+                                                      test_data = ! out_of_sample_predictions)
     stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.dlmm")
   }
   stan_preprocessed_filename <- paste(rdatadir,"stan_preprocessed_datasets_", id, ".RData", sep = '')

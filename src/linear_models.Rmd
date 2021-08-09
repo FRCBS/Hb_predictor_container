@@ -187,6 +187,7 @@ data_id <- id
 
 fit_id = id
 
+out_of_sample_predictions <- FALSE
 
 source("helper_functions.R")
 source("validate_stan_fit.R")
@@ -259,31 +260,67 @@ if (!is.null(donor_variables)) {
 }
 
 
+data <- data %>% select(-nb_donat_progesa, -nb_donat_outside)  # Drop these as they contain NAs
+
+if (out_of_sample_predictions) {
+  tmp <- new_split(data, params$mode)
+  train <-tmp$train
+  test <- tmp$test
+  rm(tmp)
+} else {
+  train <- data
+}
 
 if (create_datasets_bool) {
   source("create_stan_datasets.R")
-  lst <- create_stan_datasets(data, datadir, dumpdir, data_id, hlen=params$hlen, params$hlen_exactly,
+  lst <- create_stan_datasets(train, datadir, dumpdir, data_id, hlen=params$hlen, params$hlen_exactly,
                          Hb_cutoff_male = params$Hb_cutoff_male,
                          Hb_cutoff_female = params$Hb_cutoff_female, 
                          basic_variables=basic_variables, basic_variables_dlmm=basic_variables_dlmm, donor_variables=donor_variables,
                          compute_lmm=compute_lmm, compute_dlmm=compute_dlmm,
-                         sex=params$sex)
+                         sex=params$sex, out_of_sample_predictions=out_of_sample_predictions)
   
-  data <- lst$small.data
-} else {   # This is only for plotting purpose
-  
-  #data   <- sample_set(data,   sample_fraction)
-  data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
+  if (out_of_sample_predictions) {
+    # icp-consts
+    Hb_index <- 1
+    if (compute_lmm) {
+      sl.val.dlmm <- stan_preprocess_icp_new(drop_some_fields(val, params$sex) %>% select(-Hb_first),  
+                                             basic_variables=basic_variables, donor_variables = donor_variables, 
+                                             test_data = FALSE,
+                                             Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly)
+    }
+    
+    if (compute_dlmm) {
+      # simple-consts
+      sl.val.lmm <- stan_preprocess_new(drop_some_fields(val, params$sex) %>% select(-previous_Hb),  
+                                        basic_variables=basic_variables, donor_variables = donor_variables, 
+                                        test_data = FALSE,
+                                        Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly)
+    }
+  }
 }
 
+# This is for summary plots only
+data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
-if (is.null(donor_variables)) {
-  stan_model_file_lmm  <- "stan/container.stan"
-  stan_model_file_dlmm <- "stan/container_heckman.stan"
+if (out_of_sample_predictions) {
+  if (is.null(donor_variables)) {
+    stan_model_file_lmm  <- "stan/oos.stan"
+    stan_model_file_dlmm <- "stan/oos_heckman.stan"
+  } else {
+    stan_model_file_lmm  <- "stan/oos_consts.stan"
+    stan_model_file_dlmm <- "stan/oos_heckman_consts.stan"
+  }
 } else {
-  stan_model_file_lmm  <- "stan/container_consts.stan"
-  stan_model_file_dlmm <- "stan/container_heckman_consts.stan"
+  if (is.null(donor_variables)) {
+    stan_model_file_lmm  <- "stan/container.stan"
+    stan_model_file_dlmm <- "stan/container_heckman.stan"
+  } else {
+    stan_model_file_lmm  <- "stan/container_consts.stan"
+    stan_model_file_dlmm <- "stan/container_heckman_consts.stan"
+  }
 }
+
 
 
 summary_rows <- list()  # This is used to construct the error table in the end

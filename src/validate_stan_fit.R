@@ -33,7 +33,7 @@ get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
   message(sprintf("Dimensions of y_pred: %i rows, %i columns", nrow(y_pred), ncol(y_pred)))
   #predicted_probabilities <- apply(y_pred, MARGIN = 2, FUN = probability_of_deferral, threshold = normalised_threshold)
   # The rows are iterations and columns correspond to donors
-  predicted_probabilities <- map2_dbl(as_tibble(y_pred), normalised_threshold, probability_of_deferral)
+  predicted_probabilities <- map2_dbl(as_tibble(y_pred, .name_repair="unique"), normalised_threshold, probability_of_deferral)
   return(predicted_probabilities) 
 }
 
