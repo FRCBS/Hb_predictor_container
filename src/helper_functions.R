@@ -143,7 +143,7 @@ get_season <- function(mon, southern_hemisphere=FALSE) {
   if (southern_hemisphere) {
     warm_season <- ! warm_season
   }
-  return(warm_season)
+  return(as.numeric(warm_season))
 }
 
 extra_factor <- 2  # Andrew Gelman recommends scaling continuous variables by dividing by 2*stddev. This
@@ -1722,8 +1722,8 @@ model_results <- function(actual, predicted, probabilities, threshold, Hb_mean, 
   # Actual values, predicted values, threshold, Hb_mean and Hb_sd, also ROC-params
   
   result.df <- as.data.frame(cbind(actual = actual, predicted = predicted, fractions = probabilities))
-  result.norm <- result.df  %>% mutate(actual = actual * Hb_sd + Hb_mean) %>% 
-    mutate(predicted = predicted * Hb_sd + Hb_mean)
+  result.norm <- result.df  %>% mutate(actual = denormalize_vector(actual, Hb_mean, Hb_sd)) %>% 
+    mutate(predicted = denormalize_vector(predicted, Hb_mean, Hb_sd))
   
   result.norm <- result.norm %>% mutate(deferral = as.factor(ifelse(actual < threshold, 1, 0)))
   
@@ -1814,6 +1814,7 @@ predict_new <- function(model.list, n.samples = 1000) {
   for (d in unique(df$donor)) {
     events <- df %>% filter(donor == d) %>% select(-donor)
     n.events <- nrow(events)
+    # Note: n.samples is not used for anything here!
     vals <- calculate_donbs(df = events, model.list, donor = d, n.samples = n.samples)
     new_donbs[rowcount:(rowcount + n.events - 1),] <- vals
     rowcount <- rowcount + n.events
@@ -1829,6 +1830,7 @@ predict_new <- function(model.list, n.samples = 1000) {
               predicted_probabilities = pred.list$predicted_probabilities))
 }
 
+# Note: n.samples is not used for anything!
 calculate_donbs <- function(df, model.list, donor, n.samples) {
   ml <- model.list
   N <- nrow(df)

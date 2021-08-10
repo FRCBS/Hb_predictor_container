@@ -73,10 +73,11 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
   
   if (! out_of_sample_predictions) {
     stanlist <- c(stanlist,
-                  Ntest = nrow(x_test),
-                  #Ntest_don = length(unique(test_dons)),
-                  x_test = x_test,
-                  test_donor = test_donors)
+                  list(
+                    Ntest = nrow(x_test),
+                    #Ntest_don = length(unique(test_dons)),
+                    x_test = x_test,
+                    test_donor = test_donors))
   }
   
   if (icpfix) {

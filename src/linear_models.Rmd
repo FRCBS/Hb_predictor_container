@@ -137,7 +137,7 @@ knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, time_it=TRUE)
 
 message("Parameters are:")
 for (name in names(params)) {
-  message(sprintf("%s = ", name), params[[name]])
+  message(sprintf("%s = ", name), paste(params[[name]], collapse=" "))
 }
 
 if (knitr::opts_chunk$get("dev") == "pdf") {
@@ -428,15 +428,12 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model) {
   message("Here2")
   message(sprintf("Length of Hb_cutoff: %i, mean: %f\n", length(Hb_cutoff), mean(Hb_cutoff)))
   message("Here3")
-  original_Hb <- denormalize_vector(stan.preprocessed$y_test, stan.preprocessed$par_means["Hb"], stan.preprocessed$par_sds["Hb"]) 
-  message(sprintf("Length of original_Hb: %i, mean: %f\n", length(original_Hb), mean(original_Hb)))
-  scores <- get_scores(fit, Hb_cutoff, stan.preprocessed$par_means[["Hb"]], stan.preprocessed$par_sds[["Hb"]])
-  test_labels <- ifelse(original_Hb < Hb_cutoff, 1, 0)
   
+  df <- create_result_dataframe(stan.preprocessed, fit, Hb_cutoff, metric="mean")
   
   val <- validate_fit(fit, 
-                      original_value=original_Hb, original_label=test_labels, Hb_cutoff=Hb_cutoff, score=scores,
-                      params=stan_parameters, pnames=pretty_variables, metric = "mean", cat.plot = FALSE)
+                      df=df, Hb_cutoff=Hb_cutoff,
+                      params=stan_parameters, pnames=pretty_variables, cat.plot = FALSE)
 
   
   d <- val$df %>% 
