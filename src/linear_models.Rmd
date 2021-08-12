@@ -441,7 +441,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
       #pred.list$type <- Model
       #pred.list$threshold <- normalize_vector(model.params$threshold, sl.val$par_means[["Hb"]], sl.val$par_sds[["Hb"]])     # Added by Jarkko
       #assign("jarkko_predictions", pred.list, envir=globalenv())   # Remove this
-      results <- predict_new(pred.list)
+      results <- predict_new(pred.list, n.samples = params$iterations / 2)
       saveRDS(results, oos_prediction_filename)   # Only for debugging, remove me
     }
     

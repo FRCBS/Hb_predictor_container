@@ -6,7 +6,7 @@ params:
   hlen: NULL
   hlen_exactly: FALSE
   sample_fraction: 1.0
-  model: "both"
+  model: "rf"
   mode: "initial"
   sex: "both"
   id: NULL

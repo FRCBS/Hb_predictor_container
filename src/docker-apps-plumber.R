@@ -65,6 +65,7 @@ create_summary_table <- function(summary_table) {
 model_df <- tribble(
   ~model, ~pretty, ~rmd,
   "dt", "decision tree",             "template.Rmd",
+  "bl", "baseline",             "baseline.Rmd",
   "rf", "random forest",             "random_forest.Rmd",
   "svm",           "support vector machine",    "svm.Rmd",
   "lmm",           "linear mixed model",        "linear_models.Rmd",
@@ -159,9 +160,14 @@ hb_predictor3 <- function(ws) {
   #
   ######################################
   error_messages=c()
-  if (!("donations_fileUpload" %in% names(post)))
+
+  input_format = post$input_format
+  if (! input_format %in% c("FRCBS", "Sanquin", "Preprocessed"))
+    error_messages <- c(error_messages, "The input format should be either FRCBS, Sanquin, or Preprocessed")
+
+  if (!("donations_fileUpload" %in% names(post)) && input_format != "Preprocessed")
     error_messages <- c(error_messages, "You did not upload the donations file!")
-  if (!("donors_fileUpload" %in% names(post)))
+  if (!("donors_fileUpload" %in% names(post)) && input_format != "Preprocessed")
     error_messages <- c(error_messages, "You did not upload the donors file!")
   if ("Hb_cutoff_male" %in% names(post) && as.numeric(post$Hb_cutoff_male) <= 0)
     error_messages <- c(error_messages, "The Hb cutoff must be a positive number")
@@ -180,10 +186,10 @@ hb_predictor3 <- function(ws) {
   }
   if ("max_diff_date_first_donation" %in% names(post) && as.integer(post$max_diff_date_first_donation) < 0)
     error_messages <- c(error_messages, "The max tolerance in DONOR_DATE_FIRST_DONATION must be a non-negative integer")
-  if (! "donations_fileUpload" %in% names(post))
-    error_messages <- c(error_messages, "Missing donations file")
-  if (! "donors_fileUpload" %in% names(post))
-    error_messages <- c(error_messages, "Missing donors file")
+  # if (! "donations_fileUpload" %in% names(post))
+  #   error_messages <- c(error_messages, "Missing donations file")
+  # if (! "donors_fileUpload" %in% names(post))
+  #   error_messages <- c(error_messages, "Missing donors file")
     
   
   donations_o = post$donations_fileUpload
@@ -195,9 +201,6 @@ hb_predictor3 <- function(ws) {
     donor_specific_filename <- NULL
   }
   
-  input_format = post$input_format
-  if (! input_format %in% c("FRCBS", "Sanquin", "Preprocessed"))
-    error_messages <- c(error_messages, "The input format should be either FRCBS, Sanquin, or Preprocessed")
 
   if (length(error_messages) > 0)
     return(list(type="final", error_messages=error_messages))
@@ -466,7 +469,7 @@ hb_predictor3 <- function(ws) {
       length(tmp) == 2 ~ "both")
   }
   
-  models <- intersect(c("dt", "rf", "svm"), names(post))
+  models <- intersect(c("dt", "bl", "rf", "svm"), names(post))
   models <- c(models, linear_models)
   for (m in models) {
     cat(sprintf("Running model %s\n", m))
@@ -529,7 +532,9 @@ hb_predictor3 <- function(ws) {
       message("x1")
       
       s <- read_csv(temp_filename)
+      message("test1")
       summary_tables[[paste(m, sex, sep="-")]] <- s
+      message("test2")
       ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
       
       message("x2")
@@ -539,6 +544,7 @@ hb_predictor3 <- function(ws) {
       
       message("x3")
       
+      # Create table of links to the detailed result pages
       t <-
         tibble(id=sprintf("detail-%s-%s", m, sex), 
                 pretty=str_to_sentence(pretty),
@@ -552,7 +558,7 @@ hb_predictor3 <- function(ws) {
       
       if (is_linear_model) {
         effect_size_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
-      } else {
+      } else if (! m %in% c("dt", "bl")) {
         variable_importance_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
       }
     } # end for sexes
@@ -773,6 +779,11 @@ hb_predictor <- function(req){
             Mock decision tree
           </label>
           
+          <label for="baseline">
+            <input type="checkbox" value="on", id="baseline" name="bl" />
+            Baseline model
+          </label>
+
           <label for="random-forest">
             <input type="checkbox" value="on", id="random-forest" name="rf" checked />
             Random forest

@@ -248,6 +248,7 @@ new_split <- function(data, mode) {
 }
 
 gather_results <- function(df, Id, Model, Pretty, Sex) {
+  message("In gather_results function")
   #boot.n = 2000
   result <- list()
   result$df <- df

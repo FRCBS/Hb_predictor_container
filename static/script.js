@@ -39,6 +39,16 @@ function set_hb_unit(unit_string) {
     unit.dispatchEvent(new Event('change', { 'bubbles': true }));  // trigger the change event
 }
 
+function show_and_enable(e) {
+    e.style.display = "table-row";
+    e.querySelector("input").disabled = false;
+}
+
+function hide_and_disable(e) {
+    e.style.display = "none";
+    e.querySelector("input").disabled = true;
+}
+
 function handle_input_format(e) {
     value = document.querySelector('input[name="input_format"]:checked').value;
     e1 = document.getElementById("donations_row");
@@ -49,25 +59,43 @@ function handle_input_format(e) {
     
     if (value == "FRCBS") {
 	set_hb_unit("gperl");
-	e1.style.display = "table-row";
-	e2.style.display = "table-row";
-	e3.style.display = "table-row";
-	e4.style.display = "none";
-	e5.style.display = "none";
+	show_and_enable(e1);
+	show_and_enable(e2);
+	show_and_enable(e3);
+	hide_and_disable(e4);
+	hide_and_disable(e5);
+	// e1.style.display = "table-row";
+	// e2.style.display = "table-row";
+	// e3.style.display = "table-row";
+	// e4.style.display = "none";
+	// e5.style.display = "none";
     } else if (value == "Sanquin") {
 	set_hb_unit("gperdl");
-	e1.style.display = "table-row";
-	e2.style.display = "table-row";
-	e3.style.display = "none";
-	e4.style.display = "none";
-	e5.style.display = "table-row";
+	show_and_enable(e1);
+	show_and_enable(e2);
+	hide_and_disable(e3);
+	hide_and_disable(e4);
+	show_and_enable(e5);
+
+	// e1.style.display = "table-row";
+	// e2.style.display = "table-row";
+	// e3.style.display = "none";
+	// e3.querySelector("input").disabled = true;
+	// e4.style.display = "none";
+	// e4.querySelector("input").disabled = true;
+	// e5.style.display = "table-row";
     } else {
 	set_hb_unit("gperl");
-	e1.style.display = "none";
-	e2.style.display = "none";
-	e3.style.display = "none";
-	e4.style.display = "table-row";
-	e5.style.display = "none";
+	hide_and_disable(e1);
+	hide_and_disable(e2);
+	hide_and_disable(e3);
+	show_and_enable(e4);
+	hide_and_disable(e5);
+	// e1.style.display = "none";
+	// e2.style.display = "none";
+	// e3.style.display = "none";
+	// e4.style.display = "table-row";
+	// e5.style.display = "none";
     }
     
     console.log("Fieldset clicked: " + value);
@@ -79,9 +107,11 @@ function handle_hyperparameters(e) {
     value = e.srcElement.value;
     e1 = document.getElementById("hyperparameter_file_row");
     if (value == "upload") {
-	e1.style.display = "table-row";
+	show_and_enable(e1);
+	//e1.style.display = "table-row";
     } else {
-	e1.style.display = "none";
+	hide_and_disable(e1);
+	//e1.style.display = "none";
     }
     console.log("Hyperparameter select clicked: " + value);
 }
@@ -242,6 +272,12 @@ document.onreadystatechange = function() {
 	    }
 	    exampleSocket.onclose = function (event) {
 		console.log("Websocket closed");
+		// If we hadn't yet finished when the socket closed, stop the timer and give an error message
+		if (document.getElementsByClassName("lds-spinner")[0].style.display != "none") {
+		    data = { type : "final", error_messages : [ "Websocket closed unexpectely!" ] };
+		    process_json_result(data);
+		}
+
 		//divi.innerHTML += p("Websocket closed");
 	    }
 	    

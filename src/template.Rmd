@@ -6,21 +6,25 @@ params:
   hlen: NULL
   hlen_exactly: FALSE
   sample_fraction: 1.0
-  method: "both"
+  model: "dt"
+  mode: "initial"
   sex: "both"
   id: NULL
   date: "2020-07-08"
   extra_id: NULL
   summary_table_file: NULL
   effect_size_table_file: NULL
+  prediction_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
   predictive_variables: NULL
+  hyperparameters: "filename"
   cores: 4
   iterations: 2000
   skip_train: FALSE
   create_datasets_bool: TRUE
   donor_specific_file: NULL
+  dev: "cairo_pdf"  
 ---
 
   
@@ -32,11 +36,6 @@ message(sprintf(">>>>>>>>>> Decision tree %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 cat(sprintf("# Decision tree (%s)\n", params$sex))
 ```
 
-
-
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
-suppressPackageStartupMessages(library(tidyverse))
-```
 
 <!-- <h2> Initialization </h2> -->
 ```{r Setup, setup = TRUE, echo=FALSE, message=FALSE, results="hide"}
@@ -56,11 +55,32 @@ suppressPackageStartupMessages(library(ROCR))
 suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
 suppressPackageStartupMessages(library(sn))
+suppressPackageStartupMessages(library(tidyverse))
 
 source("common.R")
 
-knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
-#knitr::opts_chunk$set(echo=TRUE, message=TRUE, warning=TRUE)
+# This can measure time a chunk took to execute.
+# Add chunk option time_it=TRUE to each chunk your want to measure.
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- lubridate::now()
+    } else {
+      # calculate the time difference after a chunk
+      res <- lubridate::now() - now
+      # return a character string to show the time
+      msg <- paste("Time for this code chunk to run:", as.numeric(res), units(res))
+      message(msg)
+      NULL   # Don't return the message so that it won't be printed to the resulting document.
+    }
+  }
+}))
+
+
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, results = "hide", time_it=TRUE)
+#knitr::opts_chunk$set(echo=TRUE, message=TRUE)
 #options(warn = 1)
 
 if (knitr::opts_chunk$get("dev") == "pdf") {
@@ -76,11 +96,19 @@ for (name in names(params)) {
   message(sprintf("%s = ", name), params[[name]])
 }
 
+mode <- params$mode
+
 
 
 set.seed(123)
+number_of_cores <- parallel::detectCores()
 if (!is.null(params$cores)) {
-  options(mc.cores = params$cores)   # This option is in package parallel
+  number_of_cores <- min(params$cores, number_of_cores)
+  options(mc.cores   = number_of_cores)   # This option is in package parallel
+  options(boot.ncpus = number_of_cores)   # For bootstrapping
+} else {
+  options(mc.cores   = number_of_cores)
+  options(boot.ncpus = number_of_cores)
 }
 
 
@@ -91,7 +119,7 @@ rawresultdir = "../data/raw_results/"   # I store plot objects and tables in thi
 # Id for a run. For example files in rawresultdir use this id as part of their name. 
 # Probably I should add a possibility to download raw results from the web interface.
 if (is.null(params$id)) {
-  id <- paste(params$date, params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
+  id <- paste(params$date, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
 } else {
   id <- params$id
 }
@@ -107,29 +135,7 @@ data <- data %>%
 
 
 
-sample_fraction <- params$sample_fraction
 
-is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
-
-if (sample_fraction > 1 && is.wholenumber(sample_fraction)) {  # If a sample size is given instead of fraction, convert it to sample fraction
-  low_limit <- ifelse(params$method=="no-fix", 2, 1)
-  data <- data %>% group_by(donor) %>%
-    filter(n() > low_limit) %>%
-    ungroup()
-  
-  if (params$sex == "male") {
-    temp <- data %>% filter(sex=="male")
-  }
-  else if (params$sex == "female") {
-    temp <- data %>% filter(sex=="female")
-  } else {
-    temp <- data
-  }
-  n <- length(unique(temp$donor))  # number of donors
-  rm(temp)
-  sample_fraction <- sample_fraction / n
-  message(sprintf("Number of donors: %i, sample_fraction: %f", n, sample_fraction))
-}
 
 
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
@@ -146,12 +152,7 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
 }
 
 
-# Pretty names for parameters
-#vars <- descript %>% filter(!Variable %in% c("donor", "Hb", "Hb_first", "Hb_deferral")) %>% pull(Pretty)   # Convert to pretty names
 
-#if (!is.null(donor_variables)) {
-#  vars     <- c(vars, pretty_donor_variables)
-#}
 
 # Make sure the columns in data are in the same order as in the vars list (only needed for stan preprocessing)
 variables_in_order <- setdiff(descript$Variable, "donor")
@@ -165,25 +166,12 @@ if (!is.null(donor_variables)) {
   data <- data %>% select(all_of(variables_in_order), everything())
 }
 
-if (params$sex == "male") {
-  data <- data %>% filter(sex == "male")
-} else if (params$sex == "female") {
-  data <- data %>% filter(sex == "female")
-}
 
-sample_donors <- function(df, fraction) {
-  donors <- df %>% select(donor) %>% distinct() %>% sample_frac(fraction, replace=FALSE) %>% pull(donor)
-  return(df %>% filter(donor %in% donors))
-}
-data <- sample_donors(data, sample_fraction)
 
 # Maybe this is not needed except for linear regression
 data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 
-
-summary_rows <- list()  # This is used to construct the summary table in the end
-                   # It has columns Model, MAE, RMSE, AUROC, and AUPR
 
 ```
 
@@ -195,7 +183,7 @@ summary_rows <- list()  # This is used to construct the summary table in the end
 
 ### Donation-specific variables
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, results="markup"}
 kable(descript)
 ```
 
@@ -205,51 +193,74 @@ kable(descript)
 kable(donor_descript %>% filter(Variable %in% names(donor_specific_variables)))
 ```
 
-```{r, results="asis", echo=FALSE}
+```{r Descriptions, results="asis", echo=FALSE}
 cat(sprintf("### Summary plots of variables (%s)\n", params$sex))
 ```
 
 
-```{r Summary plots, echo = FALSE}
-#Plot distributions for donors
-
-g <- params$sex
-color <- case_when(g == "male" ~ "blue", g =="female" ~ "orange", TRUE ~ "green")
-
-temp_donors <- data$donor
-
-# Find out do donors have at least one deferral
-at_least_one_deferral <- data %>% 
-  group_by(donor) %>% 
-  summarise(one_deferral=max(Hb_deferral))
+```{r Summary plots, echo = FALSE, results="hide"}
+create_summary_plots(data, donor_specific_variables, params$sex, descript, donor_descript)
 
 
-pboth <- data %>%
-  filter(first_event == FALSE) %>%
-  select(all_of(descript$Variable))
-
-summary(pboth)
-pboth <- summary_plotter(pboth, descript, color)
-pboth
 
 
-temp_donor_specific <- at_least_one_deferral
-#tr <- tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
-if (!is.null(params$donor_specific_file)) {
-  temp_donor_specific <- donor_specific_variables %>% 
-    inner_join(at_least_one_deferral)
+
+```{r Partition and enrich, echo=FALSE}
+debug <- TRUE
+
+donors <- ndonor(data)
+message(sprintf("Number of donors is %i\n", length(donors)))
+old_count <- nrow(data); old_count2 <- ndonor(data)
+
+#tmp <- old_split(data)
+tmp <- new_split(data, mode)
+train_orig <-tmp$train
+test <- tmp$test
+
+message(sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
+              old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2))
+message("Here")
+sink(file=stderr(), type="output"); summary(train_orig); sink()
+n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+message(sprintf("%i donors have at least one deferral\n", n))
+#message(summary(train_orig))
+if (debug) save(train_orig, file="/tmp/pre-enriched.rdata")
+
+# enrich the data so that 50% of the donors have deferral as their last donation attempt
+old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
+#sink(file=stderr(), type="output")
+if (old_count2 >= 1000) {
+  enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
+  #sink()
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+                  old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
+  if (debug) save(enriched, file="/tmp/post-enriched.rdata")
+} else {  # Don't enrich if less than 1000 donors
+  message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
+  enriched <- train_orig
 }
 
-pdata2 <- temp_donor_specific %>%
-  filter(donor %in% temp_donors)
-pdata2 <- summary_plotter(pdata2, 
-                          donor_descript,# %>% add_row(tr), 
-                          color)
-pdata2
+n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+message(sprintf("%i donors have at least one deferral\n", n))
 
+# Drop donors whose last ferritin is not measured before the last blood donation after the truncation
+if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
+  old_count <- nrow(enriched); old_count2 <- ndonor(enriched)
+  enriched <- enriched %>% 
+    group_by(donor) %>% 
+    mutate(last_donation_date = max(dateonly)) %>% 
+    ungroup() %>% 
+    filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
+    select(-last_donation_date)
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
+              old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
+}
+sink(file=stderr(), type="output"); summary(enriched); sink()
+if (debug) save(enriched, file="/tmp/enriched.rdata")
+#enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
+#rm(train_orig)
 
-
-time_series_length_plotter(data, color)
+message("and here")
 ```
 
 
@@ -259,7 +270,6 @@ time_series_length_plotter(data, color)
 
 ```{r clean up memory, echo = FALSE}
 rm(data); invisible(gc())
-#rm(data.male); invisible(gc(reset = TRUE))
 ```
 
 
@@ -269,58 +279,52 @@ rm(data); invisible(gc())
 ## Results
 
 
-```{r}
-dummy_plots <- function(df) {
-  result <- list()
-  result$confusion_matrix_plot <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
-  result$roc_plot <- create_roc_new(df$original_label, df$score)
-  result$pr_plot <- create_precision_recall_new(df$original_label, df$score)
-  result$f1_ci <- get_f1_ci(df)
-  return(result)
-}
-```
+
 
 ```{r Decision tree, results="hide"}
+id <- sprintf("dt-%s", params$sex)
 
 # Instead of using the real input data, I create random data
 n=500   # We create n random rows
-df <- tibble(original_value  = rnorm(n, 150, 20),
+if (params$sex == "both") {
+  sex2 <- sample(c("male", "female"), n, replace = TRUE)
+} else {
+  sex2 <- rep(params$sex, n)
+}
+
+df <- tibble(id=id,
+             model="dt",
+             sex = sex2,
+             original_value  = rnorm(n, 150, 20),
              predicted_value = rnorm(n, 150, 20),
-             sex = sample(c("male", "female"), n, replace = TRUE),
              original_label  = as.integer(original_value < ifelse(sex=="male", params$Hb_cutoff_male, params$Hb_cutoff_female)),
              predicted_label = as.integer(predicted_value < ifelse(sex=="female", params$Hb_cutoff_male, params$Hb_cutoff_female)),
              score           = rnorm(n))
 
+if (!is.null(params$prediction_table_file)) {
+  write_csv(df, params$prediction_table_file)   # Pass the table to the web app as well
+}
 
 # Create the plots
-results_decision_tree <- dummy_plots(df)
+results_decision_tree <- gather_results(df, Id=id, Model = "dt", Pretty="Decision tree", Sex=params$sex)
 
 # Show the plots
 results_decision_tree$confusion_matrix_plot
 results_decision_tree$roc_plot 
 results_decision_tree$pr_plot
 
-t <- tibble(Id="both-dt", Model="Decision tree", Sex=params$sex, 
-            MAE=NA, RMSE=NA, MAE2=NA, RMSE2=NA) 
 
-t <- bind_cols(c(t, results_decision_tree$roc_plot$roc_ci, results_decision_tree$pr_plot$pr_ci, results_decision_tree$f1_ci))
-
-summary_rows[[length(summary_rows)+1]] <- t
-# summary_rows[[length(summary_rows)+1]] <- list(Model=sprintf("%s, decision tree", params$sex), MAE=NA, RMSE=NA, 
-#                                            MAE2=NA, RMSE2=NA, 
-#                                            AUC=results_decision_tree$roc_plot$roc_auc, 
-#                                            AUPR=results_decision_tree$pr_plot$pr_auc)
-
-save(results_decision_tree, file = paste(rawresultdir, sprintf("raw_result_%s_decision_tree_%s.rdata", params$sex, id), sep="/"))
+summary_table <- results_decision_tree$summary
 
 # if (!is.null(params$effect_size_table_file)) {
 #   write_csv(rrfFit.varimp, params$effect_size_table_file)   # Pass the table to the web app as well
 # }
 
-# Remove unnescessary values to save memory
-#if (knit == TRUE) {rm(results_male_decision_tree); invisible(gc(reset = TRUE))}
+
 
 ```
+
+
 
 
 
@@ -330,21 +334,13 @@ save(results_decision_tree, file = paste(rawresultdir, sprintf("raw_result_%s_de
 
 ```{r Summary}
 
-
-summary_table <- bind_rows(summary_rows)
-summary_table <- summary_table %>% rename("MAE (g / L)" = MAE, "RMSE (g / L)" = RMSE,
-                            "MAE (mmol / L)" = MAE2, "RMSE (mmol / L)" = RMSE2)
-
-
-write_csv(summary_table, paste(rawresultdir, "errors_", id, ".csv", sep = ''))
 if (!is.null(params$summary_table_file)) {
   write_csv(summary_table, params$summary_table_file)   # Pass the table to the web app as well
 }
 
 ```
 
-```{r}
-cols <- c("Model", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
-          "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+```{r Show summary table, results="markup"}
+cols <- c("Model"="Pretty", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
 ```

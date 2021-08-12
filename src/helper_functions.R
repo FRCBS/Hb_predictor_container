@@ -1828,9 +1828,9 @@ predict_new <- function(model.list, n.samples = 1000) {
   }
   model.list$new_donbs <- new_donbs
   if (model.list$type == "dlmm") {
-    prediction_matrix <- new_predictions_icp(model.list)
+    prediction_matrix <- new_predictions_icp(model.list, n.samples=n.samples)
   } else if (model.list$type == "lmm") {
-    prediction_matrix <- new_predictions_simple(model.list)
+    prediction_matrix <- new_predictions_simple(model.list, n.samples=n.samples)
   }
   return(list(new_donbs = new_donbs[model.list$last_events,],   # take only donbs for last events
               prediction_matrix = prediction_matrix,
