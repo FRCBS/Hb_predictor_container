@@ -58,15 +58,15 @@ model {
     } 
 }
 generated quantities {
-    vector[N] log_lik;
+    // vector[N] log_lik;
 
-    for (i in 1:N) {
-        if (i == first_events[donor[i]]) {
-            log_lik[i] = normal_lpdf(Hb[i] | Z[donor[i],] * ups + theta * don_b[donor[i]] + C[donor[i],] * phi, sigma_eeta);
-        } 
-        else {
-            log_lik[i] = normal_lpdf(Hb[i] | Q_star[i,] * beta_tilde + don_b[donor[i]] + C[donor[i],] * phi, sigma_eps);
-        }
-    }
+    // for (i in 1:N) {
+    //     if (i == first_events[donor[i]]) {
+    //         log_lik[i] = normal_lpdf(Hb[i] | Z[donor[i],] * ups + theta * don_b[donor[i]] + C[donor[i],] * phi, sigma_eeta);
+    //     } 
+    //     else {
+    //         log_lik[i] = normal_lpdf(Hb[i] | Q_star[i,] * beta_tilde + don_b[donor[i]] + C[donor[i],] * phi, sigma_eps);
+    //     }
+    // }
 }
 

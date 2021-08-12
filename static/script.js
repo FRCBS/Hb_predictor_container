@@ -1,4 +1,5 @@
 var old_unit = "gperl";
+var interval_id;
 
 function convert_hb_unit(from, to, hb) {
     hb = parseFloat(hb);
@@ -130,7 +131,6 @@ document.onreadystatechange = function() {
     var httpRequest;
     var start_time;
     var time=document.getElementById("time");
-    var interval_id;
     
 
     
@@ -372,6 +372,7 @@ document.onreadystatechange = function() {
     
     function stop_waiting(interval_id) {
 	document.getElementsByClassName("lds-spinner")[0].style.display = "none";
+	console.log("interval_id is: " + interval_id);
 	clearInterval(interval_id);  // stop the timer
     }
     

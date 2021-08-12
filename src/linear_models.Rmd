@@ -137,7 +137,7 @@ knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, time_it=TRUE)
 
 message("Parameters are:")
 for (name in names(params)) {
-  message(sprintf("%s = ", name), params[[name]])
+  message(sprintf("%s = ", name), paste(params[[name]], collapse=" "))
 }
 
 if (knitr::opts_chunk$get("dev") == "pdf") {
@@ -187,6 +187,7 @@ data_id <- id
 
 fit_id = id
 
+out_of_sample_predictions <- TRUE
 
 source("helper_functions.R")
 source("validate_stan_fit.R")
@@ -259,31 +260,76 @@ if (!is.null(donor_variables)) {
 }
 
 
+data <- data %>% select(-nb_donat_progesa, -nb_donat_outside)  # Drop these as they contain NAs
+
+if (out_of_sample_predictions) {
+  tmp <- new_split(data, params$mode)
+  train <-tmp$train
+  test <- tmp$test
+  rm(tmp)
+} else {
+  train <- data
+}
 
 if (create_datasets_bool) {
   source("create_stan_datasets.R")
-  lst <- create_stan_datasets(data, datadir, dumpdir, data_id, hlen=params$hlen, params$hlen_exactly,
+  lst <- create_stan_datasets(train, datadir, dumpdir, data_id, hlen=params$hlen, params$hlen_exactly,
                          Hb_cutoff_male = params$Hb_cutoff_male,
                          Hb_cutoff_female = params$Hb_cutoff_female, 
                          basic_variables=basic_variables, basic_variables_dlmm=basic_variables_dlmm, donor_variables=donor_variables,
                          compute_lmm=compute_lmm, compute_dlmm=compute_dlmm,
-                         sex=params$sex)
+                         sex=params$sex, out_of_sample_predictions=out_of_sample_predictions)
   
-  data <- lst$small.data
-} else {   # This is only for plotting purpose
+  if (out_of_sample_predictions) {
+    message("Creating validate datasets for out-of-sample prediction")
+    # icp-consts
+    Hb_index <- 1
+    stan_preprocessed_validate_objects <- c()
+    if (compute_dlmm) {
+      sl.val.dlmm <- stan_preprocess_icp_new(drop_some_fields(test, params$sex) %>% select(-Hb_first),  
+                                             basic_variables=basic_variables_dlmm, 
+                                             donor_variables = donor_variables, 
+                                             test_data = FALSE,
+                                             Hb_index=Hb_index, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
+      stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.dlmm")
+    }
+    
+    if (compute_lmm) {
+      # simple-consts
+      sl.val.lmm <- stan_preprocess_new(drop_some_fields(test, params$sex) %>% select(-previous_Hb),  
+                                        basic_variables=basic_variables, donor_variables = donor_variables, 
+                                        test_data = FALSE,
+                                        Hb_index=Hb_index, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
+      stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.lmm")
+    }
   
-  #data   <- sample_set(data,   sample_fraction)
-  data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
+    stan_preprocessed_validate_filename <- paste(datadir,"stan_preprocessed_validate_datasets_", id, ".RData", sep = '')
+    save(list=stan_preprocessed_validate_objects, file = stan_preprocessed_validate_filename)
+
+  }
 }
 
+# This is for summary plots only
+data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
-if (is.null(donor_variables)) {
-  stan_model_file_lmm  <- "stan/container.stan"
-  stan_model_file_dlmm <- "stan/container_heckman.stan"
+if (out_of_sample_predictions) {
+  if (is.null(donor_variables)) {
+    stan_model_file_lmm  <- "stan/oos.stan"
+    stan_model_file_dlmm <- "stan/oos_heckman.stan"
+  } else {
+    stan_model_file_lmm  <- "stan/oos_consts.stan"
+    stan_model_file_dlmm <- "stan/oos_heckman_consts.stan"
+  }
 } else {
-  stan_model_file_lmm  <- "stan/container_consts.stan"
-  stan_model_file_dlmm <- "stan/container_heckman_consts.stan"
+  if (is.null(donor_variables)) {
+    stan_model_file_lmm  <- "stan/container.stan"
+    stan_model_file_dlmm <- "stan/container_heckman.stan"
+  } else {
+    stan_model_file_lmm  <- "stan/container_consts.stan"
+    stan_model_file_dlmm <- "stan/container_heckman_consts.stan"
+  }
 }
+
 
 
 summary_rows <- list()  # This is used to construct the error table in the end
@@ -302,7 +348,9 @@ prediction_rows <- list() # This is for the effect sizes
 
 ```{r, echo=FALSE}
 kable(descript)
-kable(donor_descript %>% filter(Variable %in% c(names(donor_specific_variables), "one_deferall")))
+#if (!is.null(donor_variables)) {
+  kable(donor_descript %>% filter(Variable %in% c(names(donor_specific_variables), "one_deferral")))
+#}
 ```
 
 
@@ -310,7 +358,7 @@ kable(donor_descript %>% filter(Variable %in% c(names(donor_specific_variables),
 cat(sprintf("### Summary plot of variables (%s)\n", params$sex))
 ```
 
-```{r Summary plots, echo = FALSE}
+```{r Summary plots, echo = FALSE, results="hide"}
 #Plot distributions
 
 
@@ -337,13 +385,10 @@ rm(data); invisible(gc(reset = TRUE))
 
 ## Results
 
-
-```{asis, echo=TRUE, eval=compute_lmm}
-### Linear mixed model
-```
-
-```{r Linear mixed model, results="hide", eval=compute_lmm}
-run_linear_model <- function(Id, Model, Pretty, Sex, stan_model) {
+```{r Run linear model helper function}
+run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters, pretty_variables) {
+  message("In run_linear_model function")
+  
   # Load first datasets
   message("0")
   if (!exists(sprintf("stan.preprocessed.%s", Model)))
@@ -381,12 +426,43 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model) {
   rhats <- bayesplot::rhat(fit)
   message(sprintf("Maximum rhat is %f for %s %s\n", max(rhats), Sex, Model))
   
+  if (out_of_sample_predictions) {
+    if(Model=="lmm") {
+      sl.val <- sl.val.lmm
+    } else {
+      sl.val <- sl.val.dlmm
+    }
+    oos_prediction_filename <- sprintf("%s/oos_prediction_%s_%s.rds", datadir, Sex, Model)
+    if (skip_train) {
+      results <- readRDS(oos_prediction_filename)
+    } else {
+      pred.list <- create_model_list(fit, type = Model, sl.val)
+      saveRDS(pred.list, sprintf("%s/pred_list_%s_%s.rds", datadir, Sex, Model))   # Only for debugging, remove me
+      #pred.list$type <- Model
+      #pred.list$threshold <- normalize_vector(model.params$threshold, sl.val$par_means[["Hb"]], sl.val$par_sds[["Hb"]])     # Added by Jarkko
+      #assign("jarkko_predictions", pred.list, envir=globalenv())   # Remove this
+      results <- predict_new(pred.list)
+      saveRDS(results, oos_prediction_filename)   # Only for debugging, remove me
+    }
+    
+    prediction_matrix <- results$prediction_matrix
+    if (Sex == "both") {
+      test_donor_sex <- sl.val$x_train$sex[results$last_events]
+    }
+    sl.val$y_test <- sl.val$y_train[results$last_events]
+  } else {
+    prediction_matrix <- rstan::extract(fit, pars = c("y_pred"))$y_pred
+    if (Sex == "both") {
+      test_donor_sex <- stan.preprocessed$x_test$sex
+    }
+  }
+  
   v <- 0
   if (Sex == "both") {
     message("Here inside")
-    message(sprintf("Length of x_test$sex: %i, mean: %f\n", length(stan.preprocessed$x_test$sex), mean(stan.preprocessed$x_test$sex)))
+    message(sprintf("Length of x_test$sex: %i, mean: %f\n", length(test_donor_sex), mean(test_donor_sex)))
     # For some reason I have to do this inside the 'if' expression
-    v <- ifelse(stan.preprocessed$x_test$sex == 0, params$Hb_cutoff_male, params$Hb_cutoff_female)
+    v <- ifelse(test_donor_sex == 0, params$Hb_cutoff_male, params$Hb_cutoff_female)
   }
   message("Here")
   # If sex=="both then Hb_cutoff is vector, otherwise it is scalar
@@ -396,15 +472,17 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model) {
   message("Here2")
   message(sprintf("Length of Hb_cutoff: %i, mean: %f\n", length(Hb_cutoff), mean(Hb_cutoff)))
   message("Here3")
-  original_Hb <- denormalize_vector(stan.preprocessed$y_test, stan.preprocessed$par_means["Hb"], stan.preprocessed$par_sds["Hb"]) 
-  message(sprintf("Length of original_Hb: %i, mean: %f\n", length(original_Hb), mean(original_Hb)))
-  scores <- get_scores(fit, Hb_cutoff, stan.preprocessed$par_means[["Hb"]], stan.preprocessed$par_sds[["Hb"]])
-  test_labels <- ifelse(original_Hb < Hb_cutoff, 1, 0)
+  
+  if (out_of_sample_predictions) {
+    df <- create_result_dataframe(sl.val, prediction_matrix, Hb_cutoff, metric="mean")  
+  } else {
+    df <- create_result_dataframe(stan.preprocessed, prediction_matrix, Hb_cutoff, metric="mean")
+  }
   
   
   val <- validate_fit(fit, 
-                      original_value=original_Hb, original_label=test_labels, Hb_cutoff=Hb_cutoff, score=scores,
-                      params=stan_parameters, pnames=pretty_variables, metric = "mean", cat.plot = FALSE)
+                      df=df, Hb_cutoff=Hb_cutoff,
+                      params=stan_parameters, pnames=pretty_variables, cat.plot = FALSE)
 
   
   d <- val$df %>% 
@@ -422,8 +500,17 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model) {
   return(list(summary=t, effect_size=e, prediction=d, val=val))
 }
 
+```
+
+```{asis, echo=compute_lmm}
+### Linear mixed model
+```
+
+```{r Linear mixed model, results="hide", eval=compute_lmm}
+
 id <- sprintf("lmm-%s", params$sex)
-res <- run_linear_model(Id=id, Model = "lmm", Pretty="Linear mixed model", Sex=params$sex, stan_model_file_lmm)
+res <- run_linear_model(Id=id, Model = "lmm", Pretty="Linear mixed model", Sex=params$sex, stan_model_file_lmm, 
+                        stan_parameters = stan_parameters, pretty_variables = pretty_variables)
 summary_rows[[length(summary_rows)+1]] <- res$summary
 effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction
@@ -440,7 +527,7 @@ val$pr_plot
 
 
 
-```{asis, echo=TRUE, eval=compute_dlmm}
+```{asis, echo=compute_dlmm}
 ### Dynamic linear mixed model
 ```
 
@@ -448,7 +535,8 @@ val$pr_plot
 
 
 id <- sprintf("dlmm-%s", params$sex)
-res <- run_linear_model(Id=id, Model = "dlmm", Pretty="Dynamic linear mixed model", Sex=params$sex, stan_model_file_dlmm)
+res <- run_linear_model(Id=id, Model = "dlmm", Pretty="Dynamic linear mixed model", Sex=params$sex, stan_model_file_dlmm, 
+                        stan_parameters = stan_parameters_dlmm, pretty_variables = pretty_variables_dlmm)
 summary_rows[[length(summary_rows)+1]] <- res$summary
 effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction

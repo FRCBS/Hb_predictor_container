@@ -1456,6 +1456,7 @@ kfold_fit <- function(folds, model, model.params,
       
       model.data <- list(N = nrow(Qr$Q_star),
                          K = ncol(Qr$Q_star),
+                         C = sl.train$C,
                          L = ncol(sl.train$Z),
                          M = ncol(sl.train$C),
                          Ndon = length(unique(sl.train$train_donors)),
@@ -1463,9 +1464,8 @@ kfold_fit <- function(folds, model, model.params,
                          R_star = Qr$R_star,
                          R_star_inv = Qr$R_star_inv,
                          Hb = sl.train$y_train,
-                         Z = sl.train$Z,
-                         C = sl.train$C,
                          donor = sl.train$train_donors,
+                         Z = sl.train$Z,
                          first_events = sl.train$first_events)
       
     } else if (model.params$type == "icp") {
@@ -1492,12 +1492,12 @@ kfold_fit <- function(folds, model, model.params,
       
       model.data <- list(N = nrow(Qr$Q_star),
                          K = ncol(Qr$Q_star),
+                         C = sl.train$C,
                          M = ncol(sl.train$C),
                          Ndon = length(unique(sl.train$train_donors)),
                          Q_star = Qr$Q_star,
                          R_star = Qr$R_star,
                          R_star_inv = Qr$R_star_inv,
-                         C = sl.train$C,
                          Hb = sl.train$y_train,
                          donor = sl.train$train_donors)
       

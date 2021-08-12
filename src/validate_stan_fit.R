@@ -21,10 +21,10 @@ probability_of_deferral <- function(v, threshold) {
 }
 
 # deferral score
-get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
+get_scores <- function(prediction_matrix, cutoff, norm_mean, norm_sd) {
   message("In get_scores function")
-  pars <- rstan::extract(fit, pars = c("y_pred"))
-  y_pred <- pars$y_pred
+  #pars <- rstan::extract(fit, pars = c("y_pred"))$y_pred
+  y_pred <- prediction_matrix
   
   #y_pred <- apply(y_pred, MARGIN = 2, FUN = denormalize, smallm.stan$original_Hb)
   #print(y_pred)
@@ -33,7 +33,7 @@ get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
   message(sprintf("Dimensions of y_pred: %i rows, %i columns", nrow(y_pred), ncol(y_pred)))
   #predicted_probabilities <- apply(y_pred, MARGIN = 2, FUN = probability_of_deferral, threshold = normalised_threshold)
   # The rows are iterations and columns correspond to donors
-  predicted_probabilities <- map2_dbl(as_tibble(y_pred), normalised_threshold, probability_of_deferral)
+  predicted_probabilities <- map2_dbl(as_tibble(y_pred, .name_repair="unique"), normalised_threshold, probability_of_deferral)
   return(predicted_probabilities) 
 }
 
@@ -406,8 +406,37 @@ create_scatter_confusion_plots <- function(df, Hb_cutoff,
   scatter_confusion
 }
 
+create_result_dataframe <- function(stan.preprocessed, prediction_matrix, Hb_cutoff, metric="mean") {
+  df <- tibble(
+    original_value = denormalize_vector(stan.preprocessed$y_test, stan.preprocessed$par_means["Hb"], stan.preprocessed$par_sds["Hb"]) ,
+    original_label = ifelse(original_value < Hb_cutoff, 1, 0),
+    score = get_scores(prediction_matrix, Hb_cutoff, stan.preprocessed$par_means[["Hb"]], stan.preprocessed$par_sds[["Hb"]])
+  )
+  message(sprintf("Length of original_Hb: %i, mean: %f\n", length(df$original_value), mean(df$original_value)))
+  
+  # The rows are iterations and columns correspond to donors
+  #prediction_matrix <- rstan::extract(fit, pars = c("y_pred"))$y_pred
+  
+  
+  if (metric == "mean") {
+    y_pred <- colMeans(prediction_matrix)
+  } else if (metric == "quantile") {
+    y_pred <- apply(prediction_matrix, 2, quantile, 0.05)
+  }
+  
+  df <- df %>%
+    mutate(sds = apply(prediction_matrix, 2, FUN = sd),
+           #predicted_value = denormalize(y_pred, original_value),
+           predicted_value = denormalize_vector(y_pred, stan.preprocessed$par_means["Hb"], stan.preprocessed$par_sds["Hb"]),
+           predicted_label = ifelse(predicted_value < Hb_cutoff, 1, 0))
+  
+  
+  return(df)
+}
 
-validate_fit <- function(fit, original_value, original_label, Hb_cutoff, score, params, pnames = NULL, metric = "mean", 
+
+
+validate_fit <- function(fit, df, Hb_cutoff, params, pnames = NULL,
                          cat.plot = TRUE,
                          use_optimal_cutoff=FALSE) {
   message("In validate_fit function")
@@ -435,22 +464,10 @@ validate_fit <- function(fit, original_value, original_label, Hb_cutoff, score, 
   #loo.plot <- plot(loo1)
   
   # Observed vs predicted scatter plot
-  pars <- rstan::extract(fit, pars = c("y_pred"))
-  y_pred <- pars$y_pred  # The rows are iterations and columns correspond to donors
-  
-  if (metric == "mean") {
-    y_pred <- colMeans(y_pred)
-  } else if (metric == "quantile") {
-    y_pred <- apply(y_pred, 2, quantile, 0.05)
-  }
-  sds <- apply(pars$y_pred, 2, FUN = sd)
-  
-  predicted_value <- denormalize(y_pred, original_value)
-  predicted_label <- ifelse(predicted_value < Hb_cutoff, 1, 0)
 
   
-  df <- tibble(predicted_value = predicted_value, sds=sds, original_value = original_value, 
-               predicted_label = predicted_label, original_label = original_label, score=score)
+  # df <- tibble(predicted_value = predicted_value, original_value = original_value, sds=sds, 
+  #              predicted_label = predicted_label, original_label = original_label, score=score)
   
   scatter_plot <- create_scatter_plot(df, Hb_cutoff)
   
@@ -478,7 +495,7 @@ validate_fit <- function(fit, original_value, original_label, Hb_cutoff, score, 
     optimal_cutoff <- cp$optimal_cutpoint
     scatter_plot <- scatter_plot +
       geom_hline(yintercept = optimal_cutoff, linetype = "dashed", color="green")
-    optimal_pred_labels <- ifelse(predicted_value < optimal_cutoff, 1, 0)
+    optimal_pred_labels <- ifelse(df$predicted_value < optimal_cutoff, 1, 0)
     optimal.confusion.matrix.plot <- create_confusion_matrix_plot(df$original_label, optimal_pred_labels)
   } else {
     optimal.confusion.matrix.plot <- NULL
@@ -504,8 +521,8 @@ validate_fit <- function(fit, original_value, original_label, Hb_cutoff, score, 
               #loo.plot = loo.plot,
               confusion.matrix.plot = confusion.matrix.plot,
               optimal.confusion.matrix.plot = optimal.confusion.matrix.plot,
-              predicted_label = predicted_label,
-              predicted_value = predicted_value,
+              predicted_label = df$predicted_label,
+              predicted_value = df$predicted_value,
               stan_variable_names = params,
               pretty_variable_names = pnames,
               mae = mae,
