@@ -21,10 +21,10 @@ probability_of_deferral <- function(v, threshold) {
 }
 
 # deferral score
-get_scores <- function(fit, cutoff, norm_mean, norm_sd) {
+get_scores <- function(prediction_matrix, cutoff, norm_mean, norm_sd) {
   message("In get_scores function")
-  pars <- rstan::extract(fit, pars = c("y_pred"))
-  y_pred <- pars$y_pred
+  #pars <- rstan::extract(fit, pars = c("y_pred"))$y_pred
+  y_pred <- prediction_matrix
   
   #y_pred <- apply(y_pred, MARGIN = 2, FUN = denormalize, smallm.stan$original_Hb)
   #print(y_pred)
@@ -406,26 +406,28 @@ create_scatter_confusion_plots <- function(df, Hb_cutoff,
   scatter_confusion
 }
 
-create_result_dataframe <- function(stan.preprocessed, fit, Hb_cutoff, metric="mean") {
+create_result_dataframe <- function(stan.preprocessed, prediction_matrix, Hb_cutoff, metric="mean") {
   df <- tibble(
     original_value = denormalize_vector(stan.preprocessed$y_test, stan.preprocessed$par_means["Hb"], stan.preprocessed$par_sds["Hb"]) ,
     original_label = ifelse(original_value < Hb_cutoff, 1, 0),
-    score = get_scores(fit, Hb_cutoff, stan.preprocessed$par_means[["Hb"]], stan.preprocessed$par_sds[["Hb"]])
+    score = get_scores(prediction_matrix, Hb_cutoff, stan.preprocessed$par_means[["Hb"]], stan.preprocessed$par_sds[["Hb"]])
   )
   message(sprintf("Length of original_Hb: %i, mean: %f\n", length(df$original_value), mean(df$original_value)))
   
-  pars <- rstan::extract(fit, pars = c("y_pred"))
-  y_pred <- pars$y_pred  # The rows are iterations and columns correspond to donors
+  # The rows are iterations and columns correspond to donors
+  #prediction_matrix <- rstan::extract(fit, pars = c("y_pred"))$y_pred
+  
   
   if (metric == "mean") {
-    y_pred <- colMeans(y_pred)
+    y_pred <- colMeans(prediction_matrix)
   } else if (metric == "quantile") {
-    y_pred <- apply(y_pred, 2, quantile, 0.05)
+    y_pred <- apply(prediction_matrix, 2, quantile, 0.05)
   }
   
   df <- df %>%
-    mutate(sds = apply(pars$y_pred, 2, FUN = sd),
-           predicted_value = denormalize(y_pred, original_value),
+    mutate(sds = apply(prediction_matrix, 2, FUN = sd),
+           #predicted_value = denormalize(y_pred, original_value),
+           predicted_value = denormalize_vector(y_pred, stan.preprocessed$par_means["Hb"], stan.preprocessed$par_sds["Hb"]),
            predicted_label = ifelse(predicted_value < Hb_cutoff, 1, 0))
   
   

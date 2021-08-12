@@ -67,6 +67,6 @@ generated quantities {
     //     else {
     //         log_lik[i] = normal_lpdf(Hb[i] | Q_star[i,] * beta_tilde + don_b[donor[i]] + C[donor[i],] * phi, sigma_eps);
     //     }
-    }
+    // }
 }
 

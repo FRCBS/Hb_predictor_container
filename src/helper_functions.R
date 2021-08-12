@@ -319,6 +319,7 @@ stratified_sample <- function(df, stratify_by_sex, size,
 # Otherwise, include donors who have donated at least hlen times.
 # If exactly==TRUE, then include donors that have donated exactly hlen times.
 filter_based_on_number_of_donations <- function(df, hlen, exactly=FALSE) {
+  message("In filter_based_on_number_of_donations function")
   if (!is.null(hlen)) {
     leq <- FALSE
     if (hlen < 0) {
@@ -1669,6 +1670,7 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
 }
 
 create_model_list <- function(fit, type, sl) {
+  message("In create_model_list function")
   # Create_model_list function can be used to create model_list object to 
   # do out-of-sample predictions for new donors. This function takes as input:
   # Stan-fit object, type parameter which describes which kind of model was fit and 
@@ -1680,7 +1682,7 @@ create_model_list <- function(fit, type, sl) {
   model.list$y <- sl$y_train
   model.list$donor <- sl$train_donors
   model.list$type <- type
-  if (type == "icp" || type == "icp-consts") {
+  if (type == "dlmm") {
     model.list$sigma_b <- unlist(get_params(pars = c("sigma_b"), fit = fit))
     model.list$sigma_epsilon <- unlist(get_params(pars = c("sigma_eps"), fit = fit))
     model.list$ups <- as.matrix(get_params(pars = names(fit)[grepl("ups", names(fit))], fit = fit))
@@ -1692,7 +1694,7 @@ create_model_list <- function(fit, type, sl) {
     model.list$sigma_b <- unlist(get_params(pars = c("sigmab"), fit = fit))
     model.list$sigma_epsilon <- unlist(get_params(pars = c("sigmaeps"), fit = fit))
   }
-  if (type == "simple-consts" || type == "icp-consts") {
+  if (!is.null(sl$C)) {
     model.list$phi <- as.matrix(get_params(pars = c("phi"), fit = fit))
     model.list$C <- as.matrix(sl$C)
   }
@@ -1787,6 +1789,7 @@ get_params <- function(pars, fit) {
 
 
 predict_new <- function(model.list, n.samples = 1000) {
+  message("In predict_new function")
   # Input as a list:
   # x: events that we want to predict
   # y: values that we're trying to predict
@@ -1805,33 +1808,41 @@ predict_new <- function(model.list, n.samples = 1000) {
   model.list$sigma_epsilon_mean <- mean(model.list$sigma_epsilon)
   model.list$beta_mean <- unname(colMeans(model.list$beta))
   
-  if (model.list$type == "icp" | model.list$type == "icp-consts") {
+  if (model.list$type == "dlmm") {
     model.list$theta_mean <- mean(model.list$theta)
     model.list$sigma_eeta_mean <- mean(model.list$sigma_eeta)
     model.list$ups_mean <- unname(colMeans(model.list$ups))
   }
   rowcount <- 1
-  for (d in unique(df$donor)) {
+  model.list$last_events <- integer()
+  donors <- unique(df$donor)
+  
+  for (d in donors) {
     events <- df %>% filter(donor == d) %>% select(-donor)
     n.events <- nrow(events)
     # Note: n.samples is not used for anything here!
     vals <- calculate_donbs(df = events, model.list, donor = d, n.samples = n.samples)
     new_donbs[rowcount:(rowcount + n.events - 1),] <- vals
     rowcount <- rowcount + n.events
+    model.list$last_events <- append(model.list$last_events, rowcount - 1)
   }
   model.list$new_donbs <- new_donbs
-  if (model.list$type == "icp-consts" | model.list$type == "icp") {
-    pred.list <- new_predictions_icp(model.list)
-  } else if (model.list$type == "simple-consts" | model.list$type == "simple") {
-    pred.list <- new_predictions_simple(model.list)
+  if (model.list$type == "dlmm") {
+    prediction_matrix <- new_predictions_icp(model.list)
+  } else if (model.list$type == "lmm") {
+    prediction_matrix <- new_predictions_simple(model.list)
   }
-  return(list(new_donbs = new_donbs,
-              predictions = pred.list$predictions,
-              predicted_probabilities = pred.list$predicted_probabilities))
+  return(list(new_donbs = new_donbs[model.list$last_events,],   # take only donbs for last events
+              prediction_matrix = prediction_matrix,
+              last_events = model.list$last_events))
+#              predictions = pred.list$predictions,
+#              predicted_probabilities = pred.list$predicted_probabilities))
 }
 
 # Note: n.samples is not used for anything!
 calculate_donbs <- function(df, model.list, donor, n.samples) {
+  #message("In calculate_donbs function")
+  
   ml <- model.list
   N <- nrow(df)
   new_donbs <- matrix(numeric(N*2), ncol = 2)
@@ -1845,7 +1856,7 @@ calculate_donbs <- function(df, model.list, donor, n.samples) {
     x_star <- numeric(time_points)
     if (time_points == 0) {
       new_donbs[i,] <- c(0,ml$sigma_b_mean)
-    } else if (ml$type == "icp-consts" || ml$type == "icp") {
+    } else if (ml$type == "dlmm") {
       x_star[1] <- ml$theta_mean / ml$sigma_eeta_mean
       y_star[1] <- (y[1] - ml$ups_mean %*% ml$Z[donor,]) / ml$sigma_eeta_mean
       if (time_points > 1) {
@@ -1855,7 +1866,7 @@ calculate_donbs <- function(df, model.list, donor, n.samples) {
       dist_mean <- 1/(t(x_star) %*% x_star + ml$sigma_b_mean^(-2)) * (t(x_star) %*% y_star)
       dist_sd <- 1/(t(x_star) %*% x_star + ml$sigma_b_mean^(-2))
       new_donbs[i,] <- c(dist_mean, dist_sd)
-    } else if (ml$type == "simple-consts" || ml$type == "simple") {
+    } else if (ml$type == "lmm") {
       x_star[1:time_points] <- rep(1/ml$sigma_epsilon_mean, time_points)
       y_star[1:time_points] <- (y[1:time_points] - df[1:time_points,] %*% ml$beta_mean) / ml$sigma_epsilon_mean
       dist_mean <- 1/(t(x_star) %*% x_star + ml$sigma_b_mean^(-2)) * (t(x_star) %*% y_star)
@@ -1867,13 +1878,17 @@ calculate_donbs <- function(df, model.list, donor, n.samples) {
 }
 
 new_predictions_icp <- function(model.list, n.samples = 1000) {
+  message("In new_predictions_icp function")
+  
   ml <- model.list
   N <- nrow(ml$x)
   ml$x <- as.matrix(ml$x)
   C <- ml$C
-  predictions <- c()
-  predicted_probabilities <- c()
-  tic(paste0("Predicting Hb-values for ", N, " donation events using Heckman adjusted LME-model."))
+  #predictions <- c()
+  #predicted_probabilities <- c()
+  number_of_donors <- length(unique(ml$donor))
+  prediction_matrix <- matrix(nrow=n.samples, ncol=number_of_donors)
+  tic(sprintf("Predicting Hb-values for %i donation events using Heckman adjusted LME-model.", N))
   for (i in 1:N) {
     donbs <- rnorm(n.samples, ml$new_donbs[i,1], ml$new_donbs[i,2])
     if (i %in% ml$first_events) {
@@ -1890,35 +1905,54 @@ new_predictions_icp <- function(model.list, n.samples = 1000) {
         preds <- preds + apply(ml$phi, 2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$C[ml$donor[i],]
       }
     }
-    predictions[i] <- mean(preds)
-    predicted_probabilities[i] <- length(which(preds < ml$threshold)) / n.samples 
+    #predictions[i] <- mean(preds)
+    #predicted_probabilities[i] <- length(which(preds < ml$threshold)) / n.samples 
+    if (i %in% ml$last_events) {                # We are only interested in predicting the last event of each donor
+      #message("Last event")
+      prediction_matrix[,ml$donor[i]] <- preds
+    }
   }
   toc()
-  return(list(predictions = predictions,
-              predicted_probabilities = predicted_probabilities))
+  # return(list(predictions = predictions,
+  #             predicted_probabilities = predicted_probabilities))
+  return(prediction_matrix)
 }
 
 new_predictions_simple <- function(model.list, n.samples = 1000) {
+  message("In new_predictions_simple function")
+  
   ml <- model.list
   N <- nrow(ml$x)
   ml$x <- as.matrix(ml$x)
   C <- ml$C
-  predictions <- c()
-  predicted_probabilities <- c()
-  tic(paste0("Predicting Hb-values for ", N, " donation events using LME-model without lagged Hb."))
+  #predictions <- c()
+  #predicted_probabilities <- c()
+  number_of_donors <- length(unique(ml$donor))
+  prediction_matrix <- matrix(nrow=n.samples, ncol=number_of_donors)
+  tic(sprintf("Predicting Hb-values for %i donation events using LME-model without lagged Hb.", N))
   for (i in 1:N) {
+    #message(sprintf("i=%i", i))
     donbs <- rnorm(n.samples, ml$new_donbs[i,1], ml$new_donbs[i,2])
+    #message("here1")
     preds <- apply(ml$beta, 2, function(x) sample(x, size = n.samples, replace =TRUE)) %*% ml$x[i,] + donbs +
       rnorm(n = n.samples, mean = 0, sd = sample(ml$sigma_epsilon, size = n.samples, replace = TRUE))
+    #message("here2")
     if (!is.null(C)) {
+      #message("here2.5")
       preds <- preds + apply(ml$phi, 2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$C[ml$donor[i],]
     }
-    predictions[i] <- mean(preds)
-    predicted_probabilities[i] <- length(which(preds < ml$threshold)) / n.samples 
+    #message("here3")
+    #    predictions[i] <- mean(preds)
+#    predicted_probabilities[i] <- length(which(preds < ml$threshold)) / n.samples 
+    if (i %in% ml$last_events) {                # We are only interested in predicting the last event of each donor
+      #message("Last event")
+      prediction_matrix[,ml$donor[i]] <- preds
+    }
   }
   toc()
-  return(list(predictions = predictions,
-              predicted_probabilities = predicted_probabilities))
+#  return(list(predictions = predictions,
+#              predicted_probabilities = predicted_probabilities))
+  return(prediction_matrix)
 }
 
 

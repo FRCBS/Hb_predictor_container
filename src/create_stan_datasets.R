@@ -25,6 +25,8 @@ library(caret)
 # Helper function for creating stan-lists:
 subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE, rdump = FALSE, filename = NULL, dumpdir = NULL, 
                                              threshold = NULL, date=NULL, out_of_sample_predictions=FALSE) {
+  message("In subset_analyses_create_stan_list function")
+  
   # Takes output of stan_preprocess or stan_preprocess_icp as input
   
   # Create the list without slope
@@ -136,6 +138,7 @@ subset_analyses_create_stan_list <- function(df, slopevar = NULL, icpfix = FALSE
 }
 
 drop_some_fields <- function(df, sex2) {
+  message("In drop_some_fields function")
   #df <- df %>% select(-don_id, -sex, -previous_Hb)
   if (sex2=="both") {
     df <- df %>% select(-don_id, -label) %>% mutate(sex = ifelse(sex=="female", TRUE, FALSE))
@@ -206,14 +209,14 @@ create_stan_datasets <- function(data, rdatadir, dumpdir, id, hlen=NULL, hlen_ex
   
   # Create Stan lists
   if (compute_lmm) {
-    stan.lists.lmm <- subset_analyses_create_stan_list(stan.preprocessed.lmm)
+    stan.lists.lmm <- subset_analyses_create_stan_list(stan.preprocessed.lmm, out_of_sample_predictions = out_of_sample_predictions)
     save(stan.lists.lmm, file = paste(rdatadir,"stan_lists_lmm_", id, ".RData", sep = ''))
     rm(stan.lists.lmm)
   }
   gc()
   
   if (compute_dlmm) {
-    stan.lists.dlmm <- subset_analyses_create_stan_list(stan.preprocessed.dlmm, icpfix = TRUE)
+    stan.lists.dlmm <- subset_analyses_create_stan_list(stan.preprocessed.dlmm, icpfix = TRUE, out_of_sample_predictions = out_of_sample_predictions)
     save(stan.lists.dlmm, file = paste(rdatadir,"stan_lists_dlmm_", id, ".RData", sep = ''))
     rm(stan.lists.dlmm)
   }
