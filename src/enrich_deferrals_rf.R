@@ -55,6 +55,7 @@ trim_time_series <- function(df) {
   if (nrow(with_deferrals) > 0) {
     with_deferrals <- with_deferrals %>% 
       arrange(donor, dateonly) %>%
+      group_by(donor) %>%
       slice(1:max(which(Hb_deferral))) %>%
       ungroup()
   }
