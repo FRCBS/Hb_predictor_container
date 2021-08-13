@@ -91,6 +91,7 @@ if (knitr::opts_chunk$get("dev") == "pdf") {
 message(paste0("Device is ", knitr::opts_chunk$get("dev"), "\n"))
 message(paste0("Current device is ", knitr::opts_current$get("dev"), "\n"))
 use_pdf <- knitr::opts_chunk$get("dev") %in% c("pdf", "cairo_pdf")
+skip_train <- use_pdf  # Reuse the things computed for png output
 
 message("Parameters are:")
 for (name in names(params)) {
@@ -115,6 +116,7 @@ if (!is.null(params$cores)) {
 
 
 datadir = "../data/rdata/"
+
 rawresultdir = "../data/raw_results/"   # I store plot objects and tables in this directory
 
 # Id for a run. For example files in rawresultdir use this id as part of their name. 
@@ -178,48 +180,57 @@ create_summary_plots(data, donor_specific_variables, params$sex, descript, donor
 
 
 ```{r Partition and enrich, echo=FALSE}
-debug <- TRUE
-
-donors <- ndonor(data)
-message(sprintf("Number of donors is %i\n", length(donors)))
-old_count <- nrow(data); old_count2 <- ndonor(data)
-
-#tmp <- old_split(data)
-tmp <- new_split(data, mode)
-train_orig <-tmp$train
-test <- tmp$test
-
-message(sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
-              old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2))
-message("Here")
-sink(file=stderr(), type="output"); summary(train_orig); sink()
-n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
-message(sprintf("%i donors have at least one deferral\n", n))
-#message(summary(train_orig))
-if (debug) save(train_orig, file="/tmp/pre-enriched.rdata")
-
-# enrich the data so that 50% of the donors have deferral as their last donation attempt
-old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
-#sink(file=stderr(), type="output")
-if (old_count2 >= 1000) {
-  enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
-  #sink()
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
-                  old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
-  if (debug) save(enriched, file="/tmp/post-enriched.rdata")
-} else {  # Don't enrich if less than 1000 donors
-  message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
-  enriched <- train_orig
+enriched_filename <- sprintf("%s/baseline-enriched-%s-%s.rds", datadir, params$model, params$sex)
+test_filename <- sprintf("%s/baseline-test-%s-%s.rds", datadir, params$model, params$sex)
+if (skip_train) {
+  enriched <- readRDS(enriched_filename)
+  test <- readRDS(test_filename)
+} else {
+  debug <- TRUE
+  
+  donors <- ndonor(data)
+  message(sprintf("Number of donors is %i\n", length(donors)))
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  
+  #tmp <- old_split(data)
+  tmp <- new_split(data, mode)
+  train_orig <-tmp$train
+  test <- tmp$test
+  
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
+                  old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2))
+  message("Here")
+  sink(file=stderr(), type="output"); summary(train_orig); sink()
+  n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+  message(sprintf("%i donors have at least one deferral\n", n))
+  #message(summary(train_orig))
+  if (debug) save(train_orig, file="/tmp/pre-enriched.rdata")
+  
+  # enrich the data so that 50% of the donors have deferral as their last donation attempt
+  old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
+  #sink(file=stderr(), type="output")
+  if (old_count2 >= 1000) {
+    enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
+    #sink()
+    message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+                    old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
+    #if (debug) save(enriched, file="/tmp/post-enriched.rdata")
+  } else {  # Don't enrich if less than 1000 donors
+    message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
+    enriched <- train_orig
+  }
+  
+  n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+  message(sprintf("%i donors have at least one deferral\n", n))
+  
+  sink(file=stderr(), type="output"); summary(enriched); sink()
+  #if (debug) save(enriched, file="/tmp/enriched.rdata")
+  #enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
+  #rm(train_orig)
+  
+  saveRDS(enriched, enriched_filename)
+  saveRDS(test, test_filename)
 }
-
-n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
-message(sprintf("%i donors have at least one deferral\n", n))
-
-sink(file=stderr(), type="output"); summary(enriched); sink()
-if (debug) save(enriched, file="/tmp/enriched.rdata")
-#enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
-#rm(train_orig)
-
 message("and here")
 ```
 
@@ -239,7 +250,7 @@ sink(file=stderr(), type="output"); summary(test); sink()
 ```
 
 
-```{r Fit baseline model}
+```{r Fit baseline model, results="asis", echo=FALSE}
 logistic_regression <- function(train) {
   glm.fit <- glm(Hb_deferral ~ previous_Hb,
                data = train,
@@ -248,14 +259,18 @@ logistic_regression <- function(train) {
 }
 
 
-
-fit <- logistic_regression(enriched)
-stuff <- list(fit, enriched, test)
-saveRDS(stuff, sprintf("/tmp/baseline-stuff-%s.rds", params$sex))
+fit_filename <- sprintf("%s/baseline-fit-%s-%s.rds", datadir, params$model, params$sex)
+if (skip_train) {
+  fit <- readRDS(fit_filename)  
+} else {
+  fit <- logistic_regression(enriched)
+  saveRDS(fit, fit_filename)
+}
+fit
 ```
 
-```{r Predict validate data}
-predict_baseline <- function(glm.fit, test) {
+```{r Predict validate data, results="asis", echo=FALSE}
+predict_baseline <- function(glm.fit, test, threshold = NULL) {
   glm.probs <- predict(glm.fit,
                       newdata = test,
                       type = "response")
@@ -264,14 +279,31 @@ predict_baseline <- function(glm.fit, test) {
                    original_value = test$Hb,
                    predicted_value = NA,
                    original_label = as.integer(test$Hb_deferral),
-                   predicted_label = as.integer(score > 0.5),
                    previous_Hb = test$previous_Hb
                    )
+
+  if (!is.null(threshold)) {  
+    result <- result %>%
+      mutate(predicted_label = as.integer(score > threshold))
+  }
+  
   return(result)
 }
 
+optimize_threshold <- function(df) {
+    cp <- cutpointr::cutpointr(df$score, df$original_label, 
+                    direction="<=",   # Smaller values mean positive class 
+                    method = maximize_metric, metric = sum_sens_spec)
+    return(cp$optimal_cutpoint)
+}
+
 enriched_result <- predict_baseline(fit, enriched)
-test_result <- predict_baseline(fit, test)
+# Optimize the probability threshold
+threshold <- optimize_threshold(enriched_result)
+enriched_result <- enriched_result %>%
+  mutate(predicted_label = as.integer(score > threshold))
+  
+test_result <- predict_baseline(fit, test, threshold)
 ```
 
 
@@ -289,7 +321,7 @@ rm(data); invisible(gc())
 
 
 
-```{r Baseline, results="hide"}
+```{r Baseline results, results="hide"}
 id <- sprintf("bl-%s", params$sex)
 
 
@@ -325,18 +357,30 @@ summary_table <- results_baseline$summary
 ```
 
 
-```{r}
+```{r Plot logistic regressions, results="asis", echo=FALSE}
+get_inverse <- function(fit, threshold) {
+  df <- tibble(previous_Hb = 100:200)
+  
+  df <- df %>% mutate(probability = predict(fit, newdata = df, type = "response"))  
+  closest_probability <- df[[which.min(abs(df$probability - threshold)), "probability"]]
+  previous_Hb <- df %>% filter(probability == closest_probability) %>% pull(previous_Hb)
+  return(previous_Hb)
+}
+
 #saveRDS(df, sprintf("/tmp/df2-%s", params$sex))   # For debugging, remove
-plot_logistic_regression <- function(df, title) {
+plot_logistic_regression <- function(df, title, previous_Hb) {
   g <- df %>% 
     ggplot(aes(x=previous_Hb, y=score)) + 
     geom_line() +
-    geom_point(mapping=aes(x=previous_Hb, y=original_label, color=sex)) +
+    geom_point(mapping=aes(x=previous_Hb, y=original_label)) +
+    geom_vline(xintercept = previous_Hb) +
     labs(y="Probability", title=title)
   return(g)
 }
-enriched_g <- plot_logistic_regression(enriched_result, "enriched data")
-test_g <- plot_logistic_regression(test_result, "test data")
+previous_Hb <- get_inverse(fit, threshold)
+cat(sprintf("The previous_Hb value %.2f corresponds approximately to the threshold value %.2f", previous_Hb, threshold))
+enriched_g <- plot_logistic_regression(enriched_result, "enriched data", previous_Hb)
+test_g <- plot_logistic_regression(test_result, "test data", previous_Hb)
 enriched_g
 test_g
 ```
