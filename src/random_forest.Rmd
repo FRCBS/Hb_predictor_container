@@ -126,7 +126,7 @@ cat(sprintf("# Random forest (%s)\n", params$sex))
 
 
 ```{r Load input data, echo=FALSE}
-data <- load_single(params$input_file) # Forgets the name of the object
+data <- readRDS(params$input_file) # Forgets the name of the object
 #data <- load_single("~/FRCBS/Hb_predictor_container/output/preprocessed.rdata")
 
 data <- data %>%
@@ -137,7 +137,7 @@ data <- data %>%
 
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
-  donor_specific_variables <- load_single(params$donor_specific_file)
+  donor_specific_variables <- readRDS(params$donor_specific_file)
   donor_variables <- donor_descript %>% filter(Variable %in% names(donor_specific_variables)) %>% pull(Variable)
   data <- inner_join(data, donor_specific_variables, by="donor")
 } else {
@@ -209,7 +209,7 @@ sink(file=stderr(), type="output"); summary(train_orig); sink()
 n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
 message(sprintf("%i donors have at least one deferral\n", n))
 #message(summary(train_orig))
-if (debug) save(train_orig, file="/tmp/pre-enriched.rdata")
+if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rds")
 
 # enrich the data so that 50% of the donors have deferral as their last donation attempt
 old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
@@ -219,7 +219,7 @@ if (old_count2 >= 1000) {
   #sink()
   message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
                   old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
-  if (debug) save(enriched, file="/tmp/post-enriched.rdata")
+  if (debug) saveRDS(enriched, file="/tmp/post-enriched.rds")
 } else {  # Don't enrich if less than 1000 donors
   message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
   enriched <- train_orig
@@ -241,7 +241,7 @@ if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
               old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
 }
 sink(file=stderr(), type="output"); summary(enriched); sink()
-if (debug) save(enriched, file="/tmp/enriched.rdata")
+if (debug) saveRDS(enriched, file="/tmp/enriched.rds")
 #enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
 #rm(train_orig)
 

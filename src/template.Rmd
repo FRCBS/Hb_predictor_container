@@ -127,7 +127,7 @@ if (is.null(params$id)) {
 source("helper_functions.R")
 source("validate_stan_fit.R")
 
-data <- load_single(params$input_file) # Forgets the name of the object
+data <- readRDS(params$input_file) # Forgets the name of the object
 
 data <- data %>%
   mutate(days_to_previous_fb = as.double(days_to_previous_fb),
@@ -140,7 +140,7 @@ data <- data %>%
 
 # I use this to pass the "smoking", "bmi", "RNF43_mutant", "prs" to the algorithms
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
-  donor_specific_variables <- load_single(params$donor_specific_file)
+  donor_specific_variables <- readRDS(params$donor_specific_file)
   donor_variables <- donor_descript %>% filter(Variable %in% names(donor_specific_variables)) %>% pull(Variable)
   
   #pretty_donor_variables <- donor_descript$Pretty

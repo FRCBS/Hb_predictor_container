@@ -195,7 +195,7 @@ source("validate_stan_fit.R")
 
 ```{r Load datas, echo=FALSE, message=FALSE}
 
-data <- load_single(params$input_file) # Forgets the name of the object
+data <- readRDS(params$input_file)
 
 data <- data %>%
   mutate(days_to_previous_fb = as.double(days_to_previous_fb),
@@ -207,7 +207,7 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
   #donor_variables <- c("smoking", "bmi", "RNF43_mutant", "prs")
   #donor_variables <- c("smoking", "height", "weight", "RNF43_mutant", "prs")
   #pretty_donor_variables <- c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score")
-  donor_specific_variables <- load_single(params$donor_specific_file)
+  donor_specific_variables <- readRDS(params$donor_specific_file)
   if ("FERRITIN_LAST_DATE" %in% names(donor_specific_variables))   # This variable is only included to be able to filter data in random_forest.Rmd
     donor_specific_variables <- donor_specific_variables %>% select(-FERRITIN_LAST_DATE)
   donor_descript2 <- donor_descript %>% filter(Variable %in% names(donor_specific_variables))
@@ -273,7 +273,7 @@ if (out_of_sample_predictions) {
 
 if (create_datasets_bool) {
   source("create_stan_datasets.R")
-  lst <- create_stan_datasets(train, datadir, dumpdir, data_id, hlen=params$hlen, params$hlen_exactly,
+  create_stan_datasets(train, datadir, dumpdir, data_id, hlen=params$hlen, params$hlen_exactly,
                          Hb_cutoff_male = params$Hb_cutoff_male,
                          Hb_cutoff_female = params$Hb_cutoff_female, 
                          basic_variables=basic_variables, basic_variables_dlmm=basic_variables_dlmm, donor_variables=donor_variables,
@@ -282,29 +282,31 @@ if (create_datasets_bool) {
   
   if (out_of_sample_predictions) {
     message("Creating validate datasets for out-of-sample prediction")
-    # icp-consts
     Hb_index <- 1
     stan_preprocessed_validate_objects <- c()
     if (compute_dlmm) {
+      stan_preprocessed_validate_filename <- sprintf("%s/stan_preprocessed_validate_datasets_%s_%s.rds", datadir, "dlmm", params$sex)
       sl.val.dlmm <- stan_preprocess_icp_new(drop_some_fields(test, params$sex) %>% select(-Hb_first),  
                                              basic_variables=basic_variables_dlmm, 
                                              donor_variables = donor_variables, 
                                              test_data = FALSE,
                                              Hb_index=Hb_index, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
-      stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.dlmm")
+      saveRDS(sl.val.dlmm, stan_preprocessed_validate_filename)
+      #stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.dlmm")
     }
     
     if (compute_lmm) {
-      # simple-consts
+      stan_preprocessed_validate_filename <- sprintf("%s/stan_preprocessed_validate_datasets_%s_%s.rds", datadir, "lmm", params$sex)
       sl.val.lmm <- stan_preprocess_new(drop_some_fields(test, params$sex) %>% select(-previous_Hb),  
                                         basic_variables=basic_variables, donor_variables = donor_variables, 
                                         test_data = FALSE,
                                         Hb_index=Hb_index, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
-      stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.lmm")
+      saveRDS(sl.val.lmm, stan_preprocessed_validate_filename)
+#      stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.lmm")
     }
   
-    stan_preprocessed_validate_filename <- paste(datadir,"stan_preprocessed_validate_datasets_", id, ".RData", sep = '')
-    save(list=stan_preprocessed_validate_objects, file = stan_preprocessed_validate_filename)
+    #stan_preprocessed_validate_filename <- paste(datadir,"stan_preprocessed_validate_datasets_", id, ".RData", sep = '')
+    #save(list=stan_preprocessed_validate_objects, file = stan_preprocessed_validate_filename)
 
   }
 }
@@ -391,26 +393,16 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   
   # Load first datasets
   message("0")
-  if (!exists(sprintf("stan.preprocessed.%s", Model)))
-    load(sprintf("%s/stan_preprocessed_datasets_%s.RData", datadir, data_id)) 
-  if (Model=="lmm") {
-    stan.preprocessed <- stan.preprocessed.lmm
-  } else {
-    stan.preprocessed <- stan.preprocessed.dlmm
-  }
-  if (!exists(sprintf("stan.lists.%s", Model)))
-    load(sprintf("%s/stan_lists_%s_%s.RData", datadir, Model, data_id))
+  stan_preprocessed_filename <- sprintf("%s/stan_preprocessed_datasets_%s_%s.rds", datadir, Model, Sex)
+  stan_lists_filename <- sprintf("%s/stan_lists_%s_%s.rds", datadir, Model, Sex)
+  stan.preprocessed <- readRDS(stan_preprocessed_filename) 
+  stan.lists <- readRDS(stan_lists_filename) 
   cat("1\n")
   message("1")
-  stan_fit_file <- sprintf("%s/small_model1_%s.RData", stanfitpath, fit_id)
+  stan_fit_file <- sprintf("%s/model_%s.rds", stanfitpath, fit_id)
   if (skip_train == TRUE) {
-    load(stan_fit_file)
+    fit <- readRDS(stan_fit_file)
   } else {
-    if (Model=="lmm") {
-      stan.lists <- stan.lists.lmm
-    } else {
-      stan.lists <- stan.lists.dlmm
-    }
     sink(file=stderr(), type="output")  # Let's see if this brings the progress bars visible
     fit <- stan(file = stan_model, 
                 data = stan.lists,
@@ -420,7 +412,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
                 verbose = TRUE,
                 control = list(max_treedepth = 12))
     sink()
-    save(fit, file = stan_fit_file)
+    saveRDS(fit, file = stan_fit_file)
   }
   message("2")
   rhats <- bayesplot::rhat(fit)
@@ -496,7 +488,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   
   e <- val$posterior.plot$cis %>% mutate(Id=Id)
   
-  save(val, file = sprintf("%s/raw_result_%s_%s_%s.rdata", rawresultdir, Sex, Model, fit_id))
+  saveRDS(val, file = sprintf("%s/raw_result_%s_%s_%s.rds", rawresultdir, Sex, Model, fit_id))
   return(list(summary=t, effect_size=e, prediction=d, val=val))
 }
 

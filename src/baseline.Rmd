@@ -130,7 +130,7 @@ if (is.null(params$id)) {
 source("helper_functions.R")
 source("validate_stan_fit.R")
 
-data <- load_single(params$input_file) # Forgets the name of the object
+data <- readRDS(params$input_file)
 
 data <- data %>%
   mutate(days_to_previous_fb = as.double(days_to_previous_fb),
@@ -204,7 +204,7 @@ if (skip_train) {
   n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
   message(sprintf("%i donors have at least one deferral\n", n))
   #message(summary(train_orig))
-  if (debug) save(train_orig, file="/tmp/pre-enriched.rdata")
+  if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rdata")
   
   # enrich the data so that 50% of the donors have deferral as their last donation attempt
   old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)

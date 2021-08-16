@@ -149,14 +149,14 @@ drop_some_fields <- function(df, sex2) {
 }
 
 
-create_stan_datasets <- function(data, rdatadir, dumpdir, id, hlen=NULL, hlen_exactly=FALSE, 
+create_stan_datasets <- function(data, datadir, dumpdir, id, hlen=NULL, hlen_exactly=FALSE, 
                             Hb_cutoff_male = 135, Hb_cutoff_female = 125, 
                             basic_variables, basic_variables_dlmm,
                             donor_variables=NULL,
                             compute_lmm, compute_dlmm,
                             sex,
                             out_of_sample_predictions=FALSE) {
-  message("In create_datasets function")
+  message("In create_stan_datasets function")
   # Set the directory where the files will be saved:
   #dumpdir = "~/FRCBS/interval_prediction/data/rdump/"
   #rdatadir = "~/FRCBS/interval_prediction/data/rdata/"
@@ -187,37 +187,46 @@ create_stan_datasets <- function(data, rdatadir, dumpdir, id, hlen=NULL, hlen_ex
   #message(sprintf("%s dataset size after sample_fraction split: %i", sex, ndonor(small)))
   small <- data
 
-  stan_preprocessed_objects <- c()  
+#  stan_preprocessed_objects <- c()  
   Hb_index <- which(colnames(data)=="Hb")
   stopifnot(Hb_index == 1)
   if (compute_lmm) {
+    stan_preprocessed_filename <- sprintf("%s/stan_preprocessed_datasets_%s_%s.rds", datadir, "lmm", sex)
     stan.preprocessed.lmm <- stan_preprocess_new(drop_some_fields(small, sex) %>% select(-previous_Hb), 
                                                         Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
                                                         basic_variables=basic_variables, donor_variables = donor_variables, 
                                                  test_data = ! out_of_sample_predictions)
-    stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.lmm")
+    #stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.lmm")
+    saveRDS(stan.preprocessed.lmm, stan_preprocessed_filename)
   }
   if (compute_dlmm) {
+    stan_preprocessed_filename <- sprintf("%s/stan_preprocessed_datasets_%s_%s.rds", datadir, "dlmm", sex)
     stan.preprocessed.dlmm <- stan_preprocess_icp_new(drop_some_fields(small, sex) %>% select(-Hb_first), 
                                                              Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
                                                              basic_variables=basic_variables_dlmm, donor_variables = donor_variables,
                                                       test_data = ! out_of_sample_predictions)
-    stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.dlmm")
+    saveRDS(stan.preprocessed.dlmm, stan_preprocessed_filename)
+    #stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.dlmm")
   }
-  stan_preprocessed_filename <- paste(rdatadir,"stan_preprocessed_datasets_", id, ".RData", sep = '')
-  save(list=stan_preprocessed_objects, file = stan_preprocessed_filename)
+  #stan_preprocessed_filename <- paste(rdatadir,"stan_preprocessed_datasets_", id, ".RData", sep = '')
+  #save(list=stan_preprocessed_objects, file = stan_preprocessed_filename)
   
   # Create Stan lists
   if (compute_lmm) {
+    stan_lists_filename <- sprintf("%s/stan_lists_%s_%s.rds", datadir, "lmm", sex)
+    
     stan.lists.lmm <- subset_analyses_create_stan_list(stan.preprocessed.lmm, out_of_sample_predictions = out_of_sample_predictions)
-    save(stan.lists.lmm, file = paste(rdatadir,"stan_lists_lmm_", id, ".RData", sep = ''))
+#    save(stan.lists.lmm, file = paste(rdatadir,"stan_lists_lmm_", id, ".RData", sep = ''))
+    saveRDS(stan.lists.lmm, stan_lists_filename)
     rm(stan.lists.lmm)
   }
   gc()
   
   if (compute_dlmm) {
+    stan_lists_filename <- sprintf("%s/stan_lists_%s_%s.rds", datadir, "dlmm", sex)
     stan.lists.dlmm <- subset_analyses_create_stan_list(stan.preprocessed.dlmm, icpfix = TRUE, out_of_sample_predictions = out_of_sample_predictions)
-    save(stan.lists.dlmm, file = paste(rdatadir,"stan_lists_dlmm_", id, ".RData", sep = ''))
+#    save(stan.lists.dlmm, file = paste(rdatadir,"stan_lists_dlmm_", id, ".RData", sep = ''))
+    saveRDS(stan.lists.dlmm, stan_lists_filename)
     rm(stan.lists.dlmm)
   }
   gc()

@@ -322,13 +322,13 @@ hb_predictor3 <- function(ws) {
   ################################
   if (input_format == "Preprocessed") {
     donation_specific_filename <- post$preprocessed_fileUpload$tempfile
-    fulldata_preprocessed <- load_single(donation_specific_filename)
+    fulldata_preprocessed <- readRDS(donation_specific_filename)
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
     if (sf != 1.0) {
       fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, donor_field = "donor", sex_field = "sex")
       donation_specific_filename <- "../output/preprocessed.rdata"
-      save(fulldata_preprocessed, file=donation_specific_filename)  # Save the sample
+      saveRDS(fulldata_preprocessed, file=donation_specific_filename)  # Save the sample
       post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
     }
   } else {
@@ -363,7 +363,7 @@ hb_predictor3 <- function(ws) {
         donor_specific <- sanquin_preprocess_donor_specific(donors, fulldata_preprocessed, use_only_first_ferritin)
         
         donor_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
-        save(donor_specific, file = donor_specific_filename)
+        saveRDS(donor_specific, file = donor_specific_filename)
         cat(sprintf("Saved donor specific variables (%ix%i) to file %s\n", nrow(donor_specific), ncol(donor_specific), donor_specific_filename))
       } else {
         cat("No ferritin information found.\n")
@@ -374,7 +374,7 @@ hb_predictor3 <- function(ws) {
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
     #donation_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
     donation_specific_filename <- "../output/preprocessed.rdata"
-    save(fulldata_preprocessed, file=donation_specific_filename)
+    saveRDS(fulldata_preprocessed, file=donation_specific_filename)
     toc()
     message(sprintf("Saved preprocessed data to file %s\n", donation_specific_filename))
   }
@@ -387,9 +387,9 @@ hb_predictor3 <- function(ws) {
     male_donation_specific_filename   <- "../output/male_preprocessed.rdata"
     female_donation_specific_filename <- "../output/female_preprocessed.rdata"
     tmp <- fulldata_preprocessed %>% filter(sex=="male")
-    save(tmp,   file=male_donation_specific_filename)
+    saveRDS(tmp,   file=male_donation_specific_filename)
     tmp <- fulldata_preprocessed %>% filter(sex=="female")
-    save(tmp, file=female_donation_specific_filename)
+    saveRDS(tmp, file=female_donation_specific_filename)
     rm(tmp)
   } else {
     male_donation_specific_filename <- NA_character_
