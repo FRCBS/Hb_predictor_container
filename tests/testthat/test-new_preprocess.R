@@ -7,13 +7,16 @@ test_that("preprocessing works", {
 })
 
 test_that("preprocessing works2", {
-  data <- preprocess("donations-sample2-1000.dat", "donor-sample2-1000.dat")
-  load("correct_data.rdata")
+  output <- capture_output(
+    data <- preprocess("donations-sample2-1000.dat", "donor-sample2-1000.dat")
+  )
+  #load("correct_data.rdata")
+  correct_data <- readRDS("correct_data.rds")
   expect_equal(nrow(data), 5406)
   expect_equal(ncol(data), 21)
   expect_equal(length(unique(data$donor)), 408)
   col_names <- c("don_id", "donor", "Hb", "dateonly", "previous_Hb_def",
-                 "days_to_previous_fb", "donat_phleb", "gender", "age", "Hb_deferral",
+                 "days_to_previous_fb", "donat_phleb", "sex", "age", "Hb_deferral",
                  "nb_donat_progesa", "nb_donat_outside",
     "first_event", "previous_Hb", "year", "warm_season", "Hb_first",
     "hour", "consecutive_deferrals", "recent_donations", "recent_deferrals")
@@ -26,7 +29,7 @@ test_that("preprocessing works2", {
       previous_Hb_def = "logical",
       days_to_previous_fb = "integer",
       donat_phleb = "factor",
-      gender = "factor",
+      sex = "factor",
       age = "integer",
       Hb_deferral = "logical",
       nb_donat_progesa = "integer",
@@ -34,7 +37,7 @@ test_that("preprocessing works2", {
       first_event = "logical",
       previous_Hb = "numeric",
       year = "integer",
-      warm_season = "logical",
+      warm_season = "numeric",
       Hb_first = "numeric",
       hour = "numeric",
       consecutive_deferrals = "integer",
@@ -54,3 +57,8 @@ test_that("preprocessing works2", {
 #      }
   }
 })
+
+
+
+
+

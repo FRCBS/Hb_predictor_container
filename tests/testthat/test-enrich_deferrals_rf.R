@@ -29,7 +29,19 @@ test_that("trim_time_series", {
   )
   res <- trim_time_series(df)
   expect_equal(res, df[1:4,])
+
+  df <- tribble(
+    ~donor, ~dateonly, ~Hb_deferral,
+    "b", ymd("2012-01-18"), FALSE,
+    "b", ymd("2012-01-19"), TRUE,
+    "b", ymd("2012-01-20"), FALSE,
+    "a", ymd("2012-01-18"), FALSE,
+    "a", ymd("2012-01-19"), FALSE
+  )
+  res <- trim_time_series(df)
+  expect_equal(res %>% arrange(donor, dateonly), df[c(1, 2, 4, 5),] %>% arrange(donor, dateonly))
   
+  # Dropped donors with only one donation
   df <- tribble(
     ~donor, ~dateonly, ~Hb_deferral,
     "a", ymd("2012-01-18"), FALSE
@@ -37,7 +49,16 @@ test_that("trim_time_series", {
   res <- trim_time_series(df)
   expect_equal(nrow(res), 0)
   
-  # Only deferred donors in data
+  # Dropped donors who have their only deferral as the first event
+  df <- tribble(
+    ~donor, ~dateonly, ~Hb_deferral,
+    "a", ymd("2012-01-18"), TRUE,
+    "a", ymd("2012-01-19"), FALSE
+  )
+  res <- trim_time_series(df)
+  expect_equal(nrow(res), 0)
+
+    # Only deferred donors in data
   df <- tribble(
     ~donor, ~dateonly, ~Hb_deferral,
     "a", ymd("2012-01-18"), FALSE,

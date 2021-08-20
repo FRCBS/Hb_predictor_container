@@ -73,11 +73,11 @@ get_deferrals <- function(df) {
   
   n_donor <- nrow(donor)
   n_deferred_donor <- nrow(sometime_deferred)
-  cat(sprintf("Donors with at least one deferral %i/%i (%.2f%%)\n", n_deferred_donor, n_donor, 100*n_deferred_donor/n_donor))
+  message(sprintf("Donors with at least one deferral %i/%i (%.2f%%)\n", n_deferred_donor, n_donor, 100*n_deferred_donor/n_donor))
   
   n_donation <- nrow(df)
   n_deferred_donation <- nrow(df %>% filter(Hb_deferral==1))
-  cat(sprintf("Donations deferred %i/%i (%.2f%%)\n", n_deferred_donation, n_donation, 100*n_deferred_donation/n_donation))
+  message(sprintf("Donations deferred %i/%i (%.2f%%)\n", n_deferred_donation, n_donation, 100*n_deferred_donation/n_donation))
   return(list(sometime_deferred=sometime_deferred, never_deferred=never_deferred))
 }
 
@@ -94,15 +94,20 @@ balance_classes <- function(df, target_fraction) {
   n_never_deferred <- length(never_deferred)
   message(sprintf("nrow(sometime_deferred)=%i, nrow(never_deferred)=%i, target_fraction=%f", nrow(sometime_deferred), nrow(never_deferred), target_fraction))
 
+  if (target_fraction == 0.0) {
+    df2 <- df %>% filter(donor %in% never_deferred)
+    get_deferrals(df2)
+    return(df2 %>% mutate(donor = as.factor(donor)))
+  }
   ratio <- (1 - target_fraction) / target_fraction
   n <- as.integer(n_sometime_deferred * ratio)
-  if (!is.na(n) && n <= n_never_deferred) {
+  if (n <= n_never_deferred) {
     never_deferred <- sample(never_deferred, n)
-    cat(sprintf("Dropping %i random donors with no deferrals:\n", n))
+    message(sprintf("Dropping %i random donors with no deferrals:\n", n))
   } else {
     n <- as.integer(n_never_deferred / ratio)
     sometime_deferred <- sample(sometime_deferred, n)
-    cat(sprintf("Dropping %i random donors with deferrals:\n", n))
+    message(sprintf("Dropping %i random donors with deferrals:\n", n))
   }
   df2 <- df %>% filter(donor %in% c(sometime_deferred, never_deferred))
   
@@ -119,7 +124,7 @@ enrich_deferrals_rf <- function(df, target_fraction) {
 }
 
 if (sys.nframe() == 0L) {  # This is a trick to find out whether the file was executed or sourced
-  cat("Script executed!\n")
+  message("Script executed!\n")
   args = commandArgs(TRUE)
   
   if (length(args) < 1 | length(args) > 3) {
@@ -149,6 +154,6 @@ if (sys.nframe() == 0L) {  # This is a trick to find out whether the file was ex
     lst <- get_deferrals(df)
   }
 } else {
-  cat("Script sourced!\n")
+  message("Script sourced!\n")
 }
 

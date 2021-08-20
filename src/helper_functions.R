@@ -1828,9 +1828,9 @@ predict_new <- function(model.list, n.samples = 1000) {
   }
   model.list$new_donbs <- new_donbs
   if (model.list$type == "dlmm") {
-    prediction_matrix <- new_predictions_icp(model.list, n.samples=n.samples)
+    prediction_matrix <- new_predictions_dlmm(model.list, n.samples=n.samples)
   } else if (model.list$type == "lmm") {
-    prediction_matrix <- new_predictions_simple(model.list, n.samples=n.samples)
+    prediction_matrix <- new_predictions_lmm(model.list, n.samples=n.samples)
   }
   return(list(new_donbs = new_donbs[model.list$last_events,],   # take only donbs for last events
               prediction_matrix = prediction_matrix,
@@ -1877,8 +1877,8 @@ calculate_donbs <- function(df, model.list, donor, n.samples) {
   return(new_donbs)
 }
 
-new_predictions_icp <- function(model.list, n.samples = 1000) {
-  message("In new_predictions_icp function")
+new_predictions_dlmm <- function(model.list, n.samples = 1000) {
+  message("In new_predictions_dlmm function")
   
   ml <- model.list
   N <- nrow(ml$x)
@@ -1918,8 +1918,8 @@ new_predictions_icp <- function(model.list, n.samples = 1000) {
   return(prediction_matrix)
 }
 
-new_predictions_simple <- function(model.list, n.samples = 1000) {
-  message("In new_predictions_simple function")
+new_predictions_lmm <- function(model.list, n.samples = 1000) {
+  message("In new_predictions_lmm function")
   
   ml <- model.list
   N <- nrow(ml$x)

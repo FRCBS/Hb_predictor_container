@@ -95,6 +95,7 @@ empty_hyperparameters <- tibble(Model="dummy", Sex="dummy", Value=list(list()))
 #' @parser multi
 #' @serializer json
 hb_predictor2 <- function(req){
+  cat("In hb_predictor2 function\n")
   cat(sprintf("Container version is %s\n", container_version))
   if (Sys.getenv("TZ") == "") {
     Sys.setenv("TZ"="Europe/Helsinki")
@@ -131,7 +132,7 @@ hb_predictor2 <- function(req){
     writeBin(data, to)
   }
   #writeBin(req$.bodyData, con="/tmp/raw_form_data.bin")
-  cat("here3")
+  cat("here3\n")
   close(to)
   return(list())
 }
@@ -140,6 +141,7 @@ hb_predictor2 <- function(req){
 
 # Do the actual processing
 hb_predictor3 <- function(ws) {
+  cat("In hb_predictor3 function\n")
   separator <- ""
   command <- sprintf("./parse /tmp/raw_form_data.bin \"%s\" /tmp/parsed.json", separator)
   system(command)
@@ -165,9 +167,9 @@ hb_predictor3 <- function(ws) {
   if (! input_format %in% c("FRCBS", "Sanquin", "Preprocessed"))
     error_messages <- c(error_messages, "The input format should be either FRCBS, Sanquin, or Preprocessed")
 
-  if (!("donations_fileUpload" %in% names(post)) && input_format != "Preprocessed")
+  if (!("donations_file_upload" %in% names(post)) && input_format != "Preprocessed")
     error_messages <- c(error_messages, "You did not upload the donations file!")
-  if (!("donors_fileUpload" %in% names(post)) && input_format != "Preprocessed")
+  if (!("donors_file_upload" %in% names(post)) && input_format != "Preprocessed")
     error_messages <- c(error_messages, "You did not upload the donors file!")
   if ("Hb_cutoff_male" %in% names(post) && as.numeric(post$Hb_cutoff_male) <= 0)
     error_messages <- c(error_messages, "The Hb cutoff must be a positive number")
@@ -192,11 +194,11 @@ hb_predictor3 <- function(ws) {
   #   error_messages <- c(error_messages, "Missing donors file")
     
   
-  donations_o = post$donations_fileUpload
-  donors_o = post$donors_fileUpload
+  donations_o = post$donations_file_upload
+  donors_o = post$donors_file_upload
   
-  if ("donor_specific_fileUpload" %in% names(post) && post$donor_specific_fileUpload$filename != "") {
-    donor_specific_filename <- post$donor_specific_fileUpload$tempfile
+  if ("donor_specific_file_upload" %in% names(post) && post$donor_specific_file_upload$filename != "") {
+    donor_specific_filename <- post$donor_specific_file_upload$tempfile
   } else {
     donor_specific_filename <- NULL
   }
@@ -321,7 +323,7 @@ hb_predictor3 <- function(ws) {
   #
   ################################
   if (input_format == "Preprocessed") {
-    donation_specific_filename <- post$preprocessed_fileUpload$tempfile
+    donation_specific_filename <- post$preprocessed_file_upload$tempfile
     fulldata_preprocessed <- readRDS(donation_specific_filename)
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
@@ -430,7 +432,7 @@ hb_predictor3 <- function(ws) {
   } else if (hyperparameters == "learn") {
     write_hyperparameters(empty_hyperparameters, myparams$hyperparameters)  # Empty dataframe
   } else if (hyperparameters == "upload") {
-    cmd <- sprintf("cp %s %s", post$hyperparameter_fileUpload$tempfile, myparams$hyperparameters)
+    cmd <- sprintf("cp %s %s", post$hyperparameter_file_upload$tempfile, myparams$hyperparameters)
     system(cmd)
   }
   
@@ -693,10 +695,10 @@ hb_predictor <- function(req){
         </fieldset>
         
         <table id="input_table">
-        <tr id="donations_row"><td>Upload donations file:</td> <td><input type=file name="donations_fileUpload"></td> </tr>
-        <tr id="donors_row"><td>Upload donors file:</td>    <td><input type=file name="donors_fileUpload"></td> </tr>
-        <tr id="donor_specific_row" style="display: none"><td>Upload donor specific file:</td>    <td><input type=file name="donor_specific_fileUpload"></td> </tr>
-        <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type=file name="preprocessed_fileUpload"></td> </tr>
+        <tr id="donations_row"><td>Upload donations file:</td> <td><input type=file name="donations_file_upload"></td> </tr>
+        <tr id="donors_row"><td>Upload donors file:</td>    <td><input type=file name="donors_file_upload"></td> </tr>
+        <tr id="donor_specific_row" style="display: none"><td>Upload donor specific file:</td>    <td><input type=file name="donor_specific_file_upload"></td> </tr>
+        <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type=file name="preprocessed_file_upload"></td> </tr>
         <tr><td>Hb cutoff (male)</td>       <td><input id="Hb_cutoff_male" name="Hb_cutoff_male" value="%i" maxlength="5" size="5">
           <!--<span id="male_unit">g/L</span>--></td> </tr>
         <tr><td>Hb cutoff (female)</td>     <td><input id="Hb_cutoff_female" name="Hb_cutoff_female" value="%i" maxlength="5" size="5">
@@ -737,7 +739,7 @@ hb_predictor <- function(req){
         </td></tr>
         <tr id="hyperparameter_file_row" hidden>
           <td>Upload hyperparameter file:</td>    
-          <td><input type=file name="hyperparameter_fileUpload"></td> 
+          <td><input type=file name="hyperparameter_file_upload"></td> 
         </tr>
 
         <tr><td>Mode</td>                <td>

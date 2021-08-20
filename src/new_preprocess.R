@@ -96,16 +96,19 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   ######### DONOR
   conversion <- names(donor)
     
-  names(conversion)=c('donor','first','family', 'sex', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
+  new_col_names=c('donor','first','family', 'sex', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
                       'tel','email', 'mobile',
                       'notifiable', 'notification_method_1', 'notification_method_2', 'notification_method_3', 
                       'nb_donations', 'nb_donat_progesa', 'nb_donat_outside', 
                       'date_first_donation', 'nb_wb', 'nb_pla',
-                      'nb_thr', 'last_donat_phleb', 'last_collect', 'label'
+                      'nb_thr', 'last_donat_phleb', 'last_collect'
                       
   )
-  
-    donor <- donor %>% rename(!!!conversion)
+  if (ncol(donor) == length(new_col_names) + 1) {   # label is included in the input data
+    new_col_names <- c(new_col_names, "label")   
+  }
+  names(conversion) <- new_col_names
+  donor <- donor %>% rename(!!!conversion)
   
   #1 "9626820"|
   #2 "YYYY XXXX"|
@@ -135,23 +138,28 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   #26 |"H1157"
   #print(head(donor))
   donor <- donor %>%
-    mutate(sex = as.factor(sex))
+    mutate(sex = factor(sex, levels=c("Man", "Woman")))
   print(summary(donor))
   
   
   variables <- c("donor", "sex", "dob", "date_first_donation", "nb_donat_progesa", "nb_donat_outside")
   variables <- c(variables, intersect(names(donor), "label"))
   
+  common_donors <- intersect(unique(donation$donor), unique(donor$donor))
+  
   donor2 <- donor %>% 
     select(!!!variables) %>%
-    filter(donor %in% unique(donation$donor)) #Remove extra donors to get clean join  
-  
+    filter(donor %in% common_donors) #Remove extra donors to get clean join  
+
+  donation <- donation %>%  
+    filter(donor %in% common_donors) #Remove extra donors to get clean join  
   
   #Droplevels so that they don't bother you later
-  donation <- droplevels(donation)
-  donor2 <- droplevels(donor2)
+  #donation <- droplevels(donation)
+  #donor2 <- droplevels(donor2)
   #The make the ordering of factors the same, as well, to avoid complaints from join
-  levels(donor2$donor) < levels(donation$donor)
+  #levels(donor2$donor) < levels(donation$donor)
+  
   
   #Format dates
   donor2 <- donor2 %>% mutate(dob = ymd(as.character(dob)),
@@ -535,10 +543,10 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
   tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
-    donations <- read_sanquin_donations(donations)
+    donations <- read_donations(donations)
   }
   if (is.character(donors)) {   # is a filename instead of a dataframe?
-    donors <- read_sanquin_donors(donors)
+    donors <- read_donors(donors)
   }
   data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
   toc()
@@ -563,11 +571,11 @@ preprocess_helper <- function(dir, Hb_cutoff_male = 135, Hb_cutoff_female = 125,
 sample_raw_progesa <- function(donations, donors, donation.out = NULL, donor.out = NULL, ndonor = 1.0) {
   
   if (is.character(donations)) {   # is a filename instead of a dataframe?
-    donations <- read_sanquin_donations(donations)
+    donations <- read_donations(donations)
   }
   
   if (is.character(donors)) {   # is a filename instead of a dataframe?
-    donors <- read_sanquin_donors(donors)
+    donors <- read_donors(donors)
   }
   
   cat(sprintf("Sampling to %f\n", ndonor))
