@@ -15,6 +15,8 @@ system(sprintf("mkdir -p %s", figure_path))
 
 source("validate_stan_fit.R")
 source("common.R")
+
+save_figs <- FALSE
 ```
 
 ## R Markdown
@@ -64,7 +66,7 @@ filename_progesa_dlmm_female_raw <- "raw_result_female_icp_date-2020-08-12-gende
 combine_posterior <- function(fit_filenames) {
   
   fd.icp.vars <- c("Days to previous full blood donation", "Previous Hb deferred", "Age", "Year", "Warm season", "Hour", "Consecutive deferrals", 
-                   "Recent donations", "Recent deferrals", "Previous Hb", "Erythrocyte", "HKR", "Leukocyte", "Trombocyte", "MCH", "MCHC", "MCV", "RDW", "CRP",
+                   "Recent donations", "Recent deferrals", "Previous Hb", "Erythrocyte", "HKR", "Leukocyte", "Thrombocyte", "MCH", "MCHC", "MCV", "RDW", "CRP",
                    "Ferritin", "Transferrin receptor", "First age", "First year", "First warm season", "First hour")
   fd.icp.vars.consts <- c(fd.icp.vars, "Height", "Weight", "Smoking status", "Physical condition", "Meat amount", "Sleep quality", "Iron supplement")
   variables <- fd.icp.vars.consts
@@ -113,17 +115,21 @@ load("/home/toivoja/FRCBS/interval_prediction/data/model_fits/hmc_2108.rdata", v
 
 ```{r}
 progesa_lmm_forest <- create_double_forest_plot(progesa_lmm_male_raw$samples, progesa_lmm_female_raw$samples, progesa_lmm_male_raw$pretty_variable_names)
-progesa_dlmm_forest <- create_double_forest_plot(progesa_dlmm_male_raw$samples, progesa_dlmm_female_raw$samples, progesa_dlmm_male_raw$pretty_variable_names)
+progesa_dlmm_forest <- create_double_forest_plot(progesa_dlmm_male_raw$samples, progesa_dlmm_female_raw$samples,
+                                                 progesa_dlmm_male_raw$pretty_variable_names,
+                                                 breaks=scales::extended_breaks(n=7))
+
 finngen_dlmm_forest <- create_double_forest_plot(finngen_dlmm_male_raw$samples, finngen_dlmm_female_raw$samples, finngen_dlmm_male_raw$pretty_variable_names)
 findonor_dlmm_forest <- create_double_forest_plot(findonor_dlmm_male_raw$samples, findonor_dlmm_female_raw$samples, findonor_dlmm_male_raw$pretty_variables_names)
 ```
 
 ```{r}
-ggsave(filename=paste(figure_path, "progesa-coefficient-lmm.pdf", sep="/"), plot=progesa_lmm_forest$plot, width = 180, height = 108, units="mm")
-ggsave(filename=paste(figure_path, "progesa-coefficient-dlmm.pdf", sep="/"), plot=progesa_dlmm_forest$plot, width = 180, height = 108, units="mm")
-ggsave(filename=paste(figure_path, "finngen-coefficient-dlmm.pdf", sep="/"), plot=finngen_dlmm_forest$plot, width = 180, height = 108, units="mm")
-ggsave(filename=paste(figure_path, "findonor-coefficient-dlmm.pdf", sep="/"), plot=findonor_dlmm_forest$plot, width = 180, units="mm")
-
+if (save_figs) {
+  ggsave(filename=paste(figure_path, "progesa-coefficient-lmm.pdf", sep="/"), plot=progesa_lmm_forest$plot, width = 180, height = 108, units="mm")
+  ggsave(filename=paste(figure_path, "progesa-coefficient-dlmm.pdf", sep="/"), plot=progesa_dlmm_forest$plot, width = 180, height = 108, units="mm")
+  ggsave(filename=paste(figure_path, "finngen-coefficient-dlmm.pdf", sep="/"), plot=finngen_dlmm_forest$plot, width = 180, height = 108, units="mm")
+  ggsave(filename=paste(figure_path, "findonor-coefficient-dlmm.pdf", sep="/"), plot=findonor_dlmm_forest$plot, width = 180, units="mm")
+}
 ```
 
 ## Create summary plots
@@ -131,8 +137,12 @@ ggsave(filename=paste(figure_path, "findonor-coefficient-dlmm.pdf", sep="/"), pl
 ```{r}
 fulldata_preprocessed <- load_single("~/proj/interval_prediction/data/full_data_preprocessed-2020-05-25.rdata")
 
-data.male <- fulldata_preprocessed %>% filter(gender=="Men")
-data.female <- fulldata_preprocessed %>% filter(gender=="Women")
+fulldata_preprocessed <- fulldata_preprocessed %>%
+  mutate(sex=fct_recode(gender, male="Men", female="Women")) %>%
+  select(-gender)
+
+data.male <- fulldata_preprocessed %>% filter(sex=="male")
+data.female <- fulldata_preprocessed %>% filter(sex=="female")
 
 pmale <- data.male %>%
   filter(first_event == FALSE) %>%
@@ -147,8 +157,17 @@ pfemale <- data.female %>%
 
 
 ```{r}
-progesa_summary_plot <- double_summary_plotter(pmale, pfemale, descript, freqpoly=TRUE)
+progesa_summary_plot <- double_summary_plotter(pmale, pfemale, descript, geom="hollow_histogram", ncol=3)
+#progesa_summary_plot2 <- double_summary_plotter(pmale, pfemale, descript, geom="histogram", ncol=3)
+#progesa_summary_plot3 <- double_summary_plotter(pmale, pfemale, descript, geom="hollow_histogram", ncol=3)
 ```
+
+```{r}
+#progesa_summary_plot
+#progesa_summary_plot2
+#progesa_summary_plot3
+```
+
 
 ```{r}
 finngen <- load_single("/home/toivoja/proj/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata")
@@ -162,8 +181,10 @@ finngen.female <- semi_join(finngen, data.female, by="donor") %>%
 ```
 
 ```{r}
-finngen_summary_plot <- double_summary_plotter(finngen.male, finngen.female, donor_descript, freqpoly=TRUE)
+finngen_summary_plot <- double_summary_plotter(finngen.male, finngen.female, donor_descript, geom="hollow_histogram", breaks=scales::extended_breaks(n=4))
 ```
+
+## Create FinDonor plots
 
 ```{r}
 combined_findonor_male <- load_single("~/proj/interval_prediction/data/combined_findonor_male.rdata") %>% ungroup()
@@ -178,7 +199,8 @@ male_donation_specific <- combined_findonor_male %>%
 female_donation_specific <- combined_findonor_female %>%
   select(all_of(descript.fd$Variable))# %>%
 
-findonor_donation_specific_summary_plot <- double_summary_plotter(male_donation_specific, female_donation_specific, descript.fd, freqpoly = TRUE)
+findonor_donation_specific_summary_plot <- double_summary_plotter(male_donation_specific, female_donation_specific, descript.fd, geom="hollow_histogram",
+                                                                  breaks=scales::extended_breaks(n=4))
 
 male_donor_specific <- combined_findonor_male %>%
   select(all_of(descript.fd.consts$Variable)) %>%
@@ -186,7 +208,7 @@ male_donor_specific <- combined_findonor_male %>%
 female_donor_specific <- combined_findonor_female %>%
   select(all_of(descript.fd.consts$Variable)) %>%
   distinct()
-findonor_donor_specific_summary_plot <- double_summary_plotter(male_donor_specific, female_donor_specific, descript.fd.consts, freqpoly = TRUE)
+findonor_donor_specific_summary_plot <- double_summary_plotter(male_donor_specific, female_donor_specific, descript.fd.consts, geom="hollow_histogram")
 ```
 
 ```{r}
@@ -199,10 +221,12 @@ findonor_donor_specific_summary_plot
 
 
 ```{r}
-ggsave(filename=paste(figure_path, "progesa-summary-plot.pdf", sep="/"), plot=progesa_summary_plot, width = 180, units="mm")
-ggsave(filename=paste(figure_path, "finngen-summary-plot.pdf", sep="/"), plot=finngen_summary_plot, width = 180, units="mm")
-ggsave(filename=paste(figure_path, "findonor-donation-specific-summary-plot.pdf", sep="/"), plot=findonor_donation_specific_summary_plot, width = 180, units="mm")
-ggsave(filename=paste(figure_path, "findonor-donor-specific-summary-plot.pdf", sep="/"), plot=findonor_donor_specific_summary_plot, width = 180, units="mm")
+if (save_figs) {
+  ggsave(filename=paste(figure_path, "progesa-summary-plot.pdf", sep="/"), plot=progesa_summary_plot + theme_gray(base_size=10), width = 180, units="mm")
+  ggsave(filename=paste(figure_path, "finngen-summary-plot.pdf", sep="/"), plot=finngen_summary_plot, width = 180, units="mm")
+  ggsave(filename=paste(figure_path, "findonor-donation-specific-summary-plot.pdf", sep="/"), plot=findonor_donation_specific_summary_plot, width = 180, units="mm")
+  ggsave(filename=paste(figure_path, "findonor-donor-specific-summary-plot.pdf", sep="/"), plot=findonor_donor_specific_summary_plot, width = 180, units="mm")
+}
 ```
 
 

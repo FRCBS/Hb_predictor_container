@@ -303,7 +303,7 @@ create_forest_plot <- function(posterior, variables) {
   return(list(plot=plot, cis=cis))
 }
 
-create_double_forest_plot <- function(male_posterior, female_posterior, variables) {
+create_double_forest_plot <- function(male_posterior, female_posterior, variables, breaks=waiver()) {
   
   male_result <- map2_dfr(male_posterior, variables, forest_plot_helper)
   female_result <- map2_dfr(female_posterior, variables, forest_plot_helper)
@@ -329,6 +329,7 @@ create_double_forest_plot <- function(male_posterior, female_posterior, variable
                     position=position_dodge2(width=1, padding=0.9)) +
     labs(title="Effects sizes of variables on Hb prediction",
          x="Regression coefficient", y="") +
+    scale_x_continuous(breaks=breaks) +
     scale_y_discrete() + # !!!!! This is important. Solves the problem with position_dodge2 and the order of rect and pointrange geoms !!!!!!
     # Otherwise following error results: Error: Discrete value supplied to continuous scale
     theme_classic()

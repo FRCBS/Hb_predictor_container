@@ -44,7 +44,7 @@ donor_descript <- tibble(
 
 # FinDonor donation specific:
 descript.fd <- tibble(Variable = c("Eryt", "HKR", "Leuk", "Trom", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "TransferrinR"),
-                      Pretty = c("Erythrocyte", "HKR", "Leukocyte", "Trombocyte", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "Transferrin receptor"),
+                      Pretty = c("Erythrocyte", "HCT", "Leukocyte", "Thrombocyte", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "Transferrin receptor"),
                       Type = c("Numeric", "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",  "Numeric",
                                "Numeric"),
                       Description = c("Amount of erythrocytes, red blood cells [E12/l]",
@@ -93,7 +93,7 @@ summary_plotter <- function(df, variable_descriptions, color) {
   return(g)
 }
 
-double_summary_plotter <- function(male_df, female_df, variable_descriptions, freqpoly = FALSE) {
+double_summary_plotter <- function(male_df, female_df, variable_descriptions, geom = "freqpoly", breaks=waiver(), ncol=NULL) {
   df <- bind_rows(male=male_df, female=female_df, .id="Sex")
   #print(df, 5)
   df <- df %>%
@@ -103,17 +103,35 @@ double_summary_plotter <- function(male_df, female_df, variable_descriptions, fr
     to_pretty(variable_descriptions) %>%
     #gather() %>%
     pivot_longer(!Sex) %>%
-    mutate(name = factor(name, levels=variable_descriptions$Pretty))  # Don't sort alphabetically
-  if (freqpoly) {
+    mutate(name = factor(name, levels=variable_descriptions$Pretty))   # Don't sort alphabetically
+  
+  #if (df %>% filter(name=="Days to previous full blood donation") %>% nrow() > 0) {
+  # Abbreviate this long variable name
+  if ("Days to previous full blood donation" %in% levels(df$name)) {
+    df <- df %>%
+      mutate(name = fct_recode(name, `Days to previous FB donation`="Days to previous full blood donation"))
+  }
+  
+  if (geom=="freqpoly") {
     g <- df %>%
-    ggplot(aes(value, color=Sex)) +
-    facet_wrap(~ name, scales = "free") +
-    geom_freqpoly()
-  } else {
+      ggplot(aes(value, color=Sex)) +
+      facet_wrap(~ name, scales = "free", ncol=ncol) +
+      geom_freqpoly() +
+      scale_x_continuous(breaks=breaks)
+  } else if (geom=="histogram") {
     g <- df %>%
       ggplot(aes(value, fill=Sex)) +
-      facet_wrap(~ name, scales = "free") +
-      geom_histogram(position="dodge") 
+      facet_wrap(~ name, scales = "free", ncol=ncol) +
+      geom_histogram(position="dodge") +
+      scale_x_continuous(breaks=breaks)
+  } else if (geom=="hollow_histogram") {
+    g <- df %>%
+      ggplot(aes(value, color=Sex)) +
+      facet_wrap(~ name, scales = "free", ncol=ncol) +
+      geom_histogram(fill=NA) +
+      scale_x_continuous(breaks=breaks)
+  } else {
+    stop(sprintf("Unknow value for the geom parameter: %s", geom))
   }
 
   return(g)
