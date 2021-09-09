@@ -62,6 +62,14 @@ create_summary_table <- function(summary_table) {
   return(summary_table_string)
 }
 
+create_timing_table <- function(timing) {
+  timing_table_string <- kable(timing %>% select(Model=model, Sex=sex, Time=time, Unit=unit), format="html", digits=3, 
+                                caption="Consumed time",
+                                align="ll",
+                                table.attr = "id='timing_table' class='table table-condensed'")
+  return(timing_table_string)
+}
+
 model_df <- tribble(
   ~model, ~pretty, ~rmd,
   "dt", "decision tree",             "template.Rmd",
@@ -477,6 +485,8 @@ hb_predictor3 <- function(ws) {
       length(tmp) == 2 ~ "both")
   }
   
+  timing <- tibble(id=character(), model=character(), sex=character(), time=numeric())
+  
   models <- intersect(c("dt", "bl", "rf", "svm"), names(post))
   models <- c(models, linear_models)
   for (m in models) {
@@ -510,7 +520,7 @@ hb_predictor3 <- function(ws) {
       #     effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", sex)
       #     myparams["effect_size_table_file"] <- effect_size_filename
       
-      
+      now <- lubridate::now()
       error_messages <- tryCatch(
         withCallingHandlers({
           rmarkdown::render(
@@ -530,6 +540,11 @@ hb_predictor3 <- function(ws) {
           return(error_messages)
         }
       )
+      tm <- lubridate::now() - now
+      message(sprintf("%s-%s took %f %s", m, sex, as.numeric(tm), units(tm)))
+      timing <- timing %>% add_row(id=sprintf("%s-%s", m, sex), model=str_to_sentence(pretty), sex=sex, time=as.numeric(tm), unit=units(tm))
+      ws$send(rjson::toJSON(list(type="timing", timing_table_string = create_timing_table(timing))))
+      
       if (!is.null(error_messages)) {
         cat(paste0(error_messages))
         cat("\n")
@@ -576,6 +591,8 @@ hb_predictor3 <- function(ws) {
   if (FALSE && !is.null(donor_specific_filename))
     unlink(donor_specific_filename)
   
+  
+  
   ####################
   #
   # Report the results
@@ -616,17 +633,17 @@ hb_predictor <- function(req){
   <div id="info-container" hidden>
     <h2>Progress info</h2>    
     <p>Computation started: <span id="start-time"></span></p>
-      <p id="finish-time-container">Computation finished: <span id="finish-time"></span></p>
-        <p>Elapsed time: <span id="time"></span></p>
-          <p id="status-container">Status: <span id="status"></span></p>
-            <div id="spinner-container">
-              <div class="lds-spinner" hidden ><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
-                </div>
-                <div id="error_messages"></div>
-                  <div id="warning_messages"></div>
-                    <div id="info"></div>
-                      </div>
-           '           
+    <p id="finish-time-container">Computation finished: <span id="finish-time"></span></p>
+    <p>Elapsed time: <span id="time"></span></p>
+    <p id="status-container">Status: <span id="status"></span></p>
+    <div id="spinner-container">
+        <div class="lds-spinner" hidden ><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+    </div>
+    <div id="error_messages"></div>
+    <div id="warning_messages"></div>
+    <div id="info"></div>
+  </div>
+  '           
                       
   results <- '
     <div id="results-container" hidden>
@@ -634,27 +651,30 @@ hb_predictor <- function(req){
       
       <h3>Summary</h3>
       <div id="table_container"></div>
-        <table id="summary-table" class="table table-condensed">
-          </table>
-          <h3>Download the results</h3>
-          <ul>
+      <h3>Time</h3>
+      <div id="timing_table_container"></div>
+          <!--
+            <table id="summary-table" class="table table-condensed">
+            </table>
+          -->
+      <h3>Download the results</h3>
+      <ul>
           <li> <a href="/output/summary.csv">Summary table</a> (CSV)</li>
-            <li id="effect-size"> <a href="/output/effect-size.csv">Effect size table</a> (CSV)</li>
-              <li id="variable-importance"> <a href="/output/variable-importance.csv">Variable importance table</a> (CSV)</li>
-                <li id="prediction"> <a href="/output/prediction.csv">Prediction data</a> (CSV)</li>
-                  <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
-                    <li id="preprocessed"> <a href="/output/preprocessed.rdata">Preprocessed data</a> (R binary)</li>
-                      <li id="train"> <a href="/output/train.csv">Train</a> </li>
-                        <li id="validate"> <a href="/output/validate.csv">Validate</a> </li>
-                          </ul>
+          <li id="effect-size"> <a href="/output/effect-size.csv">Effect size table</a> (CSV)</li>
+          <li id="variable-importance"> <a href="/output/variable-importance.csv">Variable importance table</a> (CSV)</li>
+          <li id="prediction"> <a href="/output/prediction.csv">Prediction data</a> (CSV)</li>
+          <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
+          <li id="preprocessed"> <a href="/output/preprocessed.rdata">Preprocessed data</a> (R binary)</li>
+          <li id="train"> <a href="/output/train.csv">Train</a> </li>
+          <li id="validate"> <a href="/output/validate.csv">Validate</a> </li>
+          <li id="exclusions"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>
+      </ul>
                           
-                          <h3>Detailed result pages</h3>
-                          <table id="detailed-results" class="table table-condensed">
-                            <tr> <th>Model</th> <th>Sex</th> <th>html</th> <th>pdf</th> </tr>
-                            </table>
-                            </div>
-                            
-                            </div>  
+      <h3>Detailed result pages</h3>
+      <table id="detailed-results" class="table table-condensed">
+        <tr> <th>Model</th> <th>Sex</th> <th>html</th> <th>pdf</th> </tr>
+      </table>
+    </div>
   '
   
   response = sprintf('
@@ -791,10 +811,12 @@ hb_predictor <- function(req){
             Dynamic linear mixed model
           </label>
 
+          <!--
           <label for="decision-tree">
             <input type="checkbox" value="on", id="decision-tree" name="dt" />
             Mock decision tree
           </label>
+          -->
           
           <label for="baseline">
             <input type="checkbox" value="on", id="baseline" name="bl" />
@@ -820,7 +842,8 @@ hb_predictor <- function(req){
       %s
       
       %s  
-  </div>
+  </div> <!-- id="content -->
+  </div> <!-- id="container -->
   </body>
   </html>
   ', container_version, round(default_Hb_cutoff_male), round(default_Hb_cutoff_female), default_max_diff_date_first_donation, 

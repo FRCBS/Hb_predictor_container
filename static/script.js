@@ -296,7 +296,7 @@ document.onreadystatechange = function() {
 	console.log(`Details dataframe has ${data.details_df.length} rows`);
 	// get the tbody element under the table element
 	detailed_results = document.getElementById("detailed-results").firstElementChild;  
-	for (i=0; i < data.details_df.length; ++i) {
+	for (i=0; i < data.details_df.length; ++i) {   // iterate over rows of the table
             var wrapper= document.createElement('tbody');
             e = data.details_df[i];
             t = `<tr id="${e.id}"> <td>${e.pretty}</td> <td>${e.sex}</td> <td><a href="${e.html}" target="_blank" >html</a></td> <td><a href="${e.pdf}" target="_blank" >pdf</a></td> </tr>`;
@@ -377,6 +377,9 @@ document.onreadystatechange = function() {
 	} else if (data.type == "summary") {
 	    // Show summary table
 	    document.getElementById("table_container").innerHTML = data.summary_table_string;
+	} else if (data.type == "timing") {
+	    // Show timing table
+	    document.getElementById("timing_table_container").innerHTML = data.timing_table_string;
 	} else if (data.type == "error") {
 	    // Show error
 	    add_error_messages(data)
