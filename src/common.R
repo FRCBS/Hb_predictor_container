@@ -408,3 +408,14 @@ plot_summary_shap_values <- function(df, variables_renamed) {
     xlab("Variable") + ylab("Mean absolute attribution")
   return(shap_plot_rf)
 }
+# Constructor of the MyLogger class
+new_logger <- function(prefix="", file="", silent=FALSE) {
+  stopifnot(is.character(prefix))
+  structure(list(prefix=prefix, file=file, silent=silent), class = "MyLogger")
+}
+
+print.MyLogger <- function(object, msg) {
+  if (! object$silent) {
+    cat(object$prefix, msg, file=object$file, append=TRUE)
+  }
+}
