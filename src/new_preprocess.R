@@ -48,7 +48,7 @@ read_donors <- function(donor_file) {
   donors
 }
 
-freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
+freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, logger)
 {
   
   
@@ -89,8 +89,10 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   bad <- unique(as.character(donation$donation)[-yn])
   cat("Bad ones look like this:\n",head(bad),"...",tail(bad),"\n")
   donation <- donation[yn,]
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) due to badly formed ID\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to badly formed ID\n", 
+              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
   
   
   ######### DONOR
@@ -190,29 +192,39 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   ids <- paste0(year(donation$date), month(donation$date), day(donation$date)) == paste0(year(donation$dob), month(donation$dob), day(donation$dob))
   donation <- donation[!ids,]
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) due to indentical date and dob\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to indentical date and dob\n", 
+              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
+  
   
   #Drop cases where either date or dob is NA
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   m <- is.na(donation$date) | is.na(donation$dob)
   donation <- donation %>% filter(!m)
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) due to date or dob being NA\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to date or dob being NA\n", 
+              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
   
   #Drop cases where date is "19390101"
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   ids <- paste0(year(donation$date),month(donation$date),day(donation$date)) ==  "193911"
   donation <- donation[!ids,]
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) due to date '19390101'\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to date '19390101'\n", 
+              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
+  
   
   # Drop cases where date_first_donation is NA
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   donation <- donation %>%
     filter(!is.na(date_first_donation))
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) because date_first_donation is not known.\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because date_first_donation is not known.\n", 
+              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
   
   #make age at time of donation
   #https://stackoverflow.com/questions/31126726/efficient-and-accurate-age-calculation-in-years-months-or-weeks-in-r-given-b
@@ -223,8 +235,10 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   ids <- donation$age < 18
   donation <- donation[!ids,]
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) due to age at time of donation below 18\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to age at time of donation below 18\n", 
+              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
   
   donation <- droplevels(donation)
   #age groups, not used
@@ -277,9 +291,11 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
     mutate(triesOnTheDay=n()) %>% 
     filter(max(date) == date) %>% 
     ungroup()
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) because only last try of the day is selected\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
-
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because only last try of the day is selected\n", 
+             old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
+  
   # If first donation date is not given, then impute it from data.
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   donation <- donation %>%
@@ -288,8 +304,10 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
     mutate(given_first = min(date_first_donation)) %>% # get a single value not vector
     filter(given_first == imputed_first) %>%
     ungroup()
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) because the given date_first_donation was not the oldest donation for that donor\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because the given date_first_donation was not the oldest donation for that donor\n", 
+              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
   
   donation <- donation %>%
     mutate(first_event = dateonly==date_first_donation)
@@ -301,8 +319,10 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
     pull(donor)
   donation <- donation %>%
     filter(!(donor %in% bad_donors))
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) whose first Hb is NA\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) whose first Hb is NA\n", 
+              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
   
   invisible(donation)
 }
@@ -311,7 +331,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
 
 
 
-decorateData <- function(data, southern_hemisphere) {
+decorateData <- function(data, southern_hemisphere, logger) {
   
   #Take all donations events (regardless of type)
   data$Hb[is.nan(data$Hb)] <- NA
@@ -421,14 +441,18 @@ decorateData <- function(data, southern_hemisphere) {
   old_count <- nrow(data); old_count2 <- ndonor(data)
   data <- data %>%
     filter(donat_phleb == 'K' | donat_phleb == '*')
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) because donat_phleb was not 'K' nor '*'\n", 
-              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donat_phleb was not 'K' nor '*'\n", 
+              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
   data <- data %>%
     filter(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))
-  cat(sprintf("Dropped %i / %i donations (%i / %i donors) because Hb or days_to_previous_fb was NA for a non-first donation\n", 
-              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because Hb or days_to_previous_fb was NA for a non-first donation\n", 
+              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
   
   # Select only the interesting variables, rename some of them and change the types
   variables <- c("don_id", "donor", "Hb", "dateonly", "previous_Hb_def", "days_to_previous_fb", "donat_phleb", "sex", "age",
@@ -539,7 +563,7 @@ myjoin <- function(df1, df2, by="donation", values=NULL) {
 
 
 preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl",
-                       southern_hemisphere=FALSE) {
+                       southern_hemisphere=FALSE, logger) {
   tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
@@ -548,10 +572,10 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
   if (is.character(donors)) {   # is a filename instead of a dataframe?
     donors <- read_donors(donors)
   }
-  data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit)
+  data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, logger)
   toc()
   tic()
-  data <- decorateData(data, southern_hemisphere)
+  data <- decorateData(data, southern_hemisphere, logger)
   toc()
   toc()
   return(data)

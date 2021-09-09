@@ -37,7 +37,7 @@ message(sprintf(">>>>>>>>>> SVM %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", pa
 
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(knitr))
-library(rstan)
+#library(rstan)
 suppressPackageStartupMessages(library(caret))
 suppressPackageStartupMessages(library(tictoc))
 suppressPackageStartupMessages(library(entropy))
@@ -105,7 +105,7 @@ if (!is.null(params$cores)) {
   options(mc.cores   = number_of_cores)
   options(boot.ncpus = number_of_cores)
 }
-rstan_options(auto_write = TRUE) # To avoid recompilation of unchanged Stan programs, we recommend calling
+#rstan_options(auto_write = TRUE) # To avoid recompilation of unchanged Stan programs, we recommend calling
 
 
 
@@ -115,6 +115,7 @@ source("validate_stan_fit.R")
 source("enrich_deferrals_rf.R")
 source("common.R")
 
+logger <- new_logger(prefix=sprintf("SVM %s:", params$sex), file="../output/exclusions.txt", silent=use_pdf)
 ```
 
 ```{r, results="asis", echo=FALSE}
@@ -201,8 +202,10 @@ tmp <- new_split(data, mode)
 train_orig <-tmp$train
 test <- tmp$test
 
-message(sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
-              old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2))
+msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
+              old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2)
+message(msg)
+print(logger, msg)
 message("Here")
 sink(file=stderr(), type="output"); summary(train_orig); sink()
 n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
@@ -216,8 +219,10 @@ old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
 if (old_count2 >= 1000) {
   enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
   #sink()
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
-                  old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+                  old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
+  message(msg)
+  print(logger, msg)
   if (debug) saveRDS(enriched, file="/tmp/post-enriched.rds")
 } else {  # Don't enrich if less than 1000 donors
   message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
@@ -236,8 +241,10 @@ if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
     ungroup() %>% 
     filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
     select(-last_donation_date)
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
-              old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
+  msg <-sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
+              old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
+  message(msg)
+  print(logger, msg)
 }
 sink(file=stderr(), type="output"); summary(enriched); sink()
 if (debug) saveRDS(enriched, file="/tmp/enriched.rds")
@@ -380,7 +387,11 @@ sink(file=stderr(), type="output"); print(svm_hyperparameters); sink()
 
 train <- train %>% select(-label)   # Not needed anymore
 
+train <- train %>% mutate(across(c(warm_season, previous_Hb_def), as.integer))   ## POISTA, vain testatusta varten 
+validate <- validate %>% mutate(across(c(warm_season, previous_Hb_def), as.integer))   ## POISTA, vain testatusta varten 
+
 saveRDS(train, sprintf("/tmp/svm-train-%s.rds", params$sex))   # remove
+saveRDS(validate, sprintf("/tmp/svm-validate-%s.rds", params$sex))   # remove
 
 svmFit_roc <- caret::train(Hb_deferral ~ ., data = as.data.frame(train), 
                  method = "svmPoly", 

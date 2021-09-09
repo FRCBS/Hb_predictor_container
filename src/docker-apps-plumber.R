@@ -212,6 +212,9 @@ hb_predictor3 <- function(ws) {
   use_only_first_ferritin <- "use-only-first-ferritin" %in% names(post)
   cat(sprintf("The parameter use_only_first_ferritin is %s\n", as.character(use_only_first_ferritin)))
 
+  allow_extra_variables <- "allow_extra_variables" %in% names(post)
+  cat(sprintf("The parameter allow_extra_variables is %s\n", as.character(allow_extra_variables)))
+
   stratify_by_sex <- "stratify-by-sex" %in% names(post)
   cat(sprintf("The parameter stratify_by_sex is %s\n", as.character(stratify_by_sex)))
   
@@ -322,6 +325,9 @@ hb_predictor3 <- function(ws) {
   # Do the preprocessing
   #
   ################################
+  file.create("../output/exclusions.txt")  # Make the file empty
+  logger <- new_logger(prefix="Preprocess:", file="../output/exclusions.txt")
+  #print(logger, "testi")
   if (input_format == "Preprocessed") {
     donation_specific_filename <- post$preprocessed_file_upload$tempfile
     fulldata_preprocessed <- readRDS(donation_specific_filename)
@@ -346,7 +352,7 @@ hb_predictor3 <- function(ws) {
         donations <- semi_join(donations, donors, by="KEY_DONOR")
       }
       fulldata_preprocessed <- preprocess(donations, donors,
-                                          myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit, southern_hemisphere)
+                                          myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit, southern_hemisphere, logger=logger)
     } else {  # Sanquin
       donations <- read_sanquin_donations(donations_o$tempfile)
       donors <- read_sanquin_donors(donors_o$tempfile)
@@ -358,8 +364,8 @@ hb_predictor3 <- function(ws) {
       fulldata_preprocessed <- sanquin_preprocess(donations, donors,
                                                   #donations_o$tempfile, donors_o$tempfile,
                                                   myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit, southern_hemisphere,
-                                                  max_diff_date_first_donation)
-      if ("FERRITIN_FIRST" %in% names(donors)) {
+                                                  max_diff_date_first_donation, logger=logger)
+      if (allow_extra_variables && "FERRITIN_FIRST" %in% names(donors)) {
         cat("hep\n")
 
         donor_specific <- sanquin_preprocess_donor_specific(donors, fulldata_preprocessed, use_only_first_ferritin)
@@ -712,10 +718,19 @@ hb_predictor <- function(req){
         </td></tr>
         <tr><td>Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td>Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
-        <tr id="max_diff_date_first_donation_row"><td>Max tolerance in DONOR_DATE_FIRST_DONATION</td>        <td><input name="max_diff_date_first_donation" value="%i" maxlength="5" size="5"></td> </tr>
-        <tr id="use_only_first_ferritin_row"><td>Use only first ferritin value</td>
+        <tr id="max_diff_date_first_donation_row" hidden>
+          <td>Max tolerance in DONOR_DATE_FIRST_DONATION</td>        
+          <td><input name="max_diff_date_first_donation" value="%i" maxlength="5" size="5"></td> 
+        </tr>
+        <tr id="use_only_first_ferritin_row" hidden>
+        <td>Use only first ferritin value</td>
             <td>
             <input type="checkbox" value="on", id="use-only-first-ferritin" name="use-only-first-ferritin" />
+            </td>
+        </tr>
+        <tr id="allow_extra_variables"><td>Allow extra variables</td>
+            <td>
+            <input type="checkbox" value="on", id="allow_extra_variables" name="allow_extra_variables" />
             </td>
         </tr>
         <tr id="stratify_by_sex_row"><td>Stratify by sex</td>
