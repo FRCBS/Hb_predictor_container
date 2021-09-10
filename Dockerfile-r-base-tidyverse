@@ -60,11 +60,12 @@ r-cran-slider \
 r-cran-cowplot \
 r-cran-gridextra \
 r-cran-desctools \
-r-cran-bayestestr 
-#r-cran-cutpointr  # not available in binary
+r-cran-bayestestr \
+r-cran-ggforce
 
 RUN apt-get -y --no-install-recommends install time
 
+# Python is needed for the shapper R package
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev python3.8 python3-pip python3-setuptools python3-dev
 RUN pip3 install --upgrade pip
 RUN pip3 install shap

@@ -1,6 +1,8 @@
 # Variables that are in use
 library(parallel)
 library(doParallel)
+library(shapr)
+library(ggforce)
 
 descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
                                 "year", "warm_season", "consecutive_deferrals", "recent_donations",
@@ -375,7 +377,7 @@ prettify_variables <- function(df, variables_renamed) {
   return(df)
 }
 
-compute_shap_values <- function(model, train, validate, variables) {
+compute_shap_values_shapper <- function(model, train, validate, variables) {
   exp_rf <- DALEX::explain(model, data = train)
   #ive_rf <- shap(exp_rf, new_observation = validate[-c(15)])
   #ive_rf <- shap(exp_rf, new_observation = as.data.frame(train %>% select(-Hb)))
@@ -392,7 +394,68 @@ compute_shap_values <- function(model, train, validate, variables) {
   return(res)
 }
 
+predict_model.train <- function(x, newdata) { 
+  res <- predict(x, as.data.frame(newdata), type = "raw") 
+  as.integer(res == "Deferred")
+}
+
+get_model_specs.train <- function(x){
+  feature_list = list()
+  feature_list$labels <- labels(x$terms)
+  m <- length(feature_list$labels)
+  
+  feature_list$classes <- attr(x$terms,"dataClasses")[-1]
+  feature_list$factor_levels <- setNames(vector("list", m), feature_list$labels)
+  feature_list$factor_levels[feature_list$classes=="factor"] <- NA # the model object doesn't contain factor levels info
+  
+  return(feature_list)
+}
+
+compute_shap_values_shapr <- function(model, validate, variables, n=100) {
+  message("In function compute_shap_values_shapr")
+  
+  # if ("sex" %in% variables) {
+  #   validate2 <- validate %>% select(-c(Hb))
+  # } else {
+  #   validate2 <- validate %>% select(-c(Hb, sex))
+  # }
+  #validate2 <- as.data.frame(validate2)
+  #validate2 <- validate %>% mutate(previous_Hb_def = as.integer(previous_Hb_def))
+  validate2 <- validate  %>% slice_sample(n=n)
+  p0 <- mean(validate$Hb_deferral == "Deferred")
+  
+  result_code <- tryCatch(
+    error = function(cnd) {
+      msg <- paste("\nComputation of shap values failed:", cnd$message, 
+                   sep="\n")
+      warning(msg)
+      NULL
+    },
+    {
+      explainer <- shapr::shapr(validate2, model, n_combinations = 1000)
+      explanation <- shapr::explain(validate2, explainer, approach = "empirical", prediction_zero = p0)
+    }
+  )
+  if (is.null(result_code)) {
+    return(NULL)
+  }
+  #explanation$dt
+  n <- nrow(explanation$dt)
+  res1 <- as_tibble(explanation$dt) %>% select(-none) %>% mutate(id=1:n)
+  res2 <- as_tibble(explanation$x_test) %>% mutate(id=1:n)
+  res1 <- pivot_longer(res1, cols=!id) %>%
+    select(Variable=name, id, attribution=value)
+  res2 <- pivot_longer(res2, cols=!id) %>%
+    select(Variable=name, id, value=value)
+  res <- inner_join(res1, res2, by=c("Variable", "id")) %>%
+    group_by(Variable) %>%
+    mutate(value=scale(value)[,1]) %>%
+    ungroup()
+  return(res)
+}
+
 plot_summary_shap_values <- function(df, variables_renamed) {
+  message("In function plot_summary_shap_values")
   # The global attribution of a variable is the average of the absolute values of local attributions 
   res2 <- df %>% 
     mutate(attribution=abs(attribution)) %>% 
@@ -408,6 +471,29 @@ plot_summary_shap_values <- function(df, variables_renamed) {
     xlab("Variable") + ylab("Mean absolute attribution")
   return(shap_plot_rf)
 }
+
+plot_shap_values <- function(df, variables_renamed) {
+  message("In function plot_shap_values")
+  res2 <- df
+  res2 <- left_join(res2, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>% 
+    select(Variable, Pretty, attribution, value)
+  res2 <- prettify_variables(res2, variables_renamed)
+
+  shap_plot_rf <- res2 %>% 
+    mutate(value = if_else(abs(value) <= 4, value, NA_real_)) %>% # mark outliers
+    ggplot(aes(Variable, attribution, color=value)) + 
+    geom_hline(yintercept = 0) +
+    ggforce::geom_sina() + 
+    coord_flip() + 
+    scale_color_gradient(low="blue", high="red", na.value="black") + 
+    labs(y="Attribution", color="Variable value")
+  # shap_plot_rf <- res2 %>% ggplot(aes(x=reorder(Pretty, attribution), y=attribution)) +
+  #   geom_col(alpha=0.7) + 
+  #   coord_flip() + 
+  #   xlab("Variable") + ylab("Mean absolute attribution")
+  return(shap_plot_rf)
+}
+
 # Constructor of the MyLogger class
 new_logger <- function(prefix="", file="", silent=FALSE) {
   stopifnot(is.character(prefix))

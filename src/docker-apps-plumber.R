@@ -217,6 +217,9 @@ hb_predictor3 <- function(ws) {
   
   cat(sprintf("The input format is %s\n", input_format))
   
+  compute_shap_values <- "compute_shap_values" %in% names(post)
+  cat(sprintf("The parameter compute_shap_values is %s\n", as.character(compute_shap_values)))
+
   use_only_first_ferritin <- "use-only-first-ferritin" %in% names(post)
   cat(sprintf("The parameter use_only_first_ferritin is %s\n", as.character(use_only_first_ferritin)))
 
@@ -420,6 +423,7 @@ hb_predictor3 <- function(ws) {
   ################################
   
   myparams$input_file <- donation_specific_filename
+  myparams$compute_shap_values <- compute_shap_values
   if ("sample_fraction" %in% names(post))
     myparams$sample_fraction <- as.numeric(post$sample_fraction)
   if ("hlen" %in% names(post))       # Minimum length of time series
@@ -485,7 +489,7 @@ hb_predictor3 <- function(ws) {
       length(tmp) == 2 ~ "both")
   }
   
-  timing <- tibble(id=character(), model=character(), sex=character(), time=numeric())
+  timing <- tibble(id=character(), model=character(), sex=character(), time=numeric(), unit=character())
   
   models <- intersect(c("dt", "bl", "rf", "svm"), names(post))
   models <- c(models, linear_models)
@@ -533,7 +537,7 @@ hb_predictor3 <- function(ws) {
             params = myparams)
           NULL
         }, warning = function(w) ws$send(rjson::toJSON(list(type="warning", 
-                                                            warning_messages=c(sprintf("Warning in %s call \n", pretty),
+                                                            warning_messages=c(sprintf("Warning in %s %s call \n", sex, pretty),
                                                                                w$message))))),
         error = function(cnd) {
           error_messages <- c(sprintf("Error in %s %s call \n", sex, pretty), cnd$message)
@@ -738,6 +742,13 @@ hb_predictor <- function(req){
         </td></tr>
         <tr><td>Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td>Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
+        <tr id="compute_shap_values_row">
+        <td>Compute shap values</td>
+            <td>
+            <input type="checkbox" value="on", id="compute-shap-values" name="compute_shap_values" checked />
+            </td>
+        </tr>
+        
         <tr id="max_diff_date_first_donation_row" hidden>
           <td>Max tolerance in DONOR_DATE_FIRST_DONATION</td>        
           <td><input name="max_diff_date_first_donation" value="%i" maxlength="5" size="5"></td> 

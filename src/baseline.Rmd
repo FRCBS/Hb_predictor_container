@@ -22,6 +22,7 @@ params:
   cores: 4
   iterations: 2000
   skip_train: FALSE
+  compute_shap_values: TRUE
   create_datasets_bool: TRUE
   donor_specific_file: NULL
   dev: "cairo_pdf"  

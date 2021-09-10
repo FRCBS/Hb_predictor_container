@@ -22,6 +22,7 @@ params:
   cores: 4
   iterations: 2000
   skip_train: FALSE
+  compute_shap_values: TRUE
   create_datasets_bool: TRUE
 #   donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
   donor_specific_file: NULL
@@ -37,7 +38,7 @@ message(sprintf(">>>>>>>>>> RF %s %s >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", par
 
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(knitr))
-library(rstan)
+#library(rstan)
 suppressPackageStartupMessages(library(caret))
 suppressPackageStartupMessages(library(tictoc))
 suppressPackageStartupMessages(library(entropy))
@@ -106,7 +107,7 @@ if (!is.null(params$cores)) {
   options(mc.cores   = number_of_cores)
   options(boot.ncpus = number_of_cores)
 }
-rstan_options(auto_write = TRUE) # To avoid recompilation of unchanged Stan programs, we recommend calling
+#rstan_options(auto_write = TRUE) # To avoid recompilation of unchanged Stan programs, we recommend calling
 
 
 
@@ -368,11 +369,11 @@ if (nrow(train) <= rf_hyperparameters$min.node.size) {
                   nrow(train), rf_hyperparameters$min.node.size))
 }
 
-train <- train %>% mutate(across(c(warm_season, previous_Hb_def), as.integer))   ## POISTA, vain testatusta varten 
+train    <- train    %>% mutate(across(c(warm_season, previous_Hb_def), as.integer))   ## POISTA, vain testatusta varten 
 validate <- validate %>% mutate(across(c(warm_season, previous_Hb_def), as.integer))   ## POISTA, vain testatusta varten 
 
-saveRDS(train, file="../output/train.rds")
-saveRDS(validate, file="../output/validate.rds")
+saveRDS(train, file=sprintf("/tmp/rf-train-%s.rds", params$sex))
+saveRDS(validate, file=sprintf("/tmp/rf-validate-%s.rds", params$sex))
 
 # If formula is given as the first parameter, then the variables get recoded and renamed:
 # https://stackoverflow.com/questions/30097730/error-when-using-predict-on-a-randomforest-object-trained-with-carets-train
@@ -394,6 +395,7 @@ rrfFit_roc <- caret::train(x = train %>% select(-Hb_deferral), y = train %>% pul
                 )
 
 sink(file=stderr(), type="output"); toc(); sink()
+saveRDS(rrfFit_roc, sprintf("/tmp/rf-fit-%s.rds", params$sex))
 
 write_csv(train, '../output/train.csv')
 write_csv(validate, '../output/validate.csv')
@@ -408,7 +410,7 @@ write_csv(validate, '../output/validate.csv')
 ## Results
 
 
-```{r SHAP values}
+```{r SHAP values, eval=params$compute_shap_values}
 message(paste(colnames(train), collapse=" "))
 message(paste(colnames(validate), collapse=" "))
 
@@ -417,16 +419,21 @@ shap_filename <- sprintf("/tmp/shap_values_%s_%s.rds", params$model, params$sex)
 if (use_pdf) {     
   res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
 } else {
-  res <- compute_shap_values(rrfFit_roc$finalModel, train, validate, variables)
+  #res <- compute_shap_values_shapper(rrfFit_roc$finalModel, train, validate, variables)
+  res <- compute_shap_values_shapr(rrfFit_roc$finalModel, validate, variables)
   saveRDS(res, shap_filename)
 }
 
-variables_renamed <- FALSE
+if (!is.null(res)) {
+  variables_renamed <- FALSE
   
-shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)
-#ive_rf <- shapper::shap(exp_rf, new_observation = validate2[1,], nsamples=50)
-#plot(ive_rf)
-shap_plot_rf
+  shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)
+  shap_plot_rf2 <- plot_shap_values(res, variables_renamed)
+  #ive_rf <- shapper::shap(exp_rf, new_observation = validate2[1,], nsamples=50)
+  #plot(ive_rf)
+  plot(shap_plot_rf)
+  plot(shap_plot_rf2)
+}
 ```
 
 ```{r Create variable importances plot}

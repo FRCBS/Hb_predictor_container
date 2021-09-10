@@ -26,6 +26,7 @@ params:
   cores: 4
   iterations: 2000
   skip_train: FALSE
+  compute_shap_values: TRUE
   create_datasets_bool: TRUE
 #  donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
   donor_specific_file: NULL
