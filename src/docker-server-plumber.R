@@ -6,9 +6,16 @@ suppressPackageStartupMessages(library(knitr))
 suppressPackageStartupMessages(library(httpuv))
 suppressPackageStartupMessages(library(rjson))
 
+args <- commandArgs(TRUE)
+
+if (length(args) == 1) {
+  port <- as.integer(args[1])
+} else {
+  port <- 8080
+}
 #pr <- plumber::plumb("docker-apps-plumber.R")
 
-cat("Open address http://localhost:8080/hb-predictor in your browser.\n")
+cat(sprintf("Open address http://localhost:%i/hb-predictor in your browser.\n", port))
 cat("Press control-c to kill the server\n")
 
 #pr$run(host='0.0.0.0', port=8080) # Listen to the specified port on all interfaces
@@ -33,7 +40,7 @@ multiplexer <- function(req) {
 
 cat("Here\n")
 
-s <- runServer("0.0.0.0", 8080,
+s <- runServer("0.0.0.0", port,
                  list(
                    call = function(req) {
                      cat(sprintf("Got http request %s\n", req$PATH_INFO))

@@ -171,7 +171,7 @@ create_stan_datasets <- function(data, datadir, dumpdir, id, hlen=NULL, hlen_exa
   #load("~/FRCBS/interval_prediction/data/full_data_preprocessed.rdata")
   #data <- fulldata_preprocessed
   
-  set.seed(123)
+  #set.seed(123)
   message(sprintf("Full dataset size: %i", ndonor(data)))
 
   temp <- data %>% 

@@ -14,6 +14,7 @@ params:
   extra_id: NULL
   summary_table_file: NULL
   effect_size_table_file: NULL
+  shap_value_table_file: NULL
   prediction_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
@@ -44,7 +45,7 @@ cat(sprintf("# Baseline (%s)\n", params$sex))
 
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(knitr))
-library(rstan)
+#library(rstan)
 suppressPackageStartupMessages(library(caret))
 suppressPackageStartupMessages(library(tictoc))
 suppressPackageStartupMessages(library(entropy))
@@ -103,7 +104,7 @@ mode <- params$mode
 
 
 
-set.seed(123)
+#set.seed(123)
 number_of_cores <- parallel::detectCores()
 if (!is.null(params$cores)) {
   number_of_cores <- min(params$cores, number_of_cores)
@@ -198,8 +199,10 @@ if (skip_train) {
   train_orig <-tmp$train
   test <- tmp$test
   
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
-                  old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
+                  old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2)
+  message(msg)
+  print(logger, msg)
   message("Here")
   sink(file=stderr(), type="output"); summary(train_orig); sink()
   n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
@@ -211,10 +214,12 @@ if (skip_train) {
   old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
   #sink(file=stderr(), type="output")
   if (old_count2 >= 1000) {
-    enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
+    enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
     #sink()
-    message(sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
-                    old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2))
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+                    old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
+    message(msg)
+    print(logger, msg)
     #if (debug) save(enriched, file="/tmp/post-enriched.rdata")
   } else {  # Don't enrich if less than 1000 donors
     message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))

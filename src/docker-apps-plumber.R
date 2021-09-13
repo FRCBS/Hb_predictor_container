@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.23"
+container_version="0.24"
 
 message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
@@ -22,11 +22,15 @@ library(rjson)
 
 # default values for parameters
 default_max_diff_date_first_donation <- 60
+default_seed <- 123
 default_Hb_cutoff_male   <- 135
 default_Hb_cutoff_female <- 125
 default_Hb_input_unit <- "gperl"
+default_mode <- "initial"
 
 is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+
+global_random_seed <- default_seed
 
 # Show metadata about an uploaded file
 get_info <- function(x) {
@@ -86,9 +90,9 @@ FRCBS_hyperparameters <- tribble(
   "rf",            "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
   "rf",            "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
   "rf",            "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
-  "svm",           "male",   list(degree=3, scale=0.1, C=1),
-  "svm",           "female", list(degree=3, scale=0.1, C=1),
-  "svm",           "both",   list(degree=3, scale=0.1, C=1)
+  "svm",           "male",   list(degree=3, scale=0.1, C=5),
+  "svm",           "female", list(degree=3, scale=0.1, C=5),
+  "svm",           "both",   list(degree=3, scale=0.1, C=5)
 )
 
 Sanquin_hyperparameters <- FRCBS_hyperparameters
@@ -236,6 +240,10 @@ hb_predictor3 <- function(ws) {
                                           as.integer(post$max_diff_date_first_donation), default_max_diff_date_first_donation)
   cat(sprintf("The parameter max_diff_date_first_donation is %i\n", max_diff_date_first_donation))
   
+  global_random_seed <<- ifelse ("seed" %in% names(post), 
+                                          as.integer(post$seed), default_seed)
+  cat(sprintf("The parameter seed is %i\n", global_random_seed))
+
   Hb_input_unit <- ifelse ("unit" %in% names(post), post$unit, default_Hb_input_unit)
   cat(sprintf("The parameter Hb_input_unit is %s\n", Hb_input_unit))
   
@@ -345,7 +353,7 @@ hb_predictor3 <- function(ws) {
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
     if (sf != 1.0) {
-      fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, donor_field = "donor", sex_field = "sex")
+      fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, seed=global_random_seed, donor_field = "donor", sex_field = "sex")
       donation_specific_filename <- "../output/preprocessed.rdata"
       saveRDS(fulldata_preprocessed, file=donation_specific_filename)  # Save the sample
       post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
@@ -357,9 +365,9 @@ hb_predictor3 <- function(ws) {
     if (input_format == "FRCBS") {
       donations <- read_donations(donations_o$tempfile)
       donors <- read_donors(donors_o$tempfile)
-      donors <- split_set3(donors)  # label the donors to either train, validate, or test
+      donors <- split_set3(donors, seed=global_random_seed)  # label the donors to either train, validate, or test
       if (sf != 1.0) {
-        donors <- stratified_sample(donors, stratify_by_sex, sf)
+        donors <- stratified_sample(donors, stratify_by_sex, sf, seed=global_random_seed)
         donations <- semi_join(donations, donors, by="KEY_DONOR")
       }
       fulldata_preprocessed <- preprocess(donations, donors,
@@ -367,9 +375,9 @@ hb_predictor3 <- function(ws) {
     } else {  # Sanquin
       donations <- read_sanquin_donations(donations_o$tempfile)
       donors <- read_sanquin_donors(donors_o$tempfile)
-      donors <- split_set3(donors)  # label the donors to either train, validate, or test
+      donors <- split_set3(donors, seed=global_random_seed)  # label the donors to either train, validate, or test
       if (sf != 1.0) {
-        donors <- stratified_sample(donors, stratify_by_sex, sf)
+        donors <- stratified_sample(donors, stratify_by_sex, sf, seed=global_random_seed)
         donations <- semi_join(donations, donors, by="KEY_DONOR")
       }
       fulldata_preprocessed <- sanquin_preprocess(donations, donors,
@@ -454,7 +462,7 @@ hb_predictor3 <- function(ws) {
     system(cmd)
   }
   
-  myparams$mode <- post$mode
+  myparams$mode <- ifelse("mode" %in% names(post), post$mode, default_mode)
   
   # This debugging information will be sent to the browser NOT DONE CURRENTLY! FIX THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   myparams_string <- paste( map_chr(names(myparams), function (name) sprintf("<li>%s=%s</li>", name, myparams[name])), 
@@ -467,6 +475,7 @@ hb_predictor3 <- function(ws) {
   effect_size_tables <- list()
   variable_importance_tables <- list()
   prediction_tables <- list()
+  shap_value_tables <- list()
   #details_df <- tibble(id=character(0), pretty=character(0), sex=character(0), html=character(0), pdf=character(0))
   details_dfs <- list()
   
@@ -518,6 +527,18 @@ hb_predictor3 <- function(ws) {
                                      sprintf("/tmp/variable-importance-%s-%s.csv", m, sex))
       myparams["effect_size_table_file"] <- effect_size_filename
       
+      if (m %in% c("rf", "svm")) {
+        shap_value_filename <- sprintf("/tmp/shap-value-%s-%s.csv", m, sex)
+        if (file.exists(shap_value_filename))
+          file.remove(shap_value_filename)
+        if (file.exists(effect_size_filename))
+          file.remove(effect_size_filename)
+      } else {
+        shap_value_filename <- NULL
+      }
+                               
+      myparams["shap_value_table_file"] <- shap_value_filename
+
       prediction_filename <- sprintf("/tmp/prediction-%s-%s.csv", m, sex)
       myparams["prediction_table_file"] <- prediction_filename
       
@@ -585,8 +606,12 @@ hb_predictor3 <- function(ws) {
       
       if (is_linear_model) {
         effect_size_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
-      } else if (! m %in% c("dt", "bl")) {
+      } else if (! m %in% c("dt", "bl") && file.exists(effect_size_filename)) {
         variable_importance_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
+      }
+      
+      if (m %in% c("rf", "svm") && file.exists(shap_value_filename)) {
+        shap_value_tables[[paste(m, sex, sep="-")]] <- read_csv(shap_value_filename)
       }
     } # end for sexes
   } # end for models
@@ -614,6 +639,9 @@ hb_predictor3 <- function(ws) {
   variable_importance_table <- bind_rows(variable_importance_tables, .id="Id")
   write_excel_csv(variable_importance_table, "../output/variable-importance.csv")
   
+  shap_value_table <- bind_rows(shap_value_tables, .id="Id")
+  write_excel_csv(shap_value_table, "../output/shap-value.csv")
+
   prediction_table <- bind_rows(prediction_tables)
   write_excel_csv(prediction_table, "../output/prediction.csv")
   
@@ -661,19 +689,25 @@ hb_predictor <- function(req){
             <table id="summary-table" class="table table-condensed">
             </table>
           -->
+          
+      <div id="download_results_container" hidden>
       <h3>Download the results</h3>
       <ul>
-          <li> <a href="/output/summary.csv">Summary table</a> (CSV)</li>
-          <li id="effect-size"> <a href="/output/effect-size.csv">Effect size table</a> (CSV)</li>
-          <li id="variable-importance"> <a href="/output/variable-importance.csv">Variable importance table</a> (CSV)</li>
-          <li id="prediction"> <a href="/output/prediction.csv">Prediction data</a> (CSV)</li>
+          <li> <a href="/output/summary.csv" target="_blank">Summary table</a> (CSV)</li>
+          <li id="effect-size"> <a href="/output/effect-size.csv" target="_blank">Effect size table</a> (CSV)</li>
+          <li id="variable-importance"> <a href="/output/variable-importance.csv" target="_blank">Variable importance table</a> (CSV)</li>
+          <li id="shap-value"> <a href="/output/shap-value.csv" target="_blank">Shap value table</a> (CSV)</li>
+          <li id="prediction"> <a href="/output/prediction.csv" target="_blank">Prediction data</a> (CSV)</li>
           <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
-          <li id="preprocessed"> <a href="/output/preprocessed.rdata">Preprocessed data</a> (R binary)</li>
-          <li id="train"> <a href="/output/train.csv">Train</a> </li>
-          <li id="validate"> <a href="/output/validate.csv">Validate</a> </li>
+          <li id="preprocessed"> <a href="/output/preprocessed.rdata" target="_blank">Preprocessed data</a> (R binary)</li>
+          <!--
+            <li id="train"> <a href="/output/train.csv" target="_blank">Train</a> </li>
+            <li id="validate"> <a href="/output/validate.csv" target="_blank">Validate</a> </li>
+          -->
           <li id="exclusions"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>
       </ul>
-                          
+      </div>
+      
       <h3>Detailed result pages</h3>
       <table id="detailed-results" class="table table-condensed">
         <tr> <th>Model</th> <th>Sex</th> <th>html</th> <th>pdf</th> </tr>
@@ -742,6 +776,7 @@ hb_predictor <- function(req){
         </td></tr>
         <tr><td>Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td>Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
+        <tr><td>Random seed</td>      <td><input name="seed" value="123" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr id="compute_shap_values_row">
         <td>Compute shap values</td>
             <td>
@@ -789,7 +824,7 @@ hb_predictor <- function(req){
         </tr>
 
         <tr><td>Mode</td>                <td>
-        <select id="mode" name="mode">
+        <select id="mode" name="mode" disabled>
           <option value="initial" label="Initial" selected>Initial</option>
           <option value="final" label="Final">Final</option>
         </select>

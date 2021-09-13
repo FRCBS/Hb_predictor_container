@@ -38,7 +38,7 @@ trim_time_series <- function(df) {
   
   if (nrow(df) == 0) return(df)
   
-  set.seed(56)  # Initialize random number generator  
+  #set.seed(56)  # Initialize random number generator  
   
   # Get donors without deferrals
   without_deferrals <- df %>% 
@@ -116,7 +116,8 @@ balance_classes <- function(df, target_fraction) {
   return (df2)  
 }
 
-enrich_deferrals_rf <- function(df, target_fraction) {
+enrich_deferrals_rf <- function(df, target_fraction, seed) {
+  set.seed(seed)
   #save(df, file="/tmp/taulu.rdata")
   df <- trim_time_series(df)
   enriched <- balance_classes(df, target_fraction)

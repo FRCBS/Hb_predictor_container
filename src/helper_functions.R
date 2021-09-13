@@ -235,9 +235,9 @@ split_set <- function(df, train_frac) {
 tvt_ratios <- c(train=0.64, validate=0.16, test=0.20)
 
 # Can be used to split data set to train, validate, and test parts in given fraction
-split_set3 <- function(df, prob=tvt_ratios) {
+split_set3 <- function(df, seed, prob=tvt_ratios) {
   message("In function split_set3")
-  set.seed(78)
+  set.seed(seed)
   donors <- unique(df$KEY_DONOR)
   n <- length(donors)
   if (FALSE) {
@@ -268,10 +268,12 @@ sample_set <- function(data, fraction) {
 # the parameter 'size' can be either a fraction or an integer. In the latter case,
 # There are either 'size' donors or 'size' male donors and 'size' female donors in the returned dataset, depending on
 # the stratify_by_sex parameter.
-stratified_sample <- function(df, stratify_by_sex, size,
+stratified_sample <- function(df, stratify_by_sex, size, seed,
                               donor_field = "KEY_DONOR",
-                              sex_field   = "KEY_DONOR_SEX") {
+                              sex_field   = "KEY_DONOR_SEX"
+                              ) {
   message("In function stratified_sample")
+  set.seed(seed)
   donors <- df %>% 
     select(all_of(donor_field), label, all_of(sex_field)) %>%
     distinct()
@@ -1788,7 +1790,8 @@ get_params <- function(pars, fit) {
 }
 
 
-predict_new <- function(model.list, n.samples = 1000) {
+predict_new <- function(model.list, n.samples = 1000, seed) {
+  set.seed(seed)
   message("In predict_new function")
   # Input as a list:
   # x: events that we want to predict

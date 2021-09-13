@@ -187,6 +187,7 @@ learn_hyperparameters <- function(df, method, search_grid, cores) {
     number = 4, #how many is good?
     ## repeated ten times
     repeats = 1, #how many is good?
+    verboseIter = TRUE,
     classProbs = TRUE,
     summaryFunction = twoClassSummary
     #savePredictions = TRUE
@@ -411,8 +412,9 @@ get_model_specs.train <- function(x){
   return(feature_list)
 }
 
-compute_shap_values_shapr <- function(model, validate, variables, n=100) {
+compute_shap_values_shapr <- function(model, validate, variables, n=100, seed) {
   message("In function compute_shap_values_shapr")
+  set.seed(seed)
   
   # if ("sex" %in% variables) {
   #   validate2 <- validate %>% select(-c(Hb))

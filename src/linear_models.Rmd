@@ -156,7 +156,7 @@ compute_female <- params$sex %in% c("female", "both")
 compute_lmm  <- params$model %in% c("lmm", "both")
 compute_dlmm <- params$model %in% c("dlmm", "both")
 
-set.seed(123)
+#set.seed(123)
 number_of_cores <- parallel::detectCores()
 if (!is.null(params$cores)) {
   options(mc.cores = min(4, params$cores, number_of_cores))  # Only four chains used by stan by default
@@ -411,6 +411,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
                 iter = params$iterations,
                 open_progress = TRUE,
                 verbose = TRUE,
+                seed = global_random_seed,
                 control = list(max_treedepth = 12))
     sink()
     saveRDS(fit, file = stan_fit_file)
@@ -434,7 +435,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
       #pred.list$type <- Model
       #pred.list$threshold <- normalize_vector(model.params$threshold, sl.val$par_means[["Hb"]], sl.val$par_sds[["Hb"]])     # Added by Jarkko
       #assign("jarkko_predictions", pred.list, envir=globalenv())   # Remove this
-      results <- predict_new(pred.list, n.samples = params$iterations / 2)
+      results <- predict_new(pred.list, n.samples = params$iterations / 2, seed=global_random_seed)
       saveRDS(results, oos_prediction_filename)   # Only for debugging, remove me
     }
     

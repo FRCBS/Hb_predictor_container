@@ -14,6 +14,7 @@ params:
   extra_id: NULL
   summary_table_file: NULL
   effect_size_table_file: NULL
+  shap_value_table_file: NULL
   prediction_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
@@ -51,9 +52,9 @@ suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
 suppressPackageStartupMessages(library(sn))
 suppressPackageStartupMessages(library(tidyverse))
-suppressPackageStartupMessages(library(kernlab))
+suppressPackageStartupMessages(library(kernlab))    # For the SVM model
 suppressPackageStartupMessages(library(shapr))
-set.seed(123)
+#set.seed(123)
 
 
 # This can measure time a chunk took to execute.
@@ -97,7 +98,7 @@ mode <- params$mode
 
 
 
-set.seed(123)
+#set.seed(123)
 number_of_cores <- parallel::detectCores()
 if (!is.null(params$cores)) {
   number_of_cores <- min(params$cores, number_of_cores)
@@ -219,7 +220,7 @@ if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rds")
 old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
 #sink(file=stderr(), type="output")
 if (old_count2 >= 1000) {
-  enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
+  enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
   #sink()
   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
                   old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
@@ -378,6 +379,7 @@ if (length(svm_hyperparameters) == 0) {   # Hyperparameters not available for th
     )
   }
 
+  set.seed(global_random_seed)
   svm_hyperparameters <- learn_hyperparameters(train, "svmPoly", svm_grid, number_of_cores)
   hyperparameters <- hyperparameters %>% add_row(Model="svm", Sex=params$sex, Value=list(svm_hyperparameters))
   write_hyperparameters(hyperparameters, params$hyperparameters)
@@ -389,8 +391,8 @@ sink(file=stderr(), type="output"); print(svm_hyperparameters); sink()
 
 train <- train %>% select(-label)   # Not needed anymore
 
-train <- train %>% mutate(across(c(warm_season, previous_Hb_def), as.integer))   ## POISTA, vain testatusta varten 
-validate <- validate %>% mutate(across(c(warm_season, previous_Hb_def), as.integer))   ## POISTA, vain testatusta varten 
+train    <- train    %>% mutate(across(intersect(c("warm_season", "previous_Hb_def"), names(train)), as.integer))   ## POISTA, vain testatusta varten 
+validate <- validate %>% mutate(across(intersect(c("warm_season", "previous_Hb_def"), names(validate)), as.integer))   ## POISTA, vain testatusta varten 
 
 # The below conversions are needed to keep varImp from giving an error.
 # if ("sex" %in% colnames(train)) {
@@ -402,18 +404,24 @@ validate <- validate %>% mutate(across(c(warm_season, previous_Hb_def), as.integ
 saveRDS(train, sprintf("/tmp/svm-train-%s.rds", params$sex))   # remove
 saveRDS(validate, sprintf("/tmp/svm-validate-%s.rds", params$sex))   # remove
 
-svmFit_roc <- caret::train(Hb_deferral ~ ., data = as.data.frame(train), 
-#svmFit_roc <- caret::train(x = train %>% select(-Hb_deferral), y = train %>% pull(Hb_deferral),
-                 method = "svmPoly", 
-                 trControl = caret::trainControl(method="none", 
-                                                 classProbs = TRUE,
-                                                 summaryFunction = twoClassSummary), 
-                 verbose = FALSE, 
-                 tuneGrid = data.frame(svm_hyperparameters),
-                 preProcess = c("center","scale"),
-                 metric="ROC")
-saveRDS(svmFit_roc, sprintf("/tmp/svm-fit-%s.rds", params$sex))
-sink(file=stderr(), type="output"); toc(); sink()
+fit_filename <- sprintf("/tmp/svm-fit-%s.rds", params$sex)
+if (use_pdf) {
+  svmFit_roc <- readRDS(fit_filename)
+} else {
+  set.seed(global_random_seed)
+  svmFit_roc <- caret::train(Hb_deferral ~ ., data = as.data.frame(train), 
+                             #svmFit_roc <- caret::train(x = train %>% select(-Hb_deferral), y = train %>% pull(Hb_deferral),
+                             method = "svmPoly", 
+                             trControl = caret::trainControl(method="none", 
+                                                             classProbs = TRUE,
+                                                             summaryFunction = twoClassSummary), 
+                             verbose = FALSE, 
+                             tuneGrid = data.frame(svm_hyperparameters),
+                             preProcess = c("center","scale"),
+                             metric="ROC")
+  saveRDS(svmFit_roc, fit_filename)
+  sink(file=stderr(), type="output"); toc(); sink()
+}
 ```
 
 
@@ -431,12 +439,16 @@ shap_filename <- sprintf("/tmp/shap_values_%s_%s.rds", params$model, params$sex)
 if (use_pdf) {     
   res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
 } else {
-  res <- compute_shap_values_shapr(svmFit_roc, validate, variables) 
+  res <- compute_shap_values_shapr(svmFit_roc, validate, variables, seed=global_random_seed) 
   #res <- compute_shap_values(svmFit_roc$finalModel, train, validate, variables)
   saveRDS(res, shap_filename)
 }
 
 if (!is.null(res)) {
+  if (!is.null(params$shap_value_table_file)) {
+    write_csv(res, params$shap_value_table_file)   # Pass the table to the web app as well
+  }
+
   variables_renamed <- FALSE
   
   shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)
@@ -512,9 +524,9 @@ write_csv(as.data.frame(prediction_vl), '../output/predvl.csv')
 write_csv(prediction_probs, '../output/predprobs.csv')
 
 # No variable importance plot for SVM, will be replaced by shap values
-if (!is.null(params$effect_size_table_file)) {
-  write_csv(validate, params$effect_size_table_file)   # Pass the table to the web app as well
-}
+#if (!is.null(params$effect_size_table_file)) {
+#  write_csv(validate, params$effect_size_table_file)   # Pass the table to the web app as well
+#}
 ```
 
 

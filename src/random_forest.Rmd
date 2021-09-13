@@ -15,6 +15,7 @@ params:
   summary_table_file: NULL
   effect_size_table_file: NULL
   prediction_table_file: NULL
+  shap_value_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
   predictive_variables: NULL
@@ -53,7 +54,7 @@ suppressPackageStartupMessages(library(sn))
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(shapper))
 suppressPackageStartupMessages(library(DALEX))
-set.seed(123)
+#set.seed(123)
 
 
 # This can measure time a chunk took to execute.
@@ -97,7 +98,7 @@ mode <- params$mode
 
 
 
-set.seed(123)
+#set.seed(123)
 number_of_cores <- parallel::detectCores()
 if (!is.null(params$cores)) {
   number_of_cores <- min(params$cores, number_of_cores)
@@ -219,7 +220,7 @@ if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rds")
 old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
 #sink(file=stderr(), type="output")
 if (old_count2 >= 1000) {
-  enriched <- enrich_deferrals_rf(train_orig, 0.5)  # truncates time series
+  enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
   #sink()
   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
                   old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
@@ -354,6 +355,7 @@ if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for thi
     )
   }
     
+  set.seed(global_random_seed)
   rf_hyperparameters <- learn_hyperparameters(train, "ranger", rf_grid, number_of_cores)
   hyperparameters <- hyperparameters %>% add_row(Model="rf", Sex=params$sex, Value=list(rf_hyperparameters))
   write_hyperparameters(hyperparameters, params$hyperparameters)
@@ -369,33 +371,39 @@ if (nrow(train) <= rf_hyperparameters$min.node.size) {
                   nrow(train), rf_hyperparameters$min.node.size))
 }
 
-train    <- train    %>% mutate(across(c(warm_season, previous_Hb_def), as.integer))   ## POISTA, vain testatusta varten 
-validate <- validate %>% mutate(across(c(warm_season, previous_Hb_def), as.integer))   ## POISTA, vain testatusta varten 
+train    <- train    %>% mutate(across(intersect(c("warm_season", "previous_Hb_def"), names(train)), as.integer))   ## POISTA, vain testatusta varten 
+validate <- validate %>% mutate(across(intersect(c("warm_season", "previous_Hb_def"), names(validate)), as.integer))   ## POISTA, vain testatusta varten 
 
 saveRDS(train, file=sprintf("/tmp/rf-train-%s.rds", params$sex))
 saveRDS(validate, file=sprintf("/tmp/rf-validate-%s.rds", params$sex))
 
-# If formula is given as the first parameter, then the variables get recoded and renamed:
-# https://stackoverflow.com/questions/30097730/error-when-using-predict-on-a-randomforest-object-trained-with-carets-train
-#rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
-rrfFit_roc <- caret::train(x = train %>% select(-Hb_deferral), y = train %>% pull(Hb_deferral),
-                           method = "ranger", 
-                 trControl = caret::trainControl(method="none", classProbs = TRUE), 
-                 verbose = FALSE, 
-                 ## Now specify the exact models 
-                 ## to evaluate:
-                 #tuneLength=1,
-                 tuneGrid = as_tibble(rf_hyperparameters),
-                  #tuneGrid = tibble(mtry=3, splitrule="gini", min.node.size=10),
-                 #metric="ROC",
-                #should we use Kappa or ROC?
-                importance = "permutation"
-                #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
-                #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
-                )
-
-sink(file=stderr(), type="output"); toc(); sink()
-saveRDS(rrfFit_roc, sprintf("/tmp/rf-fit-%s.rds", params$sex))
+fit_filename <- sprintf("/tmp/rf-fit-%s.rds", params$sex)
+if (use_pdf) {
+  rrfFit_roc <- readRDS(fit_filename)
+} else {
+  set.seed(global_random_seed)
+  # If formula is given as the first parameter, then the variables get recoded and renamed:
+  # https://stackoverflow.com/questions/30097730/error-when-using-predict-on-a-randomforest-object-trained-with-carets-train
+  #rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
+  rrfFit_roc <- caret::train(x = as.data.frame(train %>% select(-Hb_deferral)), y = train %>% pull(Hb_deferral),
+                             method = "ranger", 
+                             trControl = caret::trainControl(method="none", classProbs = TRUE), 
+                             verbose = FALSE, 
+                             ## Now specify the exact models 
+                             ## to evaluate:
+                             #tuneLength=1,
+                             tuneGrid = as_tibble(rf_hyperparameters),
+                             #tuneGrid = tibble(mtry=3, splitrule="gini", min.node.size=10),
+                             #metric="ROC",
+                             #should we use Kappa or ROC?
+                             importance = "permutation"
+                             #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
+                             #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
+  )
+  
+  sink(file=stderr(), type="output"); toc(); sink()
+  saveRDS(rrfFit_roc, fit_filename)
+}
 
 write_csv(train, '../output/train.csv')
 write_csv(validate, '../output/validate.csv')
@@ -420,11 +428,16 @@ if (use_pdf) {
   res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
 } else {
   #res <- compute_shap_values_shapper(rrfFit_roc$finalModel, train, validate, variables)
-  res <- compute_shap_values_shapr(rrfFit_roc$finalModel, validate, variables)
+  res <- compute_shap_values_shapr(rrfFit_roc$finalModel, validate, variables, seed=global_random_seed)
   saveRDS(res, shap_filename)
 }
 
 if (!is.null(res)) {
+  
+  if (!is.null(params$shap_value_table_file)) {
+    write_csv(res, params$shap_value_table_file)   # Pass the table to the web app as well
+  }
+  
   variables_renamed <- FALSE
   
   shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)

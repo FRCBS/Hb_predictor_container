@@ -1,6 +1,10 @@
 var old_unit = "gperl";
 var interval_id;
 
+//websocket_address = "ws://127.0.0.1:8080/";   // Learn this somehow automatically from the current page. Then the port number does not need to be fixed.
+// window.location.href should give this information
+// Ehkä window.location.href.replace("https", "ws")
+
 function convert_hb_unit(from, to, hb) {
     hb = parseFloat(hb);
     console.log(`In convert_hb_unit: from="${from}" to="${to}" hb="${hb}"`);
@@ -156,6 +160,11 @@ document.onreadystatechange = function() {
 	el = document.getElementById("unit");
 	el.value="gperdl"; // Because Sanquin is the default input format, set this to its unit
 	el.dispatchEvent(new Event('change', { 'bubbles': true }));  // trigger the change event
+
+	// Ask for verification before navigating away from the page
+	window.onbeforeunload = function() {
+	    return true;
+	};
     }
 
     var httpRequest;
@@ -197,6 +206,7 @@ document.onreadystatechange = function() {
 	    el.children[i].remove()
 	}	
 	document.getElementById("results-container").hidden = true;
+	document.getElementById("download_results_container").hidden = true;
 	
 	httpRequest.onreadystatechange = handleResponseForUpload;
 	//httpRequest.onreadystatechange = handleResponse;
@@ -257,7 +267,9 @@ document.onreadystatechange = function() {
 
 		return;
 	    }
-	    var exampleSocket = new WebSocket("ws://127.0.0.1:8080/");
+	    websocket_address = window.location.href.replace("http", "ws")
+	    console.log("Websocket address is " +  websocket_address);
+	    var exampleSocket = new WebSocket(websocket_address);
 	    exampleSocket.onmessage = function (event) {
 		parsed = JSON.parse(event.data);
 		process_json_result(parsed);
@@ -346,7 +358,8 @@ document.onreadystatechange = function() {
 	    document.getElementById("finish-time-container").style.display = "block";
 	    document.getElementById("finish-time").innerHTML = new Date().toString();//.substr(0, 19);
 	    
-
+            document.getElementById("download_results_container").removeAttribute("hidden");
+	    
 	    console.log("Type of data is " + typeof(data))
 	    add_error_messages(data)
 	    add_warning_messages(data)
