@@ -159,6 +159,8 @@ if (!is.null(donor_variables)) {
   data <- data %>% select(all_of(variables_in_order), everything())
 }
 
+# Maybe this is not needed except for linear regression
+data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 
 ```
