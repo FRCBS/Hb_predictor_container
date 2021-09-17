@@ -1,0 +1,1044 @@
+---
+title: "Random forest with full enriched data set and no split by gender nor return time"
+author: "Mikko Arvas"
+date: "`r Sys.time()`"
+---
+
+```{r setup, include=FALSE}
+# Import libraries that might be needed
+library(tidyverse, quietly = T)
+library(knitr)
+library(caret)
+#library(ROCR)
+library(pROC)
+#library(furrr)
+#library(sn)
+library(caTools)
+
+library(rpart.plot)
+library(rpart)
+library(ranger)
+library(doParallel)
+
+source("~/FRCBS/Hb_predictor_container/src/helper_functions.R")
+source("validate_stan_fit.R")
+
+#setwd("~/FRCBS/interval_prediction/src/")
+
+save_figs <- FALSE
+compute <- FALSE
+result_dir <- "~/FRCBS/interval_prediction/oversampling_results"
+fig_dir <- paste(result_dir, "pdf", sep="/")
+
+set.seed(123)
+# echo "rmarkdown::render('rf_caret_enriched_no_splits.Rmd', clean=TRUE,output_format='pdf_document',output_file='../results/rf_caret_enriched_no_splits_20200827b.pdf')" | R --slave
+# /usr/bin/pandoc +RTS -K512m -RTS rf_caret_enriched_no_splits.utf8.md --to latex --from markdown+autolink_bare_uris+tex_math_single_backslash --output ../results/rf_caret_enriched_no_splits_20200929.tex --self-contained --highlight-style tango --latex-engine pdflatex --variable graphics --variable 'geometry:margin=1in' 
+# Error: pandoc document conversion failed with error 127
+# In addition: There were 33 warnings (use warnings() to see them)
+# Execution halted
+# Warning message:
+# https://stackoverflow.com/questions/34687030/pandoc-document-conversion-failed-with-error-127
+# bootstrapping seems to create some leaks
+# added gc() s to see if would help but did not test yet
+```
+
+# TODO:
+
+-test if the year has any effect ?!
+
+
+```{r}
+
+
+descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
+                                "year", "warm_season", "consecutive_deferrals", "recent_donations",
+                                "recent_deferrals", "hour", 
+                                "previous_Hb", "Hb_first", "Hb_deferral","nb_donat","gender"), 
+                   Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous Hb deferral", 
+                              "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
+                              "Recent deferrals", "Hour", 
+                              "Previous Hb", "First Hb", "Hb deferral","Life time donations","Sex"),
+                   Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
+                            "numeric (int)", "boolean", "numeric (int)", "numeric (int)", "numeric (int)", "numeric",
+                            "numeric", "numeric", "boolean","numeric (int)","Factor"),
+                   Explanation = c("Donor identifier",
+                                   "Amount of Hemoglobin",
+                                   "Time (in days) between Hb measurement and previous full blood donation event",
+                                   "Age of donor",
+                                   "Indicates whether the donor was deferred from blood donation due to low hemoglobin at previous donation event",
+                                   "Year of donation",
+                                   "True if donation was given in April-September",
+                                   "Amount of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
+                                   "Amount of donations in the last two years",
+                                   "Amount of deferrals due to low hemoglobin in the last two years",
+                                   "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
+                                   "Hb value at previous measurement (ICP-model)",
+                                   "Hb value at first donation of this donor (Non ICP-model)",
+                                   "Deferred based on low hemoglogin",
+                                  "Life time total count of donations",
+                                  "Sex"
+                   )
+                   )
+
+```
+
+
+
+# Read in enriched data
+```{r}
+#load(file="../data/enriched-2020-08-11-0.50-train-validate.processed.rdata")
+#-rw-r--r-- 1 arvasmi arvasmi    487232 elo   20 13:45 enriched-2020-08-11-0.50-train-validate.processed.rdata
+
+load_single <- function(filename) {
+  names <- load(filename, verbose=FALSE)
+  stopifnot(length(names) == 1)
+  return(get(names))
+}
+
+#This data set has both train and validate together and both were enriched. The preprocessing was made in rf_caret_enriched_data_test.Rmd
+
+
+
+train_orig <- load_single(file="../data/preprocessed-2020-08-26-train.rdata")
+#train_orig <- sample_set(train_orig, 0.5)
+#enriched <- load_single(file="../data/preprocessed-2020-08-26-train-enriched.rdata")
+validate_orig <- load_single(file="../data/preprocessed-2020-08-26-validate.rdata")
+test_orig <- load_single(file="../data/preprocessed-2020-08-26-test.rdata")
+# -rw-r--r-- 1 arvasmi arvasmi  11195318 elo   26 11:08 preprocessed-2020-08-26-train-enriched.rdata
+# -rw-r--r-- 1 arvasmi arvasmi  10810122 elo   26 10:28 preprocessed-2020-08-26-validate.rdata
+#This data is split before enrichment and only train is enriched.
+```
+
+## Preprocess
+
+```{r}
+train_orig %>% ungroup() %>% count()
+```
+
+Full time series except those removed who only have one event or who's only deferral was the first event.
+
+
+```{r}
+validate_orig %>% ungroup() %>% count()
+```
+
+
+```{r}
+train_orig %>% group_by(donor) %>% arrange(desc(dateonly)) %>% 
+  dplyr::slice(1) %>% 
+  ungroup() %>% group_by(Hb_deferral) %>% count()
+```
+Enriched to 50:50 balance.
+
+
+```{r}
+validate_orig %>% group_by(donor) %>% arrange(desc(dateonly)) %>% 
+  dplyr::slice(1) %>% 
+  ungroup() %>% group_by(Hb_deferral) %>% count()
+```
+Quite unbalanced as it should be.
+
+Does the deferral percentage depend some how on donation carreer length
+```{r , warning=FALSE}
+
+temp <-validate_orig %>% ungroup() %>% 
+  replace_na(list(nb_donat_progesa = 0,nb_donat_outside = 0)) %>% 
+  group_by(donor) %>%
+  arrange(donor,dateonly) %>% 
+  mutate(nb_donat_run = row_number()) %>% 
+  rowwise() %>% 
+  mutate(
+    nb_donat = sum( nb_donat_run, nb_donat_outside)) %>% 
+      ungroup() %>% 
+   select(Hb_deferral, nb_donat,gender) %>% 
+  group_by(gender,nb_donat) %>% summarise(def = sum(Hb_deferral == 1),
+                                          acc = sum(Hb_deferral == 0),
+                                          pdef = def /(acc+def)
+                                          ) 
+ggplot(temp) + geom_line(aes(x=nb_donat,y=pdef,color=gender)) +xlim(0,50) + ylim(0,0.1)
+
+```
+```{r}
+#temp<- temp %>% group_by(nb_donat) %>% summarise(def=sum(def),
+ #                                         acc=sum(acc)) 
+ggplot(temp) + geom_line(aes(x=nb_donat,y=def,color=gender,linetype='Deferral')) +geom_line(aes(x=nb_donat,y=acc,color=gender,linetype='Accepted')) + ylab("Count")
+```
+Yes, women have a lower deferral percentage in first event so removing the first event makes the overall deferral percentage in the data set bigger.
+
+Take only last events and do come cleaning
+```{r}
+#Train
+train <- train_orig %>% group_by(donor) %>% 
+  arrange(desc(dateonly)) %>% 
+  dplyr::slice(1) %>%   
+  mutate(
+    nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    Hb_deferral=factor(Hb_deferral,labels = c("Accepted","Deferred"))
+         ) %>% 
+  filter( !nb_donat == '0') %>% #Some spurious mistake in the donation record
+  filter(!(days_to_previous_fb < 62 & gender == "Men"))  %>% #Take out people that return faster than they should as we do not really know what they mean
+  filter(!(days_to_previous_fb < 92 & gender == "Women"))
+
+train <- train %>% ungroup() %>%   select(Hb_deferral,
+                              days_to_previous_fb, 
+                              age, 
+                              previous_Hb_def,
+                              #year, #CHECK! 
+                              warm_season, 
+                              consecutive_deferrals, 
+                              recent_donations,
+                              recent_deferrals, 
+                              hour, 
+                              previous_Hb, 
+                              Hb_first, 
+                              Hb_deferral,
+                              nb_donat,
+                              gender
+)
+
+#Validate
+
+
+validate <-validate_orig %>% group_by(donor) %>%
+  dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
+  arrange(desc(dateonly)) %>% 
+  dplyr::slice(1) %>%   
+  mutate(
+    nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    Hb_deferral=factor(Hb_deferral,labels = c("Accepted","Deferred"))
+         ) %>% 
+  filter( !nb_donat == '0') %>% #Some spurious mistake in the donation record
+  filter(!(days_to_previous_fb < 62 & gender == "Men"))  %>% #Take out people that return faster than they should as we do not really know what they mean
+  filter(!(days_to_previous_fb < 92 & gender == "Women"))
+
+
+validate <- validate %>% ungroup() %>%   select(
+  Hb_deferral,
+  days_to_previous_fb, 
+  age, 
+  previous_Hb_def,
+  #year, #CHECK! 
+  warm_season, 
+  consecutive_deferrals, 
+  recent_donations,
+  recent_deferrals, 
+  hour, 
+  previous_Hb, 
+  Hb_first, 
+  Hb_deferral,
+  nb_donat,
+  gender
+)
+
+
+#Test
+
+
+test <-test_orig %>% group_by(donor) %>%
+  dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
+  arrange(desc(dateonly)) %>% 
+  dplyr::slice(1) %>%   
+  mutate(
+    nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    Hb_deferral=factor(Hb_deferral,labels = c("Accepted","Deferred"))
+         ) %>% 
+  filter( !nb_donat == '0') %>% #Some spurious mistake in the donation record
+  filter(!(days_to_previous_fb < 62 & gender == "Men"))  %>% #Take out people that return faster than they should as we do not really know what they mean
+  filter(!(days_to_previous_fb < 92 & gender == "Women"))
+
+
+test <- test %>% ungroup() %>%   select(
+  Hb_deferral,
+  days_to_previous_fb, 
+  age, 
+  previous_Hb_def,
+  #year, #CHECK! 
+  warm_season, 
+  consecutive_deferrals, 
+  recent_donations,
+  recent_deferrals, 
+  hour, 
+  previous_Hb, 
+  Hb_first, 
+  Hb_deferral,
+  nb_donat,
+  gender
+)
+
+
+#Total donation count
+
+
+```
+
+Is there any NAs left?
+```{r}
+train %>% ungroup() %>%   summarise_all(funs(sum(is.na(.)))) %>% t()
+```
+
+```{r}
+validate %>% ungroup() %>%   summarise_all(funs(sum(is.na(.)))) %>% t()
+```
+
+
+No.
+
+## Summarise
+
+How do the donation carreers seem on the last event?
+
+```{r}
+train %>% 
+  group_by(Hb_deferral,gender) %>% 
+  summarise(Ntot=n(),max=max(nb_donat),min=min(nb_donat),mean=mean(nb_donat),median=median(nb_donat)) %>% arrange(gender,Hb_deferral)
+```
+
+```{r}
+validate %>% 
+  group_by(Hb_deferral,gender) %>% 
+  summarise(Ntot=n(),max=max(nb_donat),min=min(nb_donat),mean=mean(nb_donat),median=median(nb_donat)) %>% arrange(gender,Hb_deferral)
+```
+
+Hmmm, would this require more thought?
+
+```{r}
+summary(train)
+```
+
+
+```{r}
+summary(validate)
+```
+
+
+```{r}
+train %>% filter(gender=='Men') %>% summary()
+```
+
+```{r}
+validate %>% filter(gender=='Men') %>% summary()
+```
+
+
+
+```{r}
+train %>% filter(gender=='Women') %>% summary()
+```
+
+```{r}
+validate %>% filter(gender=='Women') %>% summary()
+```
+
+
+
+# Decision tree
+
+## with rpart
+
+Based on https://www.statmethods.net/advstats/cart.html 
+
+```{r, eval=FALSE}
+#trainxxx <- train[sample(nrow(train), 1000), ]
+
+trtree <- rpart(Hb_deferral ~ ., 
+      #control= rpart.control(minsplit=10, cp=0.01),   
+      data= train , 
+      method= "class"
+      
+
+)
+trtree
+```
+
+
+```{r, eval=FALSE}
+printcp(trtree)
+```
+
+
+```{r, eval=FALSE}
+plotcp(trtree)
+```
+
+```{r, eval=FALSE}
+#ptrtree<- prune(trtree, cp=   trtree$cptable[which.min(trtree$cptable[,"xerror"]),"CP"])
+#trtree$cptable[which.min(trtree$cptable[,"xerror"]),"CP"]
+```
+There seems to be no reason to do any extra pruning.
+
+
+```{r Visualize the decision tree, eval=FALSE}
+rpart.plot(trtree,type = 4, extra = 101, tweak = 1)
+```
+
+```{r Save the above decision tree, eval=FALSE}
+if (save_figs) {
+  pdf(file=sprintf("%s/rf_no_splits_dtree_4-101.pdf", fig_dir), width = 14.4)
+  rpart.plot(trtree,type = 4, extra = 101, tweak = 1)
+  dev.off()
+}
+```
+
+```{r Visualize another tree, eval=FALSE}
+rpart.plot(trtree,type = 1, extra = 9, tweak = 1)
+```
+
+```{r Save the above visualization of the decision tree, eval=FALSE}
+# This is shown in the supplement
+if (save_figs) {
+  pdf(file=sprintf("%s/rf_no_splits_dtree_1-9.pdf", fig_dir), width = 14.4)
+  rpart.plot(trtree, type = 1, extra = 9, tweak = 1)
+  dev.off()
+}
+```
+
+
+
+
+```{r, eval=FALSE}
+pred.c <- predict(trtree, validate, type = "class")
+caret::confusionMatrix(validate$Hb_deferral, pred.c,positive = "Deferred")
+```
+
+```{r, eval=FALSE}
+caret::confusionMatrix(validate$Hb_deferral, pred.c,positive = "Deferred",mode = "prec_recall")
+```
+
+
+
+```{r create_performance_plots_dtree, eval=FALSE}
+#https://stackoverflow.com/questions/30818188/roc-curve-in-r-using-rpart-package
+pred.p <- predict(trtree, validate, type = "prob")
+pred.p.test <- predict(trtree, test, type = "prob")
+
+df <- cbind(pred.p, obs=validate$Hb_deferral)
+save(df, file=sprintf("%s/rrfFit__dtree_roc_validate_probs.rdata", result_dir))
+df2 <- cbind(pred.p.test, obs=test$Hb_deferral)
+save(df2, file=sprintf("%s/rrfFit__dtree_roc_test_probs.rdata", result_dir))
+
+width = 180
+#create_precision_recall_new <- function(labels, scores) {
+df <- data.frame(deferral=as.integer(validate$Hb_deferral) - 1, scores=pred.p[,'Deferred'])
+#df <- data.frame(deferral=as.integer(validate$Hb_deferral) -1,scores=pred.p[,'Accepted'])
+performances <- create_performance_plots(
+  df=df, 
+  filename=sprintf("%s/rf_no_splits_dtree_validate_performances.pdf", fig_dir),
+  width = 180
+)
+performances
+
+
+```
+
+```{r, eval=FALSE}
+gc()
+```
+
+
+```{r, eval=FALSE}
+filename=sprintf("%s/rf_no_splits_dtree_validate_confusion.pdf", fig_dir)
+cm <- create_confusion_matrix_plot(as.integer(validate$Hb_deferral)-1,as.integer(pred.c)-1)
+if (save_figs) {
+  ggsave(filename=filename, cm, width = 90,  height = 80,units="mm", dpi=600, scale=1.0)
+}
+cm
+```
+
+```{r, eval=FALSE}
+rrfFit.varimp <- tibble("Variable"=names(trtree$variable.importance),"Importance"=as.numeric(trtree$variable.importance / sum(trtree$variable.importance)))
+colnames(rrfFit.varimp) <- c("Variable","Importance")
+rrfFit.varimp <- left_join(rrfFit.varimp, descript,by=c("Variable"="Variable")) %>% select(Variable,Pretty,Importance) %>% arrange(Importance)
+
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "previous_Hb_defTRUE"] <- "Previous donation deferred"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "warm_seasonTRUE"] <- "Warm season"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "genderWomen"] <- "Donor is a woman"
+
+varimp.plot <- ggplot(rrfFit.varimp) + geom_col(aes(y=Importance ,x=reorder(Pretty, Importance)),alpha=0.7)+ coord_flip() + xlab("Variable")
+
+filename=sprintf("%s/rf_no_splits_dtree_importance.pdf", fig_dir)
+if (save_figs) {
+  gsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
+}
+varimp.plot
+```
+
+
+```{r, eval=FALSE}
+# This is shown in the supplement
+filename=sprintf("%s/rf_no_splits_dtree_validate_confusion_importance.pdf, fig_dir")
+varimp.plot <- varimp.plot + theme(axis.text.x = element_text(angle = 90))
+importance_confusion <- cowplot::plot_grid(cm,varimp.plot , labels = c('A', 'B'), label_size = 12, nrow=1, scale=1.0, axis="tb", align="h")
+if (save_figs) {
+  cowplot::save_plot(filename, importance_confusion, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
+}
+
+#unloadNamespace("ModelMetrics")
+library(caret)
+```
+
+
+
+Just doing a decision tree seems to already work well.
+
+## with caret running rpart
+```{r, eval=FALSE}
+
+#https://rpubs.com/aryn999/DecisionTreeusingR -> but this has good example of class cut-off probability
+
+trctrl <- trainControl(method = "cv", n = 4, classProbs = TRUE)
+
+trtree <- train(Hb_deferral ~ . ,
+                data = train, 
+                method = "rpart",
+                metric = "ROC",
+                parms  = list(split = "gini"), 
+                trControl = trctrl)
+
+trtree
+```
+
+carret
+
+
+
+```{r, eval=FALSE}
+plot(varImp(trtree))
+```
+
+
+
+
+# Train rf model
+
+First do search for the correct hyperparameters with out saving much stuff.
+
+
+```{r gridsearch_big}
+# ranges rf
+
+#trainxxx <- train[sample(nrow(train), 1000), ]
+
+file <- sprintf("%s/rrfFit_roc_hyper.rdata", result_dir)
+
+#if (!file.exists(file)) {
+if (compute) {
+  #Initialise paralellisation
+  cl <- makePSOCKcluster(4)
+  registerDoParallel(cl)
+  
+  #Define search grid
+  rrfGrid <-  expand.grid(
+    mtry = c(3:8)
+#    splitrule=c("gini", "extratrees","hellinger"),
+    #min.node.size = seq(3,39,3) #what kind of range is needed?
+#    min.node.size = 1
+#    min.node.size = seq(1,60,5)
+    #https://stats.stackexchange.com/questions/158583/what-does-node-size-refer-to-in-the-random-forest/
+    #max.depth =c(1:10) # this is not available
+  )
+  
+  #Define cross validation
+  fitControl <- trainControl(## 4-fold CV
+    method = "repeatedcv",
+    number = 4, #how many is good?
+    ## repeated ten times
+    #repeats = 1, #how many is good?
+    repeats = 5, #how many is good?
+    classProbs = TRUE,
+    summaryFunction = twoClassSummary
+    #savePredictions = TRUE
+  )
+  
+  # If I oversample too much, I get an error "There were missing values in resampled performance measures".
+  # Probably because there were too many identical rows in the data, so the tree could not be build.
+  # I solve this by only oversampling to halve of the most common class
+  n <- sum(train$Hb_deferral == "Accepted") / 2  # oversample to the count of the most common class
+  
+  #Train
+  rrfFit_roc_hyper <- train(Hb_deferral ~ ., data = train,
+                            strata=train$Hb_deferral,
+                            sampsize=n,
+                            replace=TRUE,
+                            #method = "ranger", 
+                            method = "rf", 
+                            trControl = fitControl, 
+                            verbose = FALSE, 
+                            ## Now specify the exact models 
+                            ## to evaluate:
+                            tuneGrid = rrfGrid,
+                            metric="ROC"
+                            #importance=TRUE
+                            #should we use Kappa or ROC?
+                            #                importance = "permutation"
+                            #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
+                            #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
+  )
+  
+  save(rrfFit_roc_hyper, file=file)
+  stopCluster(cl)
+} else {
+  load(file)
+}
+```
+
+
+
+```{r}
+rrfFit_roc_hyper
+```
+
+
+```{r}
+ghyper<- ggplot(rrfFit_roc_hyper)
+if (save_figs) {
+  ggsave(filename=sprintf("%s/rrfFit_roc_grid_search.pdf", result_dir), ghyper, width = 180,  height = 120,units="mm", dpi=600, scale=1.0)
+}
+ghyper
+```
+
+
+With best hyperparameters do a run where all data is collected. (THERE'S NO REASON BECAUSE IT IS DONE ALREADY BY CARET)
+
+```{r}
+#rrfFit_roc <- rrfFit_roc_hyper
+```
+
+
+```{r gridsearch_small, eval=TRUE}
+# ranges rf
+
+#trainxxx <- train[sample(nrow(train), 1000), ]
+file <- sprintf("%s/rrfFit_roc.rdata", result_dir)
+
+if (!file.exists(file)) {
+  #Initialise paralellisation
+  #cl <- makePSOCKcluster(4)
+  #registerDoParallel(cl)
+
+# rrfGrid <-  expand.grid(
+#   mtry = c(4), #what kind of range is needed?
+#   splitrule=c("hellinger"),
+#   #min.node.size = c(32:40) #what kind of range is needed?
+#   min.node.size = c(34) #what kind of range is needed?
+#   #https://stats.stackexchange.com/questions/158583/what-does-node-size-refer-to-in-the-random-forest/
+#   #max.depth =c(1:10) # this is not available
+# )
+
+
+# Not used.
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 4, #how many is good?
+                           ## repeated ten times
+                           repeats = 10, #how many is good?
+                           classProbs = TRUE,
+                           summaryFunction = twoClassSummary,
+                           savePredictions = TRUE
+                           )
+
+
+rrfFit_roc <- train(Hb_deferral ~ ., data =train, 
+                 method = "rf", 
+                 #trControl = fitControl,
+                 trControl = caret::trainControl(method="none", classProbs = TRUE, summaryFunction = twoClassSummary), 
+                 verbose = FALSE, 
+                 ## Now specify the exact models 
+                 ## to evaluate:
+                 tuneGrid = rrfFit_roc_hyper$bestTune,
+                metric="ROC",
+                #should we use Kappa or ROC?
+                importance = TRUE
+                #importance = "permutation"
+                #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
+                #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
+                )
+
+  save(rrfFit_roc, file=file)
+  stopCluster(cl)
+} else {
+  load(file)
+}
+
+```
+
+
+```{r}
+rrfFit_roc
+```
+
+
+```{r}
+ggplot(rrfFit_roc)
+```
+
+
+
+
+
+# Evaluate the model
+
+```{r}
+rrfFit_roc
+```
+
+ROC curve with the different folds
+https://stackoverflow.com/questions/51904700/how-to-plot-roc-curves-for-every-cross-validations-using-caret
+Do we need it.
+
+
+
+See how the best model works with training data
+```{r}
+
+prediction.tr <- predict(rrfFit_roc, newdata = train)
+caret::confusionMatrix(reference=train$Hb_deferral,data=prediction.tr,positive = "Deferred")
+```
+
+
+```{r}
+rrfFit_rocImp <- varImp(rrfFit_roc, scale = TRUE)
+plot(rrfFit_rocImp)
+
+
+```
+
+```{r}
+rrfFit.varimp <- as_tibble(cbind(rownames(rrfFit_rocImp$importance),rrfFit_rocImp$importance))
+colnames(rrfFit.varimp) <- c("Variable","Importance")
+rrfFit.varimp <- left_join(rrfFit.varimp, descript,by=c("Variable"="Variable")) %>% select(Variable,Pretty,Importance) %>% arrange(Importance)
+
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "previous_Hb_defTRUE"] <- "Previous donation deferred"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "warm_seasonTRUE"] <- "Warm season"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "genderWomen"] <- "Sex"
+
+varimp.plot <- ggplot(rrfFit.varimp) + geom_col(aes(y=Importance ,x=reorder(Pretty, Importance)),alpha=0.7)+ coord_flip() + xlab("Variable")
+
+if (save_figs) {
+  filename=sprintf("%s/rrfFit_roc_importance.pdf", result_dir)
+  ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
+}
+varimp.plot
+```
+
+... and with validation data
+
+```{r}
+prediction.vl <- predict(rrfFit_roc, newdata = validate)
+caret::confusionMatrix(reference=validate$Hb_deferral,data=prediction.vl,positive = "Deferred")
+
+```
+
+
+
+```{r}
+caret::confusionMatrix(reference=validate$Hb_deferral,data=prediction.vl,positive = "Deferred",mode = "prec_recall")
+```
+
+
+```{r}
+prediction.probs <- predict(rrfFit_roc, newdata = validate,type="prob")
+
+#validate.ROC <- roc(predictor=prediction.probs$Deferred,
+#               response=validate$Hb_deferral
+##               levels=rev(levels(validate$Hb_deferral))
+#  )
+#validate.ROC$auc
+```
+
+
+```{r}
+#plot(validate.ROC)
+```
+
+```{r}
+histogram(~prediction.probs$Deferred|validate$Hb_deferral,xlab="Probability of Poor Segmentation")
+```
+
+And what does this mean?
+
+## Report plots
+```{r create_performance_plots_rf, warning=FALSE}
+width = 180
+#create_precision_recall_new <- function(labels, scores) {
+df <- data.frame(deferral=as.integer(validate$Hb_deferral) - 1, scores=prediction.probs$Deferred)
+if (save_figs) {
+  filename <- sprintf("%s/rrfFit_roc_validate_performances.pdf", result_dir)
+} else {
+  filaname <- NULL
+}
+performances <- create_performance_plots(
+  df=df, 
+  filename=filename,
+  width = 180
+)
+performances
+```
+
+```{r}
+gc()
+```
+
+
+```{r}
+cm <- create_confusion_matrix_plot(as.integer(validate$Hb_deferral)-1,as.integer(prediction.vl)-1)
+if (save_figs) {
+  filename=sprintf("%s/rrfFit_roc_validate_confusion.pdf", result_dir)
+  ggsave(filename=filename, cm, width = 90,  height = 80,units="mm", dpi=600, scale=1.0)
+}
+cm
+```
+
+```{r}
+
+varimp.plot <- varimp.plot + theme(axis.text.x = element_text(angle = 90))
+importance_confusion <- cowplot::plot_grid(cm,varimp.plot , labels = c('A', 'B'), label_size = 12, nrow=1, scale=1.0, axis="tb", align="h")
+if (save_figs) {
+  filename=sprintf("%s/rrfFit_roc_validate_confusion_importance.pdf", result_dir)
+  cowplot::save_plot(filename, importance_confusion, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
+}
+
+```
+
+
+## Effect of class assingment probabilty
+
+```{r}
+#cut prediction.probs with seq(0, 1, .1)
+
+df <- cbind(prediction.probs, obs=validate$Hb_deferral)
+save(df, file=sprintf("%s/rrfFit_roc_validate_probs.rdata", result_dir))
+#x <- seq(0, 1, .1)
+#out <- matrix(nrow=length(validate$Hb_deferral),ncol=length(x))
+#colnames(out) <- paste0("p_",x)
+#for (i in x ) {
+#  out[,paste0("p_",i)] <- prediction.probs$Deferred <= i
+#}
+#save(out, file="../results/rrfFit_roc_assingments_with_probs.rdata")
+#head(out)
+```
+
+```{r}
+prediction.probs.test <- predict(rrfFit_roc, newdata = test, type="prob")
+df <- cbind(prediction.probs.test, obs=test$Hb_deferral)
+save(df, file=sprintf("%s/rrfFit_roc_test_probs.rdata", result_dir))
+```
+
+## MLeval plots
+
+https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
+
+https://cran.r-project.org/web/packages/MLeval/vignettes/introduction.pdf
+
+
+```{r calibration_curve}
+library(MLeval)
+
+res <- evalm(list1=df,showplots=FALSE,positive = "Deferred")
+
+```
+
+
+get calibration curve
+```{r}
+res$cc
+```
+get precision recall gain curve
+```{r }
+res$prg
+```
+
+
+## Distribution of data in confusion matrix cells
+
+For training data
+
+```{r, warning=FALSE}
+
+train.conf <- bind_cols(train,"Confusion"=factor(paste0("r_",train$Hb_deferral,":p_",prediction.tr)))
+
+
+
+pfemale <- train.conf %>% filter(gender == "Women") %>% 
+  mutate(previous_Hb_def =as.numeric(previous_Hb_def), 
+         warm_season = as.numeric(warm_season)) %>% 
+  select(-Hb_deferral,-gender) %>%
+  rename("Age"= age, 
+         "Days to previous \n full blood \n donation" = days_to_previous_fb, 
+         "Previous Hb \n deferral"= previous_Hb_def , 
+          "Warm season" = warm_season, 
+         "Consecutive deferrals" = consecutive_deferrals, 
+         "Recent \n donations" = recent_donations, 
+          "Recent \ndeferrals" = recent_deferrals, 
+        "Hour" = hour, 
+          "Previous Hb" = previous_Hb, 
+          "First Hb" = Hb_first,
+           "Consecutive \n deferrals" = consecutive_deferrals,
+        "Life time \n donations" = nb_donat
+) %>% 
+  gather("key","value",-Confusion) %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_density(aes(color=Confusion)) +  theme(legend.position="bottom",
+                                              legend.text= element_text(size=6)
+                                                                          )
+
+
+ggsave(filename="../results/rrfFit_variables_female.pdf", pfemale, width = 180,  height = 180,units="mm", dpi=600, scale=1.0)
+pfemale
+```
+
+Prediction seem to be mislead by Hb values that do not separate all cases well.
+
+
+```{r}
+pmale <- train.conf %>% filter(gender == "Men") %>% 
+  mutate(previous_Hb_def =as.numeric(previous_Hb_def), 
+         warm_season = as.numeric(warm_season)) %>% 
+  select(-Hb_deferral,-gender) %>%
+  rename("Age"= age, 
+         "Days to previous \n full blood \n donation" = days_to_previous_fb, 
+         "Previous Hb \n deferral"= previous_Hb_def , 
+          "Warm season" = warm_season, 
+         "Consecutive deferrals" = consecutive_deferrals, 
+         "Recent \n donations" = recent_donations, 
+          "Recent \ndeferrals" = recent_deferrals, 
+        "Hour" = hour, 
+          "Previous Hb" = previous_Hb, 
+          "First Hb" = Hb_first,
+           "Consecutive \n deferrals" = consecutive_deferrals,
+        "Life time \n donations" = nb_donat
+) %>% 
+  gather("key","value",-Confusion) %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_density(aes(color=Confusion)) +  theme(legend.position="bottom",
+                                              legend.text= element_text(size=6)
+                                                                          )
+
+
+ggsave(filename="../results/rrfFit_variables_female.pdf", pmale, width = 180,  height = 180,units="mm", dpi=600, scale=1.0)
+pmale
+
+```
+
+For validation data
+
+```{r}
+
+validate.conf <- bind_cols(validate,"Confusion"=factor(paste0("r_",validate$Hb_deferral,":p_",prediction.vl)))
+
+pfemale <- validate.conf %>% filter(gender == "Women") %>% 
+  mutate(previous_Hb_def =as.numeric(previous_Hb_def), 
+         warm_season = as.numeric(warm_season)) %>% 
+  select(-Hb_deferral,-gender) %>%
+  gather("key","value",-Confusion) %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_density(aes(color=Confusion))
+pfemale
+
+```
+
+```{r}
+
+validate.conf <- bind_cols(validate,"Confusion"=factor(paste0("r_",validate$Hb_deferral,":p_",prediction.vl)))
+
+pmale <- validate.conf %>% filter(gender == "Men") %>% 
+  mutate(previous_Hb_def =as.numeric(previous_Hb_def), 
+         warm_season = as.numeric(warm_season)) %>% 
+  select(-Hb_deferral,-gender) %>%
+  gather("key","value",-Confusion) %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_density(aes(color=Confusion))
+pmale
+
+```
+
+
+
+
+
+# Test if 'ranger' case control weights change anything
+
+```{r ranger_training}
+#According to https://github.com/FRCBS/HSCT-relapse-model/blob/master/src/RF_relapse.R
+
+c1w       <- 1-(sum(train$Hb_deferral=="Accepted") / nrow(train)) # set case weights
+c2w       <- 1-(sum(train$Hb_deferral=="Deferred") / nrow(train))
+cweights  <- sapply(train$Hb_deferral, function(x) ifelse(x=="Accepted", c1w, c2w))
+#Model that predics classes
+rf.model.pt  <- ranger(Hb_deferral ~., data=train, 
+                    case.weights=cweights, 
+                    probability=TRUE, 
+                    num.trees=2500, 
+                    importance='permutation',
+                    min.node.size=34,
+                    mtry=4,
+                    splitrule="hellinger",
+                    num.threads=4
+                    )
+#Model that predicts probabilites
+rf.model.pf  <- ranger(Hb_deferral ~., 
+                       data=train, 
+                    case.weights=cweights, 
+                    probability=FALSE, 
+                    num.trees=2500, 
+                    importance='permutation',
+                    min.node.size=34,
+                    mtry=4,
+                    splitrule="hellinger",
+                    num.threads=4
+                    )
+```
+
+
+```{r}
+rf.model.pt
+```
+
+```{r}
+rf.model.pf
+```
+
+
+```{r}
+prediction <- predict(rf.model.pf, data = validate,reference=validate$Hb_deferral,num.threads=4)
+caret::confusionMatrix(reference=validate$Hb_deferral,data=prediction$predictions,positive = "Deferred",mode="everything")
+
+```
+
+
+
+```{r}
+prediction <- predict(rf.model.pt, data = validate,reference=validate$Hb_deferral,num.threads=4)
+
+```
+
+```{r create_performance_plots_rf_ranger}
+# width = 180
+# df <- data.frame(deferral=as.integer(validate$Hb_deferral) -1,scores=prediction$predictions[,'Deferred'])
+# performances <- create_performance_plots(
+#   df=df, 
+#   filename="../results/rrfFit_roc__ranger_validate_performances.pdf",
+#   width = 180
+# )
+# performances
+
+```
+
+```{r}
+gc()
+```
+
+
+No, ranger case-control balancing does not help. We will skip that.
