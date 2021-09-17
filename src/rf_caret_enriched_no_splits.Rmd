@@ -20,14 +20,15 @@ library(rpart)
 library(ranger)
 library(doParallel)
 
-source("~/FRCBS/Hb_predictor_container/src/helper_functions.R")
+source("helper_functions.R")
 source("validate_stan_fit.R")
 
 #setwd("~/FRCBS/interval_prediction/src/")
 
-save_figs <- FALSE
+save_figs <- TRUE
 compute <- FALSE
-result_dir <- "~/FRCBS/interval_prediction/oversampling_results"
+input_dir <- "~/FRCBS/interval_prediction/data"
+result_dir <- "~/FRCBS/Hb_predictor_container/oversampling_results"
 fig_dir <- paste(result_dir, "pdf", sep="/")
 
 set.seed(123)
@@ -42,7 +43,7 @@ set.seed(123)
 # added gc() s to see if would help but did not test yet
 ```
 
-# TODO:
+## TODO:
 
 -test if the year has any effect ?!
 
@@ -82,10 +83,11 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
 
 ```
 
+## Read and preprocess the data
 
-
-# Read in enriched data
+### Read in enriched data. I DON'T USE THE ENRICHED DATA ANYMORE.
 ```{r}
+
 #load(file="../data/enriched-2020-08-11-0.50-train-validate.processed.rdata")
 #-rw-r--r-- 1 arvasmi arvasmi    487232 elo   20 13:45 enriched-2020-08-11-0.50-train-validate.processed.rdata
 
@@ -99,17 +101,17 @@ load_single <- function(filename) {
 
 
 
-train_orig <- load_single(file="../data/preprocessed-2020-08-26-train.rdata")
+train_orig <- load_single(file=sprintf("%s/preprocessed-2020-08-26-train.rdata", input_dir))
 #train_orig <- sample_set(train_orig, 0.5)
 #enriched <- load_single(file="../data/preprocessed-2020-08-26-train-enriched.rdata")
-validate_orig <- load_single(file="../data/preprocessed-2020-08-26-validate.rdata")
-test_orig <- load_single(file="../data/preprocessed-2020-08-26-test.rdata")
+validate_orig <- load_single(file=sprintf("%s/preprocessed-2020-08-26-validate.rdata", input_dir))
+test_orig <- load_single(file=sprintf("%s/preprocessed-2020-08-26-test.rdata", input_dir))
 # -rw-r--r-- 1 arvasmi arvasmi  11195318 elo   26 11:08 preprocessed-2020-08-26-train-enriched.rdata
 # -rw-r--r-- 1 arvasmi arvasmi  10810122 elo   26 10:28 preprocessed-2020-08-26-validate.rdata
 #This data is split before enrichment and only train is enriched.
 ```
 
-## Preprocess
+### Preprocess
 
 ```{r}
 train_orig %>% ungroup() %>% count()
@@ -292,7 +294,7 @@ validate %>% ungroup() %>%   summarise_all(funs(sum(is.na(.)))) %>% t()
 
 No.
 
-## Summarise
+### Summarise
 
 How do the donation carreers seem on the last event?
 
@@ -340,9 +342,9 @@ validate %>% filter(gender=='Women') %>% summary()
 
 
 
-# Decision tree
+## Decision tree
 
-## with rpart
+### Directly with rpart
 
 Based on https://www.statmethods.net/advstats/cart.html 
 
@@ -359,6 +361,42 @@ trtree <- rpart(Hb_deferral ~ .,
 trtree
 ```
 
+### With caret
+
+```{r, eval=TRUE}
+
+#https://rpubs.com/aryn999/DecisionTreeusingR -> but this has good example of class cut-off probability
+# dtGrid <-  expand.grid(
+#   cp = c(0.001887015, 0.003538153, 0.006545583, 0.038329992)
+#    cp = seq(0.0001, 0.04, length.out=10)
+#   #split = c("gini", "information")  # caret allows only 'cp' as a tuning parameter
+# )
+
+
+trctrl <- trainControl(method = "repeatedcv", 
+                       n = 4, 
+                       repeats = 5,
+                       classProbs = TRUE,
+                       summaryFunction = twoClassSummary,
+                       sampling = "up",
+                       verboseIter = TRUE
+)
+
+caret_tree <- train(Hb_deferral ~ . ,
+                data = train, 
+                method = "rpart",
+                metric = "ROC",
+                parms  = list(split = "gini"), # This parameter goes to rpart::rpart
+                trControl = trctrl,
+                #tuneGrid = dtGrid
+                tuneLength = 10
+                )
+
+caret_tree
+trtree <- caret_tree$finalModel
+```
+
+
 
 ```{r, eval=FALSE}
 printcp(trtree)
@@ -369,18 +407,18 @@ printcp(trtree)
 plotcp(trtree)
 ```
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 #ptrtree<- prune(trtree, cp=   trtree$cptable[which.min(trtree$cptable[,"xerror"]),"CP"])
 #trtree$cptable[which.min(trtree$cptable[,"xerror"]),"CP"]
 ```
 There seems to be no reason to do any extra pruning.
 
 
-```{r Visualize the decision tree, eval=FALSE}
+```{r Visualize the decision tree, eval=TRUE}
 rpart.plot(trtree,type = 4, extra = 101, tweak = 1)
 ```
 
-```{r Save the above decision tree, eval=FALSE}
+```{r Save the above decision tree, eval=TRUE}
 if (save_figs) {
   pdf(file=sprintf("%s/rf_no_splits_dtree_4-101.pdf", fig_dir), width = 14.4)
   rpart.plot(trtree,type = 4, extra = 101, tweak = 1)
@@ -388,11 +426,11 @@ if (save_figs) {
 }
 ```
 
-```{r Visualize another tree, eval=FALSE}
+```{r Visualize another tree, eval=TRUE}
 rpart.plot(trtree,type = 1, extra = 9, tweak = 1)
 ```
 
-```{r Save the above visualization of the decision tree, eval=FALSE}
+```{r Save the above visualization of the decision tree, eval=TRUE}
 # This is shown in the supplement
 if (save_figs) {
   pdf(file=sprintf("%s/rf_no_splits_dtree_1-9.pdf", fig_dir), width = 14.4)
@@ -404,21 +442,24 @@ if (save_figs) {
 
 
 
-```{r, eval=FALSE}
-pred.c <- predict(trtree, validate, type = "class")
+```{r, eval=TRUE}
+pred.c <- predict(caret_tree, validate)
+#pred.c <- predict(caret_tree, validate, type = "class")
 caret::confusionMatrix(validate$Hb_deferral, pred.c,positive = "Deferred")
 ```
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 caret::confusionMatrix(validate$Hb_deferral, pred.c,positive = "Deferred",mode = "prec_recall")
 ```
 
 
 
-```{r create_performance_plots_dtree, eval=FALSE}
+```{r create_performance_plots_dtree, eval=TRUE}
+# This is shown in the supplement
+
 #https://stackoverflow.com/questions/30818188/roc-curve-in-r-using-rpart-package
-pred.p <- predict(trtree, validate, type = "prob")
-pred.p.test <- predict(trtree, test, type = "prob")
+pred.p <- predict(caret_tree, validate, type = "prob")
+pred.p.test <- predict(caret_tree, test, type = "prob")
 
 df <- cbind(pred.p, obs=validate$Hb_deferral)
 save(df, file=sprintf("%s/rrfFit__dtree_roc_validate_probs.rdata", result_dir))
@@ -427,7 +468,7 @@ save(df2, file=sprintf("%s/rrfFit__dtree_roc_test_probs.rdata", result_dir))
 
 width = 180
 #create_precision_recall_new <- function(labels, scores) {
-df <- data.frame(deferral=as.integer(validate$Hb_deferral) - 1, scores=pred.p[,'Deferred'])
+df <- tibble(original_label=as.integer(validate$Hb_deferral=="Deferred"), score=pred.p[,'Deferred'])
 #df <- data.frame(deferral=as.integer(validate$Hb_deferral) -1,scores=pred.p[,'Accepted'])
 performances <- create_performance_plots(
   df=df, 
@@ -439,12 +480,12 @@ performances
 
 ```
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 gc()
 ```
 
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 filename=sprintf("%s/rf_no_splits_dtree_validate_confusion.pdf", fig_dir)
 cm <- create_confusion_matrix_plot(as.integer(validate$Hb_deferral)-1,as.integer(pred.c)-1)
 if (save_figs) {
@@ -453,7 +494,7 @@ if (save_figs) {
 cm
 ```
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 rrfFit.varimp <- tibble("Variable"=names(trtree$variable.importance),"Importance"=as.numeric(trtree$variable.importance / sum(trtree$variable.importance)))
 colnames(rrfFit.varimp) <- c("Variable","Importance")
 rrfFit.varimp <- left_join(rrfFit.varimp, descript,by=c("Variable"="Variable")) %>% select(Variable,Pretty,Importance) %>% arrange(Importance)
@@ -466,58 +507,32 @@ varimp.plot <- ggplot(rrfFit.varimp) + geom_col(aes(y=Importance ,x=reorder(Pret
 
 filename=sprintf("%s/rf_no_splits_dtree_importance.pdf", fig_dir)
 if (save_figs) {
-  gsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
+  ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
 }
 varimp.plot
 ```
 
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 # This is shown in the supplement
-filename=sprintf("%s/rf_no_splits_dtree_validate_confusion_importance.pdf, fig_dir")
+filename=sprintf("%s/rf_no_splits_dtree_validate_confusion_importance.pdf", fig_dir)
 varimp.plot <- varimp.plot + theme(axis.text.x = element_text(angle = 90))
 importance_confusion <- cowplot::plot_grid(cm,varimp.plot , labels = c('A', 'B'), label_size = 12, nrow=1, scale=1.0, axis="tb", align="h")
 if (save_figs) {
   cowplot::save_plot(filename, importance_confusion, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
 }
-
+importance_confusion
 #unloadNamespace("ModelMetrics")
-library(caret)
 ```
 
 
 
 Just doing a decision tree seems to already work well.
 
-## with caret running rpart
-```{r, eval=FALSE}
-
-#https://rpubs.com/aryn999/DecisionTreeusingR -> but this has good example of class cut-off probability
-
-trctrl <- trainControl(method = "cv", n = 4, classProbs = TRUE)
-
-trtree <- train(Hb_deferral ~ . ,
-                data = train, 
-                method = "rpart",
-                metric = "ROC",
-                parms  = list(split = "gini"), 
-                trControl = trctrl)
-
-trtree
-```
-
-carret
 
 
 
-```{r, eval=FALSE}
-plot(varImp(trtree))
-```
-
-
-
-
-# Train rf model
+## Train random forest model
 
 First do search for the correct hyperparameters with out saving much stuff.
 
@@ -565,6 +580,7 @@ if (compute) {
   
   #Train
   rrfFit_roc_hyper <- train(Hb_deferral ~ ., data = train,
+                            # The below three parameters go to randomForest::randomForest
                             strata=train$Hb_deferral,
                             sampsize=n,
                             replace=TRUE,
@@ -684,7 +700,7 @@ ggplot(rrfFit_roc)
 
 
 
-# Evaluate the model
+### Evaluate the model
 
 ```{r}
 rrfFit_roc
@@ -765,7 +781,7 @@ histogram(~prediction.probs$Deferred|validate$Hb_deferral,xlab="Probability of P
 
 And what does this mean?
 
-## Report plots
+### Report plots
 ```{r create_performance_plots_rf, warning=FALSE}
 width = 180
 #create_precision_recall_new <- function(labels, scores) {
@@ -809,7 +825,7 @@ if (save_figs) {
 ```
 
 
-## Effect of class assingment probabilty
+### Effect of class assignment probabilty
 
 ```{r}
 #cut prediction.probs with seq(0, 1, .1)
@@ -832,7 +848,7 @@ df <- cbind(prediction.probs.test, obs=test$Hb_deferral)
 save(df, file=sprintf("%s/rrfFit_roc_test_probs.rdata", result_dir))
 ```
 
-## MLeval plots
+### MLeval plots
 
 https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
 
@@ -857,7 +873,7 @@ res$prg
 ```
 
 
-## Distribution of data in confusion matrix cells
+### Distribution of data in confusion matrix cells
 
 For training data
 
@@ -968,7 +984,7 @@ pmale
 
 
 
-# Test if 'ranger' case control weights change anything
+### Test if 'ranger' case control weights change anything
 
 ```{r ranger_training}
 #According to https://github.com/FRCBS/HSCT-relapse-model/blob/master/src/RF_relapse.R
