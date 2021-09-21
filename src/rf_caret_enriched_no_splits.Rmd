@@ -22,6 +22,7 @@ library(doParallel)
 
 source("helper_functions.R")
 source("validate_stan_fit.R")
+source("common.R")
 
 #setwd("~/FRCBS/interval_prediction/src/")
 
@@ -51,36 +52,37 @@ set.seed(123)
 ```{r}
 
 
-descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
-                                "year", "warm_season", "consecutive_deferrals", "recent_donations",
-                                "recent_deferrals", "hour", 
-                                "previous_Hb", "Hb_first", "Hb_deferral","nb_donat","gender"), 
-                   Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous Hb deferral", 
-                              "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
-                              "Recent deferrals", "Hour", 
-                              "Previous Hb", "First Hb", "Hb deferral","Life time donations","Sex"),
-                   Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
-                            "numeric (int)", "boolean", "numeric (int)", "numeric (int)", "numeric (int)", "numeric",
-                            "numeric", "numeric", "boolean","numeric (int)","Factor"),
-                   Explanation = c("Donor identifier",
-                                   "Amount of Hemoglobin",
-                                   "Time (in days) between Hb measurement and previous full blood donation event",
-                                   "Age of donor",
-                                   "Indicates whether the donor was deferred from blood donation due to low hemoglobin at previous donation event",
-                                   "Year of donation",
-                                   "True if donation was given in April-September",
-                                   "Amount of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
-                                   "Amount of donations in the last two years",
-                                   "Amount of deferrals due to low hemoglobin in the last two years",
-                                   "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
-                                   "Hb value at previous measurement (ICP-model)",
-                                   "Hb value at first donation of this donor (Non ICP-model)",
-                                   "Deferred based on low hemoglogin",
-                                  "Life time total count of donations",
-                                  "Sex"
-                   )
-                   )
+# descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
+#                                 "year", "warm_season", "consecutive_deferrals", "recent_donations",
+#                                 "recent_deferrals", "hour", 
+#                                 "previous_Hb", "Hb_first", "Hb_deferral","nb_donat","gender"), 
+#                    Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous Hb deferral", 
+#                               "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
+#                               "Recent deferrals", "Hour", 
+#                               "Previous Hb", "First Hb", "Hb deferral","Life time donations","Sex"),
+#                    Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
+#                             "numeric (int)", "boolean", "numeric (int)", "numeric (int)", "numeric (int)", "numeric",
+#                             "numeric", "numeric", "boolean","numeric (int)","Factor"),
+#                    Explanation = c("Donor identifier",
+#                                    "Amount of Hemoglobin",
+#                                    "Time (in days) between Hb measurement and previous full blood donation event",
+#                                    "Age of donor",
+#                                    "Indicates whether the donor was deferred from blood donation due to low hemoglobin at previous donation event",
+#                                    "Year of donation",
+#                                    "True if donation was given in April-September",
+#                                    "Amount of times the donor has been deferred due to low hemoglobin since last succesful whole blood donation",
+#                                    "Amount of donations in the last two years",
+#                                    "Amount of deferrals due to low hemoglobin in the last two years",
+#                                    "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
+#                                    "Hb value at previous measurement (ICP-model)",
+#                                    "Hb value at first donation of this donor (Non ICP-model)",
+#                                    "Deferred based on low hemoglogin",
+#                                   "Life time total count of donations",
+#                                   "Sex"
+#                    )
+#                    )
 
+descript <- descript %>% add_row(Variable="nb_donat", Pretty="Life time donations", Type="numeric (int)", Explanation="Life time total count of donations")
 ```
 
 ## Read and preprocess the data
@@ -363,14 +365,16 @@ trtree
 
 ### With caret
 
-```{r, eval=TRUE}
+```{r Fit the decision tree, eval=TRUE}
+
+file <- sprintf("%s/rrfFit__dtree_roc_hyper.rds", result_dir)
 
 #https://rpubs.com/aryn999/DecisionTreeusingR -> but this has good example of class cut-off probability
-# dtGrid <-  expand.grid(
+ dtGrid <-  expand.grid(
 #   cp = c(0.001887015, 0.003538153, 0.006545583, 0.038329992)
-#    cp = seq(0.0001, 0.04, length.out=10)
+    cp = seq(0.0001, 0.04, length.out=10)
 #   #split = c("gini", "information")  # caret allows only 'cp' as a tuning parameter
-# )
+ )
 
 
 trctrl <- trainControl(method = "repeatedcv", 
@@ -382,16 +386,20 @@ trctrl <- trainControl(method = "repeatedcv",
                        verboseIter = TRUE
 )
 
-caret_tree <- train(Hb_deferral ~ . ,
-                data = train, 
-                method = "rpart",
-                metric = "ROC",
-                parms  = list(split = "gini"), # This parameter goes to rpart::rpart
-                trControl = trctrl,
-                #tuneGrid = dtGrid
-                tuneLength = 10
-                )
-
+if (compute) {
+  caret_tree <- train(Hb_deferral ~ . ,
+                      data = train, 
+                      method = "rpart",
+                      metric = "ROC",
+                      parms  = list(split = "gini"), # This parameter goes to rpart::rpart
+                      trControl = trctrl,
+                      tuneGrid = dtGrid
+                      #tuneLength = 10
+  )
+  saveRDS(caret_tree, file)
+} else {
+  caret_tree <- readRDS(file)  
+}
 caret_tree
 trtree <- caret_tree$finalModel
 ```
@@ -442,40 +450,50 @@ if (save_figs) {
 
 
 
-```{r, eval=TRUE}
-pred.c <- predict(caret_tree, validate)
+```{r Decision tree confusion matrix validate 1, eval=TRUE}
+pred.c.validate <- predict(caret_tree, validate)
 #pred.c <- predict(caret_tree, validate, type = "class")
-caret::confusionMatrix(validate$Hb_deferral, pred.c,positive = "Deferred")
+caret::confusionMatrix(data = pred.c.validate, reference=validate$Hb_deferral, positive = "Deferred")
 ```
 
-```{r, eval=TRUE}
-caret::confusionMatrix(validate$Hb_deferral, pred.c,positive = "Deferred",mode = "prec_recall")
+```{r Decision tree confusion matrix validate 2, eval=TRUE}
+caret::confusionMatrix(data = pred.c.validate, reference = validate$Hb_deferral, positive = "Deferred", mode = "prec_recall")
+```
+```{r Decision tree confusion matrix test, eval=TRUE}
+pred.c.test <- predict(caret_tree, test)
+caret::confusionMatrix(data = pred.c.test, reference = test$Hb_deferral, positive = "Deferred")
 ```
 
 
 
-```{r create_performance_plots_dtree, eval=TRUE}
+```{r Decision tree performance plots, eval=TRUE}
 # This is shown in the supplement
 
 #https://stackoverflow.com/questions/30818188/roc-curve-in-r-using-rpart-package
-pred.p <- predict(caret_tree, validate, type = "prob")
+pred.p.validate <- predict(caret_tree, validate, type = "prob")
 pred.p.test <- predict(caret_tree, test, type = "prob")
 
-df <- cbind(pred.p, obs=validate$Hb_deferral)
+df <- cbind(pred.p.validate, obs=validate$Hb_deferral)
 save(df, file=sprintf("%s/rrfFit__dtree_roc_validate_probs.rdata", result_dir))
 df2 <- cbind(pred.p.test, obs=test$Hb_deferral)
 save(df2, file=sprintf("%s/rrfFit__dtree_roc_test_probs.rdata", result_dir))
 
 width = 180
 #create_precision_recall_new <- function(labels, scores) {
-df <- tibble(original_label=as.integer(validate$Hb_deferral=="Deferred"), score=pred.p[,'Deferred'])
+df <- tibble(original_label=as.integer(validate$Hb_deferral=="Deferred"), score=pred.p.validate[,'Deferred'])
+df2 <- tibble(original_label=as.integer(test$Hb_deferral=="Deferred"), score=pred.p.test[,'Deferred'])
 #df <- data.frame(deferral=as.integer(validate$Hb_deferral) -1,scores=pred.p[,'Accepted'])
-performances <- create_performance_plots(
+performances_validate <- create_performance_plots(
   df=df, 
   filename=sprintf("%s/rf_no_splits_dtree_validate_performances.pdf", fig_dir),
   width = 180
 )
-performances
+performances_test <- create_performance_plots(
+  df=df2, 
+  filename=sprintf("%s/rf_no_splits_dtree_test_performances.pdf", fig_dir),
+  width = 180
+)
+performances_validate
 
 
 ```
@@ -485,23 +503,26 @@ gc()
 ```
 
 
-```{r, eval=TRUE}
-filename=sprintf("%s/rf_no_splits_dtree_validate_confusion.pdf", fig_dir)
-cm <- create_confusion_matrix_plot(as.integer(validate$Hb_deferral)-1,as.integer(pred.c)-1)
+```{r Decision tree confusion plots, eval=TRUE}
+cm_validate <- create_confusion_matrix_plot(as.integer(validate$Hb_deferral=="Deferred"), as.integer(pred.c.validate=="Deferred"))
+cm_test <- create_confusion_matrix_plot(as.integer(test$Hb_deferral=="Deferred"), as.integer(pred.c.test=="Deferred"))
 if (save_figs) {
-  ggsave(filename=filename, cm, width = 90,  height = 80,units="mm", dpi=600, scale=1.0)
+  filename=sprintf("%s/rf_no_splits_dtree_validate_confusion.pdf", fig_dir)
+  ggsave(filename=filename, cm_validate, width = 90, height = 80, units="mm", dpi=600, scale=1.0)
+  filename=sprintf("%s/rf_no_splits_dtree_test_confusion.pdf", fig_dir)
+  ggsave(filename=filename, cm_test, width = 90, height = 80, units="mm", dpi=600, scale=1.0)
 }
-cm
+#cm
 ```
 
-```{r, eval=TRUE}
+```{r Decision tree variables importance, eval=TRUE}
 rrfFit.varimp <- tibble("Variable"=names(trtree$variable.importance),"Importance"=as.numeric(trtree$variable.importance / sum(trtree$variable.importance)))
 colnames(rrfFit.varimp) <- c("Variable","Importance")
 rrfFit.varimp <- left_join(rrfFit.varimp, descript,by=c("Variable"="Variable")) %>% select(Variable,Pretty,Importance) %>% arrange(Importance)
 
 rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "previous_Hb_defTRUE"] <- "Previous donation deferred"
 rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "warm_seasonTRUE"] <- "Warm season"
-rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "genderWomen"] <- "Donor is a woman"
+rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "genderWomen"] <- "Sex"
 
 varimp.plot <- ggplot(rrfFit.varimp) + geom_col(aes(y=Importance ,x=reorder(Pretty, Importance)),alpha=0.7)+ coord_flip() + xlab("Variable")
 
@@ -509,19 +530,24 @@ filename=sprintf("%s/rf_no_splits_dtree_importance.pdf", fig_dir)
 if (save_figs) {
   ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
 }
-varimp.plot
+#varimp.plot
 ```
 
 
-```{r, eval=TRUE}
+```{r Decition tree importance confusion plot, eval=TRUE}
 # This is shown in the supplement
-filename=sprintf("%s/rf_no_splits_dtree_validate_confusion_importance.pdf", fig_dir)
 varimp.plot <- varimp.plot + theme(axis.text.x = element_text(angle = 90))
-importance_confusion <- cowplot::plot_grid(cm,varimp.plot , labels = c('A', 'B'), label_size = 12, nrow=1, scale=1.0, axis="tb", align="h")
+importance_confusion_validate <- cowplot::plot_grid(cm_validate, varimp.plot , labels = c('A', 'B'), label_size = 12, nrow=1, 
+                                           scale=1.0, axis="tb", align="h")
+importance_confusion_test <- cowplot::plot_grid(cm_test, varimp.plot , labels = c('A', 'B'), label_size = 12, nrow=1, 
+                                      scale=1.0, axis="tb", align="h")
 if (save_figs) {
-  cowplot::save_plot(filename, importance_confusion, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
+  filename=sprintf("%s/rf_no_splits_dtree_validate_confusion_importance.pdf", fig_dir)
+  cowplot::save_plot(filename, importance_confusion_validate, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
+  filename=sprintf("%s/rf_no_splits_dtree_test_confusion_importance.pdf", fig_dir)
+  cowplot::save_plot(filename, importance_confusion_test, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
 }
-importance_confusion
+importance_confusion_validate
 #unloadNamespace("ModelMetrics")
 ```
 
@@ -537,7 +563,7 @@ Just doing a decision tree seems to already work well.
 First do search for the correct hyperparameters with out saving much stuff.
 
 
-```{r gridsearch_big}
+```{r Random forest gridsearch big}
 # ranges rf
 
 #trainxxx <- train[sample(nrow(train), 1000), ]
@@ -613,10 +639,10 @@ rrfFit_roc_hyper
 ```
 
 
-```{r}
+```{r Random forest grid search plot}
 ghyper<- ggplot(rrfFit_roc_hyper)
 if (save_figs) {
-  ggsave(filename=sprintf("%s/rrfFit_roc_grid_search.pdf", result_dir), ghyper, width = 180,  height = 120,units="mm", dpi=600, scale=1.0)
+  ggsave(filename=sprintf("%s/rrfFit_roc_grid_search.pdf", fig_dir), ghyper, width = 180,  height = 120,units="mm", dpi=600, scale=1.0)
 }
 ghyper
 ```
@@ -629,7 +655,7 @@ With best hyperparameters do a run where all data is collected. (THERE'S NO REAS
 ```
 
 
-```{r gridsearch_small, eval=TRUE}
+```{r Random forest grid search small, eval=TRUE}
 # ranges rf
 
 #trainxxx <- train[sample(nrow(train), 1000), ]
@@ -692,7 +718,7 @@ rrfFit_roc
 ```
 
 
-```{r}
+```{r, eval=FALSE}
 ggplot(rrfFit_roc)
 ```
 
@@ -712,13 +738,6 @@ Do we need it.
 
 
 
-See how the best model works with training data
-```{r}
-
-prediction.tr <- predict(rrfFit_roc, newdata = train)
-caret::confusionMatrix(reference=train$Hb_deferral,data=prediction.tr,positive = "Deferred")
-```
-
 
 ```{r}
 rrfFit_rocImp <- varImp(rrfFit_roc, scale = TRUE)
@@ -727,7 +746,7 @@ plot(rrfFit_rocImp)
 
 ```
 
-```{r}
+```{r Random forest variable importance}
 rrfFit.varimp <- as_tibble(cbind(rownames(rrfFit_rocImp$importance),rrfFit_rocImp$importance))
 colnames(rrfFit.varimp) <- c("Variable","Importance")
 rrfFit.varimp <- left_join(rrfFit.varimp, descript,by=c("Variable"="Variable")) %>% select(Variable,Pretty,Importance) %>% arrange(Importance)
@@ -739,64 +758,85 @@ rrfFit.varimp$Pretty[rrfFit.varimp$Variable == "genderWomen"] <- "Sex"
 varimp.plot <- ggplot(rrfFit.varimp) + geom_col(aes(y=Importance ,x=reorder(Pretty, Importance)),alpha=0.7)+ coord_flip() + xlab("Variable")
 
 if (save_figs) {
-  filename=sprintf("%s/rrfFit_roc_importance.pdf", result_dir)
+  filename=sprintf("%s/rrfFit_roc_importance.pdf", fig_dir)
   ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
 }
 varimp.plot
 ```
 
+See how the best model works with training data
+```{r RF predict class train}
+prediction.c.train <- predict(rrfFit_roc, newdata = train)
+caret::confusionMatrix(data = prediction.c.train, reference = train$Hb_deferral, positive = "Deferred")
+```
+
+
 ... and with validation data
 
-```{r}
-prediction.vl <- predict(rrfFit_roc, newdata = validate)
-caret::confusionMatrix(reference=validate$Hb_deferral,data=prediction.vl,positive = "Deferred")
-
-```
-
-
-
-```{r}
-caret::confusionMatrix(reference=validate$Hb_deferral,data=prediction.vl,positive = "Deferred",mode = "prec_recall")
+```{r  RF predict class validate}
+prediction.c.validate <- predict(rrfFit_roc, newdata = validate)
+caret::confusionMatrix(data = prediction.c.validate, reference = validate$Hb_deferral, positive = "Deferred")
 ```
 
 
 ```{r}
-prediction.probs <- predict(rrfFit_roc, newdata = validate,type="prob")
-
-#validate.ROC <- roc(predictor=prediction.probs$Deferred,
-#               response=validate$Hb_deferral
-##               levels=rev(levels(validate$Hb_deferral))
-#  )
-#validate.ROC$auc
+caret::confusionMatrix(data = prediction.c.validate, reference = validate$Hb_deferral, positive = "Deferred", mode = "prec_recall")
+```
+```{r RF predict class test}
+prediction.c.test <- predict(rrfFit_roc, newdata = test)
+caret::confusionMatrix(data = prediction.c.test, reference = test$Hb_deferral, positive = "Deferred")
 ```
 
+
+```{r RF predict probability validate}
+prediction.probs.validate <- predict(rrfFit_roc, newdata = validate, type="prob")
+df <- cbind(prediction.probs.validate, obs=validate$Hb_deferral)
+save(df, file=sprintf("%s/rrfFit_roc_validate_probs.rdata", result_dir))
+
+```
+
+
+```{r RF predict probability test}
+prediction.probs.test <- predict(rrfFit_roc, newdata = test, type="prob")
+df <- cbind(prediction.probs.test, obs=test$Hb_deferral)
+save(df, file=sprintf("%s/rrfFit_roc_test_probs.rdata", result_dir))
+```
 
 ```{r}
 #plot(validate.ROC)
 ```
 
 ```{r}
-histogram(~prediction.probs$Deferred|validate$Hb_deferral,xlab="Probability of Poor Segmentation")
+histogram(~prediction.probs.validate$Deferred|validate$Hb_deferral, xlab="Probability of Poor Segmentation")
 ```
 
 And what does this mean?
 
 ### Report plots
-```{r create_performance_plots_rf, warning=FALSE}
+
+```{r Random forest performance plots, warning=FALSE}
 width = 180
 #create_precision_recall_new <- function(labels, scores) {
-df <- data.frame(deferral=as.integer(validate$Hb_deferral) - 1, scores=prediction.probs$Deferred)
+df <- data.frame(original_label = as.integer(validate$Hb_deferral=="Deferred"), score = prediction.probs.validate$Deferred)
+df2 <- data.frame(original_label = as.integer(test$Hb_deferral=="Deferred"), score = prediction.probs.test$Deferred)
 if (save_figs) {
-  filename <- sprintf("%s/rrfFit_roc_validate_performances.pdf", result_dir)
+  filename <- sprintf("%s/rrfFit_roc_validate_performances.pdf", fig_dir)
+  filename2 <- sprintf("%s/rrfFit_roc_test_performances.pdf", fig_dir)
 } else {
   filaname <- NULL
+  filaname2 <- NULL
 }
-performances <- create_performance_plots(
+performances_validate <- create_performance_plots(
   df=df, 
   filename=filename,
   width = 180
 )
-performances
+performances_test <- create_performance_plots(
+  df=df2, 
+  filename=filename2,
+  width = 180
+)
+performances_validate
 ```
 
 ```{r}
@@ -804,22 +844,32 @@ gc()
 ```
 
 
-```{r}
-cm <- create_confusion_matrix_plot(as.integer(validate$Hb_deferral)-1,as.integer(prediction.vl)-1)
+```{r Random forest confusion matrix plot}
+cm_validate <- create_confusion_matrix_plot(as.integer(validate$Hb_deferral=="Deferred"), 
+                                            as.integer(prediction.c.validate=="Deferred"))
+cm_test <- create_confusion_matrix_plot(as.integer(test$Hb_deferral=="Deferred"), 
+                                            as.integer(prediction.c.test=="Deferred"))
 if (save_figs) {
-  filename=sprintf("%s/rrfFit_roc_validate_confusion.pdf", result_dir)
-  ggsave(filename=filename, cm, width = 90,  height = 80,units="mm", dpi=600, scale=1.0)
+  filename=sprintf("%s/rrfFit_roc_validate_confusion.pdf", fig_dir)
+  ggsave(filename=filename, cm_validate, width = 90,  height = 80, units="mm", dpi=600, scale=1.0)
+  filename=sprintf("%s/rrfFit_roc_test_confusion.pdf", fig_dir)
+  ggsave(filename=filename, cm_test, width = 90,  height = 80, units="mm", dpi=600, scale=1.0)
 }
-cm
+cm_validate
 ```
 
-```{r}
+```{r Random forest combined confusion importance plot}
 
 varimp.plot <- varimp.plot + theme(axis.text.x = element_text(angle = 90))
-importance_confusion <- cowplot::plot_grid(cm,varimp.plot , labels = c('A', 'B'), label_size = 12, nrow=1, scale=1.0, axis="tb", align="h")
+importance_confusion_validate <- cowplot::plot_grid(cm_validate, varimp.plot, labels = c('A', 'B'), label_size = 12, 
+                                                    nrow=1, scale=1.0, axis="tb", align="h")
+importance_confusion_test <- cowplot::plot_grid(cm_test, varimp.plot, labels = c('A', 'B'), label_size = 12, 
+                                                    nrow=1, scale=1.0, axis="tb", align="h")
 if (save_figs) {
-  filename=sprintf("%s/rrfFit_roc_validate_confusion_importance.pdf", result_dir)
-  cowplot::save_plot(filename, importance_confusion, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
+  filename=sprintf("%s/rrfFit_roc_validate_confusion_importance.pdf", fig_dir)
+  cowplot::save_plot(filename, importance_confusion_validate, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
+  filename=sprintf("%s/rrfFit_roc_test_confusion_importance.pdf", fig_dir)
+  cowplot::save_plot(filename, importance_confusion_test, ncol = 2, base_asp = 1.0, base_width = width / 25.4 / 2, base_height = NULL)
 }
 
 ```
@@ -830,8 +880,8 @@ if (save_figs) {
 ```{r}
 #cut prediction.probs with seq(0, 1, .1)
 
-df <- cbind(prediction.probs, obs=validate$Hb_deferral)
-save(df, file=sprintf("%s/rrfFit_roc_validate_probs.rdata", result_dir))
+#df <- cbind(prediction.probs, obs=validate$Hb_deferral)
+#save(df, file=sprintf("%s/rrfFit_roc_validate_probs.rdata", result_dir))
 #x <- seq(0, 1, .1)
 #out <- matrix(nrow=length(validate$Hb_deferral),ncol=length(x))
 #colnames(out) <- paste0("p_",x)
@@ -842,11 +892,6 @@ save(df, file=sprintf("%s/rrfFit_roc_validate_probs.rdata", result_dir))
 #head(out)
 ```
 
-```{r}
-prediction.probs.test <- predict(rrfFit_roc, newdata = test, type="prob")
-df <- cbind(prediction.probs.test, obs=test$Hb_deferral)
-save(df, file=sprintf("%s/rrfFit_roc_test_probs.rdata", result_dir))
-```
 
 ### MLeval plots
 
@@ -877,29 +922,50 @@ res$prg
 
 For training data
 
+```{r}
+add_confusion_class <- function(data, prediction) {
+  conf <- bind_cols(data, "Confusion" = factor(paste0(data$Hb_deferral,"_",prediction))) %>% 
+    mutate(Confusion= case_when(
+      Confusion == "Accepted_Accepted" ~ "True negative",
+      Confusion == "Deferred_Accepted" ~ "False negative",
+      Confusion == "Deferred_Deferred" ~ "True positive",
+      Confusion == "Accepted_Deferred" ~ "False positive"
+    )) %>% 
+    mutate(Confusion = fct_relevel(Confusion,
+                                   "True positive",
+                                   "False negative",
+                                   "False positive",
+                                   "True negative"
+    ))
+  return(conf)
+}
+
+new_names <- c(
+      "Age"= "age", 
+         "Days to previous \n full blood \n donation" = "days_to_previous_fb", 
+         "Previous Hb \n deferral"= "previous_Hb_def", 
+          "Warm season" = "warm_season", 
+         "Consecutive deferrals" = "consecutive_deferrals", 
+         "Recent \n donations" = "recent_donations", 
+          "Recent \ndeferrals" = "recent_deferrals", 
+        "Hour" = "hour", 
+          "Previous Hb" = "previous_Hb", 
+          "First Hb" = "Hb_first",
+           "Consecutive \n deferrals" = "consecutive_deferrals",
+        "Life time \n donations" = "nb_donat"
+)
+```
+
 ```{r, warning=FALSE}
 
-train.conf <- bind_cols(train,"Confusion"=factor(paste0("r_",train$Hb_deferral,":p_",prediction.tr)))
-
-
+#train.conf <- bind_cols(train,"Confusion"=factor(paste0("r_",train$Hb_deferral,":p_",prediction.tr)))
+train.conf <- add_confusion_class(train, prediction.c.train)
 
 pfemale <- train.conf %>% filter(gender == "Women") %>% 
   mutate(previous_Hb_def =as.numeric(previous_Hb_def), 
          warm_season = as.numeric(warm_season)) %>% 
   select(-Hb_deferral,-gender) %>%
-  rename("Age"= age, 
-         "Days to previous \n full blood \n donation" = days_to_previous_fb, 
-         "Previous Hb \n deferral"= previous_Hb_def , 
-          "Warm season" = warm_season, 
-         "Consecutive deferrals" = consecutive_deferrals, 
-         "Recent \n donations" = recent_donations, 
-          "Recent \ndeferrals" = recent_deferrals, 
-        "Hour" = hour, 
-          "Previous Hb" = previous_Hb, 
-          "First Hb" = Hb_first,
-           "Consecutive \n deferrals" = consecutive_deferrals,
-        "Life time \n donations" = nb_donat
-) %>% 
+  rename(!!new_names) %>% 
   gather("key","value",-Confusion) %>% 
   ggplot(aes(value)) +
   facet_wrap(~ key, scales = "free") +
@@ -907,8 +973,10 @@ pfemale <- train.conf %>% filter(gender == "Women") %>%
                                               legend.text= element_text(size=6)
                                                                           )
 
-
-ggsave(filename="../results/rrfFit_variables_female.pdf", pfemale, width = 180,  height = 180,units="mm", dpi=600, scale=1.0)
+if (save_figs) {
+  ggsave(filename=sprintf("%s/rrfFit_variables_train_female.pdf", fig_dir), pfemale, width = 180,  height = 180,
+         units="mm", dpi=600, scale=1.0)
+}
 pfemale
 ```
 
@@ -920,28 +988,18 @@ pmale <- train.conf %>% filter(gender == "Men") %>%
   mutate(previous_Hb_def =as.numeric(previous_Hb_def), 
          warm_season = as.numeric(warm_season)) %>% 
   select(-Hb_deferral,-gender) %>%
-  rename("Age"= age, 
-         "Days to previous \n full blood \n donation" = days_to_previous_fb, 
-         "Previous Hb \n deferral"= previous_Hb_def , 
-          "Warm season" = warm_season, 
-         "Consecutive deferrals" = consecutive_deferrals, 
-         "Recent \n donations" = recent_donations, 
-          "Recent \ndeferrals" = recent_deferrals, 
-        "Hour" = hour, 
-          "Previous Hb" = previous_Hb, 
-          "First Hb" = Hb_first,
-           "Consecutive \n deferrals" = consecutive_deferrals,
-        "Life time \n donations" = nb_donat
-) %>% 
+  rename(!!new_names) %>% 
   gather("key","value",-Confusion) %>% 
   ggplot(aes(value)) +
   facet_wrap(~ key, scales = "free") +
-  geom_density(aes(color=Confusion)) +  theme(legend.position="bottom",
-                                              legend.text= element_text(size=6)
-                                                                          )
+  geom_density(aes(color=Confusion)) +  
+  theme(legend.position="bottom", legend.text= element_text(size=6))
 
 
-ggsave(filename="../results/rrfFit_variables_female.pdf", pmale, width = 180,  height = 180,units="mm", dpi=600, scale=1.0)
+if (save_figs) {
+  ggsave(filename=sprintf("%s/rrfFit_variables_train_male.pdf", fig_dir), pmale, width = 180,  height = 180,
+         units="mm", dpi=600, scale=1.0)
+}
 pmale
 
 ```
@@ -950,32 +1008,48 @@ For validation data
 
 ```{r}
 
-validate.conf <- bind_cols(validate,"Confusion"=factor(paste0("r_",validate$Hb_deferral,":p_",prediction.vl)))
+validate.conf <- add_confusion_class(validate, prediction.c.validate)
+
+#validate.conf <- bind_cols(validate,"Confusion"=factor(paste0("r_",validate$Hb_deferral,":p_",prediction.c.validate)))
 
 pfemale <- validate.conf %>% filter(gender == "Women") %>% 
   mutate(previous_Hb_def =as.numeric(previous_Hb_def), 
          warm_season = as.numeric(warm_season)) %>% 
   select(-Hb_deferral,-gender) %>%
+  rename(!!new_names) %>% 
   gather("key","value",-Confusion) %>% 
   ggplot(aes(value)) +
   facet_wrap(~ key, scales = "free") +
-  geom_density(aes(color=Confusion))
+  geom_density(aes(color=Confusion)) +
+  theme(legend.position="bottom", legend.text= element_text(size=6))
+if (save_figs) {
+  ggsave(filename=sprintf("%s/rrfFit_variables_validate_female.pdf", fig_dir), pfemale, width = 180,  height = 180,
+         units="mm", dpi=600, scale=1.0)
+}
+
 pfemale
 
 ```
 
 ```{r}
 
-validate.conf <- bind_cols(validate,"Confusion"=factor(paste0("r_",validate$Hb_deferral,":p_",prediction.vl)))
+#validate.conf <- bind_cols(validate,"Confusion"=factor(paste0("r_",validate$Hb_deferral,":p_",prediction.c.validate)))
 
 pmale <- validate.conf %>% filter(gender == "Men") %>% 
   mutate(previous_Hb_def =as.numeric(previous_Hb_def), 
          warm_season = as.numeric(warm_season)) %>% 
   select(-Hb_deferral,-gender) %>%
+  rename(!!new_names) %>% 
   gather("key","value",-Confusion) %>% 
   ggplot(aes(value)) +
   facet_wrap(~ key, scales = "free") +
-  geom_density(aes(color=Confusion))
+  geom_density(aes(color=Confusion)) +
+  theme(legend.position="bottom", legend.text= element_text(size=6))
+if (save_figs) {
+  ggsave(filename=sprintf("%s/rrfFit_variables_validate_male.pdf", fig_dir), pmale, width = 180,  height = 180,
+         units="mm", dpi=600, scale=1.0)
+}
+
 pmale
 
 ```
@@ -1028,15 +1102,16 @@ rf.model.pf
 
 
 ```{r}
-prediction <- predict(rf.model.pf, data = validate,reference=validate$Hb_deferral,num.threads=4)
-caret::confusionMatrix(reference=validate$Hb_deferral,data=prediction$predictions,positive = "Deferred",mode="everything")
+# Isn't that reference parameter unnecessary in the predict call?
+prediction <- predict(rf.model.pf, data = validate, reference = validate$Hb_deferral, num.threads=4)
+caret::confusionMatrix(data = prediction$predictions, reference = validate$Hb_deferral, positive = "Deferred", mode="everything")
 
 ```
 
 
 
 ```{r}
-prediction <- predict(rf.model.pt, data = validate,reference=validate$Hb_deferral,num.threads=4)
+prediction <- predict(rf.model.pt, data = validate, reference=validate$Hb_deferral, num.threads=4)
 
 ```
 
