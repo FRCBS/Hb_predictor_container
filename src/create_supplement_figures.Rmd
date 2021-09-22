@@ -61,7 +61,7 @@ filename_progesa_dlmm_female_raw <- "raw_result_female_icp_date-2020-08-12-gende
 
 ## Create forest plots
 
-```{r}
+```{r Combine FinDonor posteriors}
 # Function for plotting combined posterior
 combine_posterior <- function(fit_filenames) {
   
