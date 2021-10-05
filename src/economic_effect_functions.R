@@ -142,11 +142,19 @@ get_cost_constants <- function(data) {
 
 cost_func <- function(q, atot, Pm, Pd, F, Fn, rloss, d) {Pm * ((F*atot) / (F + Fn*(atot-1)) - 1 - d*q*rloss) - Pd*d*q}
 
+new_cost_func <- function(q, atot, Pm, Pd, F, Fn, rloss, d) {Pm * ((F*atot) / (F + Fn*(atot-1)) - 1 - (1-Fn)*d*q*rloss) - Pd*d*q}
+
 cost_func_simplified <- function(q, atot) {2 / ((1-0.1066)/atot + 0.1066)  - 2 - 60*0.03269718*q}
 
 cost_func_factory <- function(Pm, Pd, F, Fn, rloss, d) {
   function(q, atot) {
     return(Pm * ((F*atot) / (F + Fn*(atot-1)) - 1 - d*q*rloss) - Pd*d*q)
+  }
+}
+
+new_cost_func_factory <- function(Pm, Pd, F, Fn, rloss, d) {
+  function(q, atot) {
+    return(Pm * ((F*atot) / (F + Fn*(atot-1)) - 1 - (1-Fn)*d*q*rloss) - Pd*d*q)
   }
 }
 
@@ -222,7 +230,7 @@ get_cost <- function(TPR6, FPR6, TPR12, FPR12, sex, p) {
     # Em <- Pm. * (Fratio - 1 - d. * q * rl.)
     # Ed <- Pd. * d. * q
     # E <- Em - Ed
-    E <- cost_func(q=q, atot=a, Pm=Pm., Pd=Pd., F=1, Fn=Fn., rloss=rloss., d=d.)
+    E <- new_cost_func(q=q, atot=a, Pm=Pm., Pd=Pd., F=1, Fn=Fn., rloss=rloss., d=d.)
     tibble(q=q, a=a, E=E, TPR=TPR, FPR=FPR)
   }
   if (sex=="both") {

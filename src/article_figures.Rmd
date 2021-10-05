@@ -20,6 +20,7 @@ save_tables = FALSE
 fig_path="~/FRCBS/results-for-eba-paper/pdf"
 table_path="~/FRCBS/results-for-eba-paper/table"
 date <- "2021-09-21"
+#date <- Sys.Date()
 all_results_filename <- sprintf("%s/raw-data-%s.tsv", table_path, date)
 compute=FALSE
 
@@ -37,6 +38,25 @@ if (compute) {
   all_results <- read_tsv(file=all_results_filename)  
 }
 ```
+
+Results with Esa's improved cost function.
+
+```{r}
+new_all_results_filename <- sprintf("%s/raw-data-%s-new.tsv", table_path, date)
+new_all_results <- process_all_data(all_ids, parameters=new_parameters)
+write_tsv(new_all_results, file=new_all_results_filename)
+```
+Difference after Esa's new cost function.
+
+```{r}
+before <- read_tsv(file=sprintf("%s/raw-data-%s.tsv",     table_path, "2021-09-21"))
+after  <- read_tsv(file=sprintf("%s/raw-data-%s-new.tsv", table_path, "2021-09-21"))
+df <- inner_join(before, after, by=c("Id", "variable", "type"))  
+df <- df %>% mutate(diff=abs(value.x - value.y))
+df %>% filter(str_detect(variable, "E"), type=="value")
+```
+It looks like the difference in the economic effect is in the fourth or higher decimal. 
+
 The results with RF model:
 
 ```{r Examples in the main text}

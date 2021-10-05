@@ -6,7 +6,7 @@
 
 container_version="0.24"
 
-message(paste0("Working directory is ", getwd(), "\n"))
+#message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
 source("new_preprocess.R")
 source("sanquin_preprocess.R")

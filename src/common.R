@@ -1,8 +1,8 @@
 # Variables that are in use
-library(parallel)
-library(doParallel)
-library(shapr)
-library(ggforce)
+suppressPackageStartupMessages(library(parallel))
+suppressPackageStartupMessages(library(doParallel))
+suppressPackageStartupMessages(library(shapr))
+suppressPackageStartupMessages(library(ggforce))
 
 descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
                                 "year", "warm_season", "consecutive_deferrals", "recent_donations",
