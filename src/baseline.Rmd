@@ -156,14 +156,20 @@ data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exact
 ## Data description
 
 
-
-### Donation-specific variables
+### Variables used in prediction
 
 ```{r, echo=FALSE, results="markup"}
-kable(descript)
+if (use_pdf) {
+  kable(descript, format="latex", booktabs=TRUE) %>%
+  kableExtra::column_spec(1, latex_column_spec = "p{3.2cm}") %>%
+  kableExtra::column_spec(2, latex_column_spec = "p{3cm}")   %>%
+  kableExtra::column_spec(3, latex_column_spec = "p{2.5cm}") %>%
+  kableExtra::column_spec(4, latex_column_spec = "p{6cm}")
+} else {
+  kable(descript)
+}
 ```
 
-### Donor-specific variables
 
 ```{r, echo=FALSE}
 kable(donor_descript %>% filter(Variable %in% names(donor_specific_variables)))
@@ -175,10 +181,20 @@ cat(sprintf("### Summary plots of variables (%s)\n", params$sex))
 
 
 ```{r Summary plots, echo = FALSE, results="hide"}
-create_summary_plots(data, donor_specific_variables, params$sex, descript, donor_descript)
+res <- create_summary_plots(data, donor_specific_variables, params$sex, descript, donor_descript)
 ```
 
+```{r, fig.height = 10, fig.width = 7}
+res[[1]]
+```
 
+```{r}
+res[[2]]
+```
+
+```{r}
+res[[3]]
+```
 
 
 ```{r Partition and enrich, echo=FALSE}
@@ -241,25 +257,71 @@ message("and here")
 ```
 
 ```{r Take the last events}
-helper <- function(data) {
-  data <- data %>% group_by(donor) %>%
-    dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
-    slice_max(order_by = dateonly, n=1) %>%
-    ungroup()
-}
+# helper <- function(data) {
+#   data <- data %>% group_by(donor) %>%
+#     dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
+#     slice_max(order_by = dateonly, n=1) %>%
+#     ungroup()
+# }
+# 
+# # Take only the last events
+# enriched <- helper(enriched)
+# test <- helper(test)
+# sink(file=stderr(), type="output"); summary(enriched); sink()
+# sink(file=stderr(), type="output"); summary(test); sink()
+```
 
-# Take only the last events
-enriched <- helper(enriched)
-test <- helper(test)
-sink(file=stderr(), type="output"); summary(enriched); sink()
-sink(file=stderr(), type="output"); summary(test); sink()
+```{r Process train and validate sets further}
+
+
+variables <- params$predictive_variables
+
+variables <- c(variables, 
+               c(
+               "Hb_deferral",
+               "nb_donat"))
+
+if (!is.null(donor_variables)) {
+  variables <- c(variables, donor_variables)
+}
+  
+#Train
+
+train <- additional_preprocess(enriched, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
+
+#Validate
+
+validate <- additional_preprocess(test, c(variables, "Hb", "sex")) # We want to include Hb and sex to the prediction result table
+
+
+
 ```
 
 
+```{r Info about datasets, results="asis", echo=FALSE}
+msg <- sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train))
+message(msg)
+cat(msg)
+sink(file=stderr(), type="output"); summary(train); sink()
+
+msg <- sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate))
+message(msg)
+cat(msg)
+sink(file=stderr(), type="output"); summary(validate); sink()
+
+
+train_deferred <- train %>% filter(Hb_deferral == "Deferred")
+validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
+cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
+cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
+rm(train_deferred)
+rm(validate_deferred)
+```
+
 ```{r Fit baseline model, results="asis", echo=FALSE}
-logistic_regression <- function(train) {
+logistic_regression <- function(data) {
   glm.fit <- glm(Hb_deferral ~ previous_Hb,
-               data = train,
+               data = data,
                family = binomial)
   return(glm.fit)  
 }
@@ -269,23 +331,23 @@ fit_filename <- sprintf("%s/baseline-fit-%s-%s.rds", datadir, params$model, para
 if (skip_train) {
   fit <- readRDS(fit_filename)  
 } else {
-  fit <- logistic_regression(enriched)
+  fit <- logistic_regression(train)
   saveRDS(fit, fit_filename)
 }
-fit
+#fit
 ```
 
 ```{r Predict validate data, results="asis", echo=FALSE}
-predict_baseline <- function(glm.fit, test, threshold = NULL) {
+predict_baseline <- function(glm.fit, data, threshold = NULL) {
   glm.probs <- predict(glm.fit,
-                      newdata = test,
+                      newdata = data,
                       type = "response")
   
   result <- tibble(score = glm.probs, 
-                   original_value = test$Hb,
+                   original_value = data$Hb,
                    predicted_value = NA,
-                   original_label = as.integer(test$Hb_deferral),
-                   previous_Hb = test$previous_Hb
+                   original_label = as.integer(data$Hb_deferral),
+                   previous_Hb = data$previous_Hb
                    )
 
   if (!is.null(threshold)) {  
@@ -303,13 +365,13 @@ optimize_threshold <- function(df) {
     return(cp$optimal_cutpoint)
 }
 
-enriched_result <- predict_baseline(fit, enriched)
+enriched_result <- predict_baseline(fit, train)
 # Optimize the probability threshold
 threshold <- optimize_threshold(enriched_result)
 enriched_result <- enriched_result %>%
   mutate(predicted_label = as.integer(score > threshold))
   
-test_result <- predict_baseline(fit, test, threshold)
+test_result <- predict_baseline(fit, validate, threshold)
 ```
 
 
@@ -384,7 +446,7 @@ plot_logistic_regression <- function(df, title, previous_Hb) {
   return(g)
 }
 previous_Hb <- get_inverse(fit, threshold)
-cat(sprintf("The previous_Hb value %.2f corresponds approximately to the threshold value %.2f", previous_Hb, threshold))
+cat(sprintf("The previous_Hb value %.2f corresponds approximately to the threshold value %.2f\n", previous_Hb, threshold))
 enriched_g <- plot_logistic_regression(enriched_result, "enriched data", previous_Hb)
 test_g <- plot_logistic_regression(test_result, "test data", previous_Hb)
 enriched_g
@@ -406,6 +468,7 @@ if (!is.null(params$summary_table_file)) {
 ```
 
 ```{r Show summary table, results="markup"}
-cols <- c("Model"="Pretty", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+#cols <- c("Model"="Pretty", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
+cols <- c("Model"="Pretty", "Sex", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kable(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3))
 ```

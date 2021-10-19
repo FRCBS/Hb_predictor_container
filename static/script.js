@@ -427,9 +427,28 @@ document.onreadystatechange = function() {
 	console.log("interval_id is: " + interval_id);
 	clearInterval(interval_id);  // stop the timer
     }
+
+    function seconds_to_dhms(seconds) {
+	//seconds = Number(seconds);
+	seconds = parseInt(seconds);
+	var d = Math.floor(seconds / (3600*24));
+	var h = Math.floor(seconds % (3600*24) / 3600);
+	var m = Math.floor(seconds % 3600 / 60);
+	var s = Math.floor(seconds % 60);
+	
+	var d2 = d > 0 ? d + (d == 1 ? " day" : " days") : "";
+	var h2 = h > 0 ? h + (h == 1 ? " hour" : " hours") : "";
+	var m2 = m > 0 ? m + (m == 1 ? " minute" : " minutes") : "";
+	var s2 = s > 0 ? s + (s == 1 ? " second" : " seconds") : "";
+	elements = [d2, h2, m2, s2];
+	result = elements.filter(function(s) {return s.length > 0}).join(", ");
+	return result;
+    }
     
+    // Set elapsed time
     function set_time(milliseconds) {
-	date = new Date(milliseconds).toISOString().substr(11, 8);
+	//date = new Date(milliseconds).toISOString().substr(11, 8);
+	date = seconds_to_dhms(milliseconds / 1000);
 	time.innerHTML = date;
     }
     

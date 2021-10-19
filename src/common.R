@@ -81,7 +81,7 @@ to_pretty <- function(df, description) {
   df %>% rename(!!!conversion)
 }
 
-summary_plotter <- function(df, variable_descriptions, color) {
+summary_plotter <- function(df, variable_descriptions, color, breaks=waiver(), ncol=NULL) {
   g <- df %>%
     mutate(across(where(is.logical), as.integer)) %>%
     keep(is.numeric) %>%
@@ -90,8 +90,9 @@ summary_plotter <- function(df, variable_descriptions, color) {
     gather() %>%
     mutate(key = factor(key, levels=variable_descriptions$Pretty))  %>% # Don't sort alphabetically
     ggplot(aes(value)) +
-    facet_wrap(~ key, scales = "free") +
-    geom_histogram(fill = color)
+    facet_wrap(~ key, scales = "free", ncol=ncol) +
+    geom_histogram(fill = color) +
+    scale_x_continuous(breaks=breaks)
   return(g)
 }
 
@@ -220,11 +221,17 @@ additional_preprocess <- function(data, variables) {
   old_count <- nrow(data); old_count2 <- ndonor(data)
   data <- data %>% group_by(donor) %>%
     dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
+    ungroup()
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to length of time series being one\n", 
+                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+  
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  data <- data %>% group_by(donor) %>%
     slice_max(order_by = dateonly, n=1) %>%
-    mutate(nb_donat = sum( nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)) %>% 
+    mutate(nb_donat = sum(nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)) %>% 
     ungroup() %>% 
     mutate(Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred")))
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to length of time series being one\n", 
+  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to taking only the last donation of each time series\n", 
                   old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
@@ -323,14 +330,24 @@ create_summary_plots <- function(data, donor_specific_variables, sex, donation_d
               label=as.integer(unique(label)))
   
   
+  # Donation specific variables
   pboth <- data %>%
     filter(first_event == FALSE) %>%
     select(all_of(donation_description$Variable))
-  
-  pboth <- summary_plotter(pboth, donation_description, color)
+
+  # Replace last space for a newline character
+  replace_last <- function(s) {
+    stringi::stri_reverse(str_replace(stringi::stri_reverse(s), " ", "\n"))
+  }
+  # Cut long variable names to multiple lines
+  dd <- donation_description %>% 
+    mutate(Pretty = case_when(Variable %in% c("previous_Hb_def", "consecutive_deferrals", "recent_donations") ~ replace_last(Pretty), 
+                              Variable=="days_to_previous_fb" ~ "Days to previous\nfull blood\ndonation", 
+                              TRUE ~ Pretty))
+  pboth <- summary_plotter(pboth, dd, color, breaks=scales::extended_breaks(n=4), ncol=3)
   pboth
   
-  
+  # Donor specific variables
   temp_donor_specific <- at_least_one_deferral
   #tr <- tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
   if (!is.null(donor_specific_variables)) {
@@ -343,10 +360,11 @@ create_summary_plots <- function(data, donor_specific_variables, sex, donation_d
   pdata2 <- temp_donor_specific %>%
     filter(donor %in% temp_donors)
   pdata2 <- summary_plotter(pdata2, 
-                            donor_description,# %>% add_row(tr), 
+                            donor_description,
                             color)
   pdata2
   
+  # Time series lengths
   lengths <- time_series_length_plotter(data, color)
   return(list(pboth, pdata2, lengths))
 }

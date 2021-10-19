@@ -5,6 +5,8 @@
 # Rscript docker-server-plumber.R
 
 container_version="0.24"
+cat(container_version, file = "../output/version.txt")
+zip_file <- sprintf("results-%s.zip", container_version)
 
 #message(paste0("Working directory is ", getwd(), "\n"))
 #setwd("src")
@@ -498,6 +500,8 @@ hb_predictor3 <- function(ws) {
       length(tmp) == 2 ~ "both")
   }
   
+  result_page_files <- c() # These will be included in the zip file
+  
   timing <- tibble(id=character(), model=character(), sex=character(), time=numeric(), unit=character())
   
   models <- intersect(c("dt", "bl", "rf", "svm"), names(post))
@@ -601,7 +605,7 @@ hb_predictor3 <- function(ws) {
                 pdf=sprintf("output/results-%s-%s.pdf", m, sex))
       details_dfs[[length(details_dfs)+1]] <- t
       ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
-      
+      result_page_files <- c(result_page_files, t$html, t$pdf)
       message("x4")
       
       if (is_linear_model) {
@@ -645,6 +649,14 @@ hb_predictor3 <- function(ws) {
   prediction_table <- bind_rows(prediction_tables)
   write_excel_csv(prediction_table, "../output/prediction.csv")
   
+  write_csv(timing, file="../output/timing.csv")
+  
+  # Create a zip package containing all results
+  files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
+             "exclusions.txt", "hyperparameters.json")
+  files <- c(files, basename(result_page_files))
+  system(sprintf("cd ../output; zip %s %s", zip_file, paste(files, collapse=" ")))
+  
   ws$send(rjson::toJSON(list(type="status", status="Ready")))
   
   details_df <- bind_rows(details_dfs)
@@ -677,7 +689,7 @@ hb_predictor <- function(req){
   </div>
   '           
                       
-  results <- '
+  results <- sprintf('
     <div id="results-container" hidden>
       <h2>Results</h2>
       
@@ -699,12 +711,13 @@ hb_predictor <- function(req){
           <li id="shap-value"> <a href="/output/shap-value.csv" target="_blank">Shap value table</a> (CSV)</li>
           <li id="prediction"> <a href="/output/prediction.csv" target="_blank">Prediction data</a> (CSV)</li>
           <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
+          <li id="exclusions"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>
           <li id="preprocessed"> <a href="/output/preprocessed.rdata" target="_blank">Preprocessed data</a> (R binary)</li>
+          <li id="download_all_results"> <a href="/output/%s" target="_blank">All results</a> (ZIP)</li>
           <!--
             <li id="train"> <a href="/output/train.csv" target="_blank">Train</a> </li>
             <li id="validate"> <a href="/output/validate.csv" target="_blank">Validate</a> </li>
           -->
-          <li id="exclusions"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>
       </ul>
       </div>
       
@@ -713,7 +726,7 @@ hb_predictor <- function(req){
         <tr> <th>Model</th> <th>Sex</th> <th>html</th> <th>pdf</th> </tr>
       </table>
     </div>
-  '
+  ', zip_file)
   
   response = sprintf('
   <html>

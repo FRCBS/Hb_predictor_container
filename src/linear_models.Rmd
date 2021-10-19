@@ -350,7 +350,16 @@ prediction_rows <- list() # This is for the effect sizes
 ### Variables used in prediction
 
 ```{r, echo=FALSE}
-kable(descript)
+if (use_pdf) {
+  kable(descript, format="latex", booktabs=TRUE) %>%
+  kableExtra::column_spec(1, latex_column_spec = "p{3.2cm}") %>%
+  kableExtra::column_spec(2, latex_column_spec = "p{3cm}")   %>%
+  kableExtra::column_spec(3, latex_column_spec = "p{2.5cm}") %>%
+  kableExtra::column_spec(4, latex_column_spec = "p{6cm}")
+} else {
+  kable(descript)
+}
+
 #if (!is.null(donor_variables)) {
   kable(donor_descript %>% filter(Variable %in% c(names(donor_specific_variables), "one_deferral")))
 #}
@@ -366,10 +375,20 @@ cat(sprintf("### Summary plot of variables (%s)\n", params$sex))
 
 
 
-create_summary_plots(data, donor_specific_variables, params$sex, descript, donor_descript)
+res <- create_summary_plots(data, donor_specific_variables, params$sex, descript, donor_descript)
 ```
 
+```{r, fig.height = 10, fig.width = 7}
+res[[1]]
+```
 
+```{r}
+res[[2]]
+```
+
+```{r}
+res[[3]]
+```
 
 
 
