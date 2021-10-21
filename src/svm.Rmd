@@ -28,6 +28,7 @@ params:
 #   donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
   donor_specific_file: NULL
   dev: "cairo_pdf"  
+tables: true 
 ---
 
 ```{r, echo=FALSE, message=FALSE}
@@ -237,41 +238,42 @@ message(sprintf("%i donors have at least one deferral\n", n))
 #message(summary(train_orig))
 if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rds")
 
-# enrich the data so that 50% of the donors have deferral as their last donation attempt
-old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
-#sink(file=stderr(), type="output")
-if (old_count2 >= 1000) {
-  enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
-  #sink()
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
-                  old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
-  message(msg)
-  print(logger, msg)
-  if (debug) saveRDS(enriched, file="/tmp/post-enriched.rds")
-} else {  # Don't enrich if less than 1000 donors
-  message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
-  enriched <- train_orig
-}
-
-n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
-message(sprintf("%i donors have at least one deferral\n", n))
+# # enrich the data so that 50% of the donors have deferral as their last donation attempt
+# old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
+# #sink(file=stderr(), type="output")
+# if (old_count2 >= 1000) {
+#   enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
+#   #sink()
+#   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+#                   old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
+#   message(msg)
+#   print(logger, msg)
+#   if (debug) saveRDS(enriched, file="/tmp/post-enriched.rds")
+# } else {  # Don't enrich if less than 1000 donors
+#   message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
+#   enriched <- train_orig
+# }
+# 
+# n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+# message(sprintf("%i donors have at least one deferral\n", n))
 
 # Drop donors whose last ferritin is not measured before the last blood donation after the truncation
-if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
-  old_count <- nrow(enriched); old_count2 <- ndonor(enriched)
-  enriched <- enriched %>% 
-    group_by(donor) %>% 
-    mutate(last_donation_date = max(dateonly)) %>% 
-    ungroup() %>% 
-    filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
-    select(-last_donation_date)
-  msg <-sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
-              old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
-  message(msg)
-  print(logger, msg)
-}
-sink(file=stderr(), type="output"); summary(enriched); sink()
-if (debug) saveRDS(enriched, file="/tmp/enriched.rds")
+# if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
+#   old_count <- nrow(enriched); old_count2 <- ndonor(enriched)
+#   enriched <- enriched %>% 
+#     group_by(donor) %>% 
+#     mutate(last_donation_date = max(dateonly)) %>% 
+#     ungroup() %>% 
+#     filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
+#     select(-last_donation_date)
+#   msg <-sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
+#               old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
+#   message(msg)
+#   print(logger, msg)
+# }
+# sink(file=stderr(), type="output"); summary(enriched); sink()
+# if (debug) saveRDS(enriched, file="/tmp/enriched.rds")
+
 #enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
 #rm(train_orig)
 
@@ -307,7 +309,7 @@ if (!is.null(donor_variables)) {
   
 #Train
 
-train <- additional_preprocess(enriched, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
+train <- additional_preprocess(train_orig, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
 
 #Validate
 
@@ -435,6 +437,7 @@ if (use_pdf) {
                              method = "svmPoly", 
                              trControl = caret::trainControl(method="none", 
                                                              classProbs = TRUE,
+                                                             sampling = "up",
                                                              summaryFunction = twoClassSummary), 
                              verbose = FALSE, 
                              tuneGrid = data.frame(svm_hyperparameters),

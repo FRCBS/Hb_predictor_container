@@ -172,7 +172,7 @@ write_hyperparameters <- function(hyperparameters, filename, json=TRUE) {
   }
 }
 
-learn_hyperparameters <- function(df, method, search_grid, cores) {
+learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
   message("In function learn_hyperparameters")
   df <- df %>% filter(label=="train") %>% select(-label) # Drop donors that belong to the original validate set
   #file <- "../output/learned_hyperparameters.Rdata"
@@ -194,6 +194,10 @@ learn_hyperparameters <- function(df, method, search_grid, cores) {
     #savePredictions = TRUE
   )
   
+  if (method == "svmPoly") {
+    fitControl$sampling <- "up"
+  }
+  
   #Train
   rrfFit_roc_hyper <- caret::train(Hb_deferral ~ ., data = df, 
                                    method = method, 
@@ -202,7 +206,8 @@ learn_hyperparameters <- function(df, method, search_grid, cores) {
                                    ## Now specify the exact models 
                                    ## to evaluate:
                                    tuneGrid = search_grid,
-                                   metric="ROC"
+                                   metric="ROC",
+                                   ...
                                    #should we use Kappa or ROC?
                                    #                importance = "permutation"
                                    #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm

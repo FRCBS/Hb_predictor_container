@@ -89,9 +89,12 @@ model_df <- tribble(
 
 FRCBS_hyperparameters <- tribble(
   ~Model,          ~Sex,     ~Value,
-  "rf",            "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
-  "rf",            "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
-  "rf",            "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
+  "rf",            "male",   list(mtry=4),
+  "rf",            "female", list(mtry=4),
+  "rf",            "both",   list(mtry=4),
+  # "rf",            "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
+  # "rf",            "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
+  # "rf",            "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
   "svm",           "male",   list(degree=3, scale=0.1, C=5),
   "svm",           "female", list(degree=3, scale=0.1, C=5),
   "svm",           "both",   list(degree=3, scale=0.1, C=5)
@@ -561,11 +564,13 @@ hb_predictor3 <- function(ws) {
             output_dir='../output',
             params = myparams)
           NULL
-        }, warning = function(w) ws$send(rjson::toJSON(list(type="warning", 
-                                                            warning_messages=c(sprintf("Warning in %s %s call \n", sex, pretty),
-                                                                               w$message))))),
+        }, 
+        warning = function(w) ws$send(rjson::toJSON(list(type="warning", 
+                                                         warning_messages=c(sprintf("Warning in %s %s call \n", sex, pretty),
+                                                                            w$message))))),
         error = function(cnd) {
           error_messages <- c(sprintf("Error in %s %s call \n", sex, pretty), cnd$message)
+          #rlang::last_error()
           return(error_messages)
         }
       )

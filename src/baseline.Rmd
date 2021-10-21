@@ -27,6 +27,7 @@ params:
   create_datasets_bool: TRUE
   donor_specific_file: NULL
   dev: "cairo_pdf"  
+tables: true 
 ---
 
   
@@ -198,12 +199,12 @@ res[[3]]
 
 
 ```{r Partition and enrich, echo=FALSE}
-enriched_filename <- sprintf("%s/baseline-enriched-%s-%s.rds", datadir, params$model, params$sex)
-test_filename <- sprintf("%s/baseline-test-%s-%s.rds", datadir, params$model, params$sex)
-if (skip_train) {
-  enriched <- readRDS(enriched_filename)
-  test <- readRDS(test_filename)
-} else {
+# enriched_filename <- sprintf("%s/baseline-enriched-%s-%s.rds", datadir, params$model, params$sex)
+# test_filename <- sprintf("%s/baseline-test-%s-%s.rds", datadir, params$model, params$sex)
+# if (skip_train) {
+#   enriched <- readRDS(enriched_filename)
+#   test <- readRDS(test_filename)
+# } else {
   debug <- TRUE
   
   donors <- ndonor(data)
@@ -224,35 +225,35 @@ if (skip_train) {
   n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
   message(sprintf("%i donors have at least one deferral\n", n))
   #message(summary(train_orig))
-  if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rdata")
+  #if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rdata")
   
-  # enrich the data so that 50% of the donors have deferral as their last donation attempt
-  old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
-  #sink(file=stderr(), type="output")
-  if (old_count2 >= 1000) {
-    enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
-    #sink()
-    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
-                    old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
-    message(msg)
-    print(logger, msg)
-    #if (debug) save(enriched, file="/tmp/post-enriched.rdata")
-  } else {  # Don't enrich if less than 1000 donors
-    message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
-    enriched <- train_orig
-  }
-  
-  n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
-  message(sprintf("%i donors have at least one deferral\n", n))
-  
-  sink(file=stderr(), type="output"); summary(enriched); sink()
-  #if (debug) save(enriched, file="/tmp/enriched.rdata")
-  #enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
-  #rm(train_orig)
-  
-  saveRDS(enriched, enriched_filename)
-  saveRDS(test, test_filename)
-}
+  # # enrich the data so that 50% of the donors have deferral as their last donation attempt
+  # old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
+  # #sink(file=stderr(), type="output")
+  # if (old_count2 >= 1000) {
+  #   enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
+  #   #sink()
+  #   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+  #                   old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
+  #   message(msg)
+  #   print(logger, msg)
+  #   #if (debug) save(enriched, file="/tmp/post-enriched.rdata")
+  # } else {  # Don't enrich if less than 1000 donors
+  #   message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
+  #   enriched <- train_orig
+  # }
+  # 
+  # n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+  # message(sprintf("%i donors have at least one deferral\n", n))
+  # 
+  # sink(file=stderr(), type="output"); summary(enriched); sink()
+  # #if (debug) save(enriched, file="/tmp/enriched.rdata")
+  # #enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
+  # #rm(train_orig)
+  # 
+  # saveRDS(enriched, enriched_filename)
+#   saveRDS(test, test_filename)
+# }
 message("and here")
 ```
 
@@ -287,7 +288,12 @@ if (!is.null(donor_variables)) {
   
 #Train
 
-train <- additional_preprocess(enriched, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
+train <- additional_preprocess(train_orig, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
+
+train <- caret::upSample(x = train, y = train$Hb_deferral)
+
+#up_train <- upSample(x = imbal_train[, -ncol(imbal_train)],
+#                     y = imbal_train$Class)            
 
 #Validate
 
@@ -395,7 +401,7 @@ id <- sprintf("bl-%s", params$sex)
 
 df <- tibble(id=id,
              model="bl",
-             sex = test$sex)
+             sex = validate$sex)
 
 df <- bind_cols(df, test_result)
 

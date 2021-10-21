@@ -26,6 +26,7 @@ texlive-latex-base \
 texlive-latex-recommended \
 texlive-fonts-recommended \
 texlive-latex-extra \
+texlive-plain-generic \
 lmodern
 
 RUN apt-get update -qq && apt-get -y --no-install-recommends install \
@@ -61,7 +62,11 @@ r-cran-cowplot \
 r-cran-gridextra \
 r-cran-desctools \
 r-cran-bayestestr \
-r-cran-ggforce
+r-cran-ggforce \
+r-cran-stringi \
+r-cran-randomforest \
+r-cran-kableextra \
+r-cran-lobstr
 
 RUN apt-get -y --no-install-recommends install time
 

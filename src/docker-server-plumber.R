@@ -15,8 +15,6 @@ if (length(args) == 1) {
 }
 #pr <- plumber::plumb("docker-apps-plumber.R")
 
-cat(sprintf("Open address http://localhost:%i/hb-predictor in your browser.\n", port))
-cat("Press control-c to kill the server\n")
 
 #pr$run(host='0.0.0.0', port=8080) # Listen to the specified port on all interfaces
 
@@ -37,6 +35,9 @@ multiplexer <- function(req) {
     body = body
   )
 }
+
+cat(sprintf("Open address http://localhost:%i/hb-predictor in your browser.\n", port))
+cat("Press control-c to kill the server\n")
 
 cat("Here\n")
 

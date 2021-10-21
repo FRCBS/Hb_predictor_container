@@ -246,40 +246,40 @@ message(sprintf("%i donors have at least one deferral\n", n))
 if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rds")
 
 # enrich the data so that 50% of the donors have deferral as their last donation attempt
-old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
-#sink(file=stderr(), type="output")
-if (old_count2 >= 1000) {
-  enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
-  #sink()
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
-                  old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
-  message(msg)
-  print(logger, msg)
-  if (debug) saveRDS(enriched, file="/tmp/post-enriched.rds")
-} else {  # Don't enrich if less than 1000 donors
-  message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
-  enriched <- train_orig
-}
-
-n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
-message(sprintf("%i donors have at least one deferral\n", n))
-
-# Drop donors whose last ferritin is not measured before the last blood donation after the truncation
-if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
-  old_count <- nrow(enriched); old_count2 <- ndonor(enriched)
-  enriched <- enriched %>% 
-    group_by(donor) %>% 
-    mutate(last_donation_date = max(dateonly)) %>% 
-    ungroup() %>% 
-    filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
-    select(-last_donation_date)
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
-              old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
-  message(msg)
-  print(logger, msg)
-}
-sink(file=stderr(), type="output"); summary(enriched); sink()
-if (debug) saveRDS(enriched, file="/tmp/enriched.rds")
+# old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
+# #sink(file=stderr(), type="output")
+# if (old_count2 >= 1000) {
+#   enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
+#   #sink()
+#   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
+#                   old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
+#   message(msg)
+#   print(logger, msg)
+#   if (debug) saveRDS(enriched, file="/tmp/post-enriched.rds")
+# } else {  # Don't enrich if less than 1000 donors
+#   message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
+#   enriched <- train_orig
+# }
+# 
+# n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+# message(sprintf("%i donors have at least one deferral\n", n))
+# 
+# # Drop donors whose last ferritin is not measured before the last blood donation after the truncation
+# if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
+#   old_count <- nrow(enriched); old_count2 <- ndonor(enriched)
+#   enriched <- enriched %>% 
+#     group_by(donor) %>% 
+#     mutate(last_donation_date = max(dateonly)) %>% 
+#     ungroup() %>% 
+#     filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
+#     select(-last_donation_date)
+#   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
+#               old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
+#   message(msg)
+#   print(logger, msg)
+# }
+# sink(file=stderr(), type="output"); summary(enriched); sink()
+# if (debug) saveRDS(enriched, file="/tmp/enriched.rds")
 #enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
 #rm(train_orig)
 
@@ -304,7 +304,7 @@ if (!is.null(donor_variables)) {
   
 #Train
 
-train <- additional_preprocess(enriched, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
+train <- additional_preprocess(train_orig, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
 
 #Validate
 
@@ -333,6 +333,9 @@ cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_de
 cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
 rm(train_deferred)
 rm(validate_deferred)
+
+saveRDS(train, file=sprintf("/tmp/train1-rf-%s.rds", params$sex))
+saveRDS(validate, file=sprintf("/tmp/validate1-rf-%s.rds", params$sex))
 ```
 
 
@@ -343,6 +346,7 @@ number_of_accepted  <- train %>% filter(Hb_deferral=="Accepted") %>% nrow()
 number_of_deferrals <- train %>% filter(Hb_deferral=="Deferred") %>% nrow()
 # stopifnot(number_of_deferrals > 0)
 # stopifnot(number_of_accepted > 0)
+message("here1")
 if (number_of_accepted == 0 || number_of_deferrals == 0) {
   stop(sprintf("Not all classes are present in the train data:\nnumber of deferrals = %i, number of accepted = %i\n", number_of_deferrals,
                number_of_accepted), call.=FALSE)
@@ -350,61 +354,79 @@ if (number_of_accepted == 0 || number_of_deferrals == 0) {
 tic("Training random forest")
 
 # Read or learn hyperparameters
+message("here2")
 hyperparameters <- read_hyperparameters(params$hyperparameters)
+message("here3")
 rf_hyperparameters <- hyperparameters %>% filter(Model=="rf", Sex==params$sex) %>% pull(Value)
+message("here4")
 if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for this model yet
   #Define search grid
   quick <- FALSE
   if (quick) {
     # Small grid for testing purposes
     rf_grid <-  expand.grid(
-      mtry = c(3:5),
-      splitrule=c("extratrees","hellinger"),
-      min.node.size = seq(30,40)
+      mtry = c(3:5)
+      #splitrule=c("extratrees","hellinger"),
+      #min.node.size = seq(30,40)
     )
   } else {
     rf_grid <-  expand.grid(
-      mtry = c(3:8),
-      splitrule=c("gini", "extratrees","hellinger"),
+      mtry = c(3:8)
+      #splitrule=c("gini", "extratrees","hellinger"),
       #min.node.size = seq(3,39,3) #what kind of range is needed?
-      min.node.size = seq(1, 60, 5)
+      #min.node.size = seq(1, 60, 5)
       #https://stats.stackexchange.com/questions/158583/what-does-node-size-refer-to-in-the-random-forest/
       #max.depth =c(1:10) # this is not available
     )
   }
     
   set.seed(global_random_seed)
-  rf_hyperparameters <- learn_hyperparameters(train, "ranger", rf_grid, number_of_cores)
+  n <- sum(train$Hb_deferral == "Accepted") / 2  # oversample to the count of the most common class
+  rf_hyperparameters <- learn_hyperparameters(df = train, method = "rf", search_grid = rf_grid, cores = number_of_cores,
+                                              strata=train$Hb_deferral,
+                                              sampsize=n,
+                                              replace=TRUE)
   hyperparameters <- hyperparameters %>% add_row(Model="rf", Sex=params$sex, Value=list(rf_hyperparameters))
   write_hyperparameters(hyperparameters, params$hyperparameters)
 } else {
   rf_hyperparameters <- rf_hyperparameters[[1]]
 }
+message("here5")
 
 train <- train %>% select(-label)   # Not needed anymore
 
-if (nrow(train) <= rf_hyperparameters$min.node.size) {
-  message("Warning: There are less points in the train data than what is the min.node.size of the random forest")
-  warning(sprintf("There are less points in the train data (%i) than what is the min.node.size of the random forest(%i)",
-                  nrow(train), rf_hyperparameters$min.node.size))
-}
+# if (nrow(train) <= rf_hyperparameters$min.node.size) {
+#   message("Warning: There are less points in the train data than what is the min.node.size of the random forest")
+#   warning(sprintf("There are less points in the train data (%i) than what is the min.node.size of the random forest(%i)",
+#                   nrow(train), rf_hyperparameters$min.node.size))
+# }
+message("here6")
 
 train    <- train    %>% mutate(across(intersect(c("warm_season", "previous_Hb_def"), names(train)), as.integer))   ## POISTA, vain testatusta varten 
 validate <- validate %>% mutate(across(intersect(c("warm_season", "previous_Hb_def"), names(validate)), as.integer))   ## POISTA, vain testatusta varten 
+message("here7")
 
 saveRDS(train, file=sprintf("/tmp/rf-train-%s.rds", params$sex))
 saveRDS(validate, file=sprintf("/tmp/rf-validate-%s.rds", params$sex))
+message("here8")
 
 fit_filename <- sprintf("/tmp/rf-fit-%s.rds", params$sex)
 if (use_pdf) {
   rrfFit_roc <- readRDS(fit_filename)
 } else {
   set.seed(global_random_seed)
+  n <- sum(train$Hb_deferral == "Accepted") / 2  # oversample to the count of the most common class
+
   # If formula is given as the first parameter, then the variables get recoded and renamed:
   # https://stackoverflow.com/questions/30097730/error-when-using-predict-on-a-randomforest-object-trained-with-carets-train
   #rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
+  message("here9")
   rrfFit_roc <- caret::train(x = as.data.frame(train %>% select(-Hb_deferral)), y = train %>% pull(Hb_deferral),
-                             method = "ranger", 
+                             method = "rf", 
+                             #method = "ranger", 
+                             strata=train$Hb_deferral,
+                             sampsize=n,
+                             replace=TRUE,
                              trControl = caret::trainControl(method="none", classProbs = TRUE), 
                              verbose = FALSE, 
                              ## Now specify the exact models 
@@ -414,11 +436,12 @@ if (use_pdf) {
                              #tuneGrid = tibble(mtry=3, splitrule="gini", min.node.size=10),
                              #metric="ROC",
                              #should we use Kappa or ROC?
-                             importance = "permutation"
+                             importance = TRUE
                              #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
                              #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
   )
-  
+  message("here10")
+
   sink(file=stderr(), type="output"); toc(); sink()
   saveRDS(rrfFit_roc, fit_filename)
 }
