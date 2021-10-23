@@ -2,6 +2,7 @@
 suppressPackageStartupMessages(library(parallel))
 suppressPackageStartupMessages(library(doParallel))
 suppressPackageStartupMessages(library(shapr))
+suppressPackageStartupMessages(library(fastshap))
 suppressPackageStartupMessages(library(ggforce))
 
 descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
@@ -479,6 +480,78 @@ compute_shap_values_shapr <- function(model, validate, variables, n=100, seed) {
   return(res)
 }
 
+compute_shap_values_fastshap <- function(model, validate, variables, n=1000, seed, nsim=10) {
+  message("In function compute_shap_values_fastshap")
+  set.seed(seed)
+  
+  # if ("sex" %in% variables) {
+  #   validate2 <- validate %>% select(-c(Hb))
+  # } else {
+  #   validate2 <- validate %>% select(-c(Hb, sex))
+  # }
+  #validate2 <- as.data.frame(validate2)
+  #validate2 <- validate %>% mutate(previous_Hb_def = as.integer(previous_Hb_def))
+  if ("sex" %in% colnames(validate)) {
+    validate2 <- validate  %>% slice_sample(n=n) %>% select(-c(Hb_deferral, Hb, sex))
+  } else {
+    validate2 <- validate  %>% slice_sample(n=n) %>% select(-c(Hb_deferral, Hb))
+  }
+
+  pfun_randomForest <- function(object, newdata) {
+    predict(object, newdata = newdata, type="prob")[,2]
+  }
+  
+  pfun_ksvm <- function(object, newdata) {
+    predict(object, newdata = newdata, type="probabilities")[,2]
+  }
+
+  # This is Caret's wrapper model
+  pfun_train <- function(object, newdata) {
+    predict(object, newdata = newdata, type="prob")[,2]
+  }
+  
+  if ("randomForest" %in% class(model)) {
+    pfun <- pfun_randomForest
+  } else if ("ksvm" %in% class(model)) {
+    pfun <- pfun_ksvm
+  } else if ("train" %in% class(model)) {
+    pfun <- pfun_train
+  }
+  result_code <- tryCatch(
+    error = function(cnd) {
+      msg <- paste("\nComputation of shap values failed:", cnd$message, 
+                   sep="\n")
+      warning(msg)
+      NULL
+    },
+    {
+      rlang::with_options(lifecycle_verbosity = "quiet", {  # Prevent the deprecation message caused by the explain function
+        shap <- fastshap::explain(model, 
+                                  X = as.data.frame(validate2),
+                                  pred_wrapper = pfun, 
+                                  nsim = nsim)
+      })
+      shap <- as_tibble(shap)
+    }
+    
+  )
+  if (is.null(result_code)) {
+    return(NULL)
+  }
+  n <- nrow(validate2)
+  attributions <- as_tibble(shap) %>% mutate(id=1:n)
+  attributions <- pivot_longer(attributions, cols=!id) %>%
+    select(Variable=name, id, attribution=value)
+  features <- validate2 %>% mutate(id=1:n)
+  features <- pivot_longer(features, cols=!id) %>%
+    select(Variable=name, id, value=value)
+  res <- inner_join(attributions, features, by=c("Variable", "id")) %>%
+    group_by(Variable) %>%
+    mutate(value=scale(value)[,1]) %>%
+    ungroup()
+  return(res)
+}
+
 plot_summary_shap_values <- function(df, variables_renamed) {
   message("In function plot_summary_shap_values")
   # The global attribution of a variable is the average of the absolute values of local attributions 
@@ -499,14 +572,18 @@ plot_summary_shap_values <- function(df, variables_renamed) {
 
 plot_shap_values <- function(df, variables_renamed) {
   message("In function plot_shap_values")
-  res2 <- df
+  res2 <- df %>%   # Drop variables that have attribution of all observations equal to zero
+    group_by(Variable) %>% 
+    filter(!all(attribution==0.0)) %>%
+    ungroup()
   res2 <- left_join(res2, bind_rows(descript, donor_descript), by=c("Variable"="Variable")) %>% 
     select(Variable, Pretty, attribution, value)
   res2 <- prettify_variables(res2, variables_renamed)
 
   shap_plot_rf <- res2 %>% 
-    mutate(value = if_else(abs(value) <= 4, value, NA_real_)) %>% # mark outliers
+    mutate(value = if_else(abs(value) <= 3, value, NA_real_)) %>% # mark outliers
     ggplot(aes(Variable, attribution, color=value)) + 
+    #ggplot(aes(Variable, attribution)) + 
     geom_hline(yintercept = 0) +
     ggforce::geom_sina() + 
     coord_flip() + 

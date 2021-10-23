@@ -469,7 +469,7 @@ if (use_pdf) {
   res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
 } else {
   #res <- compute_shap_values_shapper(rrfFit_roc$finalModel, train, validate, variables)
-  res <- compute_shap_values_shapr(rrfFit_roc$finalModel, validate, variables, seed=global_random_seed)
+  res <- compute_shap_values_fastshap(rrfFit_roc$finalModel, validate, variables, seed=global_random_seed)
   saveRDS(res, shap_filename)
 }
 

@@ -463,7 +463,7 @@ shap_filename <- sprintf("/tmp/shap_values_%s_%s.rds", params$model, params$sex)
 if (use_pdf) {     
   res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
 } else {
-  res <- compute_shap_values_shapr(svmFit_roc, validate, variables, seed=global_random_seed) 
+  res <- compute_shap_values_fastshap(svmFit_roc, validate, variables, seed=global_random_seed) 
   #res <- compute_shap_values(svmFit_roc$finalModel, train, validate, variables)
   saveRDS(res, shap_filename)
 }
