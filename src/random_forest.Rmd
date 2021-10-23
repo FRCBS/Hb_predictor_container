@@ -6,9 +6,9 @@ output:
     keep_tex: true
 params:
   input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
-  hlen: NULL
-  hlen_exactly: FALSE
-  sample_fraction: 1.0
+  # hlen: NULL
+  # hlen_exactly: FALSE
+#  sample_fraction: 1.0
   model: "rf"
   mode: "initial"
   sex: "both"
@@ -168,7 +168,7 @@ if (!is.null(donor_variables)) {
 }
 
 # Maybe this is not needed except for linear regression
-data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
+#data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 
 ```

@@ -149,7 +149,7 @@ drop_some_fields <- function(df, sex2) {
 }
 
 
-create_stan_datasets <- function(data, datadir, dumpdir, id, hlen=NULL, hlen_exactly=FALSE, 
+create_stan_datasets <- function(data, datadir, dumpdir, id, #hlen=NULL, hlen_exactly=FALSE, 
                             Hb_cutoff_male = 135, Hb_cutoff_female = 125, 
                             basic_variables, basic_variables_dlmm,
                             donor_variables=NULL,
@@ -193,7 +193,7 @@ create_stan_datasets <- function(data, datadir, dumpdir, id, hlen=NULL, hlen_exa
   if (compute_lmm) {
     stan_preprocessed_filename <- sprintf("%s/stan_preprocessed_datasets_%s_%s.rds", datadir, "lmm", sex)
     stan.preprocessed.lmm <- stan_preprocess_new(drop_some_fields(small, sex) %>% select(-previous_Hb), 
-                                                        Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
+                                                        Hb_index=Hb_index, #hlen=hlen, hlen_exactly=hlen_exactly, 
                                                         basic_variables=basic_variables, donor_variables = donor_variables, 
                                                  test_data = ! out_of_sample_predictions)
     #stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.lmm")
@@ -202,7 +202,7 @@ create_stan_datasets <- function(data, datadir, dumpdir, id, hlen=NULL, hlen_exa
   if (compute_dlmm) {
     stan_preprocessed_filename <- sprintf("%s/stan_preprocessed_datasets_%s_%s.rds", datadir, "dlmm", sex)
     stan.preprocessed.dlmm <- stan_preprocess_icp_new(drop_some_fields(small, sex) %>% select(-Hb_first), 
-                                                             Hb_index=Hb_index, hlen=hlen, hlen_exactly=hlen_exactly, 
+                                                             Hb_index=Hb_index, #hlen=hlen, hlen_exactly=hlen_exactly, 
                                                              basic_variables=basic_variables_dlmm, donor_variables = donor_variables,
                                                       test_data = ! out_of_sample_predictions)
     saveRDS(stan.preprocessed.dlmm, stan_preprocessed_filename)

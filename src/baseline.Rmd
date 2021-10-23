@@ -3,9 +3,9 @@
 output: md_document
 params:
   input_file: NULL
-  hlen: NULL
-  hlen_exactly: FALSE
-  sample_fraction: 1.0
+  # hlen: NULL
+  # hlen_exactly: FALSE
+  #sample_fraction: 1.0
   model: "dt"
   mode: "initial"
   sex: "both"
@@ -125,7 +125,7 @@ rawresultdir = "../data/raw_results/"   # I store plot objects and tables in thi
 # Id for a run. For example files in rawresultdir use this id as part of their name. 
 # Probably I should add a possibility to download raw results from the web interface.
 if (is.null(params$id)) {
-  id <- paste(params$date, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
+  id <- paste(params$date, params$extra_id, sep="_") 
 } else {
   id <- params$id
 }
@@ -146,7 +146,7 @@ donor_specific_variables <- NULL
 
 
 # Maybe this is not needed except for linear regression
-data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
+# data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 
 
@@ -455,10 +455,12 @@ previous_Hb <- get_inverse(fit, threshold)
 cat(sprintf("The previous_Hb value %.2f corresponds approximately to the threshold value %.2f\n", previous_Hb, threshold))
 enriched_g <- plot_logistic_regression(enriched_result, "enriched data", previous_Hb)
 test_g <- plot_logistic_regression(test_result, "test data", previous_Hb)
+```
+
+```{r}
 enriched_g
 test_g
 ```
-
 
 
 

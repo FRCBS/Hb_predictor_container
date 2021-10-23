@@ -315,7 +315,6 @@ stratified_sample <- function(df, stratify_by_sex, size, seed,
   return(result)
 }
 
-# Subtract one from the hlen values due to discarding first event at this point.
 # Parameter 'exactly' specifies that time series are required to be exactly of length 'hlen'.
 # If hlen < 0, then include donors who have donated at most |hlen| times.
 # Otherwise, include donors who have donated at least hlen times.
@@ -323,23 +322,22 @@ stratified_sample <- function(df, stratify_by_sex, size, seed,
 filter_based_on_number_of_donations <- function(df, hlen, exactly=FALSE) {
   message("In filter_based_on_number_of_donations function")
   if (!is.null(hlen)) {
-    leq <- FALSE
+    at_most <- FALSE
     if (hlen < 0) {
-      leq <- TRUE
+      at_most <- TRUE
       hlen <- abs(hlen)
     }
-    #hlen <- hlen - 1  # This is now done in stan_preprocess_new function only, before calling this function
     if (exactly) {
       df <- df %>%
         group_by(donor) %>%
         filter(n() == hlen) %>%
         ungroup()
-    } else if (leq) {
+    } else if (at_most) {
       df <- df %>%
         group_by(donor) %>%
         filter(n() <= hlen) %>%
         ungroup()
-    } else {
+    } else {   # At least
       df <- df %>%
         group_by(donor) %>%
         filter(n() >= hlen) %>%
@@ -1132,11 +1130,14 @@ plot_param_cis <- function(df, params = NULL) {
     geom_boxplot(aes(fill = variable)) + geom_hline(yintercept = 0) + coord_flip()
 }
 
+# Variables to lag are for instance: c("Eryt", "HKR", "Leuk", "Trom", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "TransferrinR")
+# If test_data is TRUE, then the last donations are used as the test data set, otherwise all donations are used as the train set
+# and the test data is given separately (out-of-sample prediction).
 stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL, basic_variables = NULL,
                                 donor_variables = NULL, test_data = TRUE, hlen = NULL, hlen_exactly = FALSE) {
   message("In stan_preprocess_new function")
   
-  hlen_orig <- hlen
+  #hlen_orig <- hlen
   # Preprocessing for combined dataset
   # tolag variable defines which variables should be lagged
   # (whether we should use previous or "current" measurements)
@@ -1160,10 +1161,11 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
   old_count <- nrow(df); old_count2 <- ndonor(df)
   # Filter donors with 1 or <= 2 events
   if (!is.null(tolag)) {
+    limit <- 1 + ifelse(test_data, 1, 0) # Note that we already dropped the donations with first_event == TRUE
     df <- df %>%
       droplevels() %>%
       group_by(donor) %>%
-      filter(n() >= 3) %>% 
+      filter(n() >= limit) %>% 
       ungroup()
     df <- df  %>% 
       group_by(donor) %>% 
@@ -1171,22 +1173,25 @@ stan_preprocess_new <- function(df, normalize = TRUE, Hb_index = 1, tolag = NULL
       mutate_at(tolag, lag) %>% 
       ungroup()
   } else {
+    limit <- 1 + ifelse(test_data, 1, 0) # Note that we already dropped the donations with first_event == TRUE
     df <- df %>%
       group_by(donor) %>%
-      filter(n() >= 2) %>%   # Note that we already dropped the donations with first_event == TRUE
+      filter(n() >= limit) %>%   
       ungroup()
   }
   message(sprintf("Dropped %i / %i donations (%i / %i donors) because dropping those donors with only at most two donations (or at most 3 donations if we have lagged variables.\n", 
                   old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2))
 
   message(sprintf("Number of donors (4) is %i", ndonor(df)))
-  old_count <- nrow(df); old_count2 <- ndonor(df)
-  if (!is.null(hlen) && hlen != 0) {
-    hlen <- ifelse(hlen > 0, hlen - 1, hlen + 1)      # Because we already dropped the first event
-  }
-  df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) because we use time series with length at least %i.\n", 
-                  old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2, hlen_orig))
+  
+  # old_count <- nrow(df); old_count2 <- ndonor(df)
+  # if (!is.null(hlen) && hlen != 0) {
+  #   hlen <- ifelse(hlen > 0, hlen - 1, hlen + 1)      # Because we already dropped the first event
+  # }
+  # df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
+  # message(sprintf("Dropped %i / %i donations (%i / %i donors) because we use time series with length at least %i.\n", 
+  #                 old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2, hlen_orig))
+  
   #message(sprintf("Number of donors (5) is %i", ndonor(df)))
   # Change donor into integer
   df <- df  %>% 
@@ -1486,6 +1491,9 @@ stan_preprocess_deltamodel <- function(df, normalize = TRUE, Hb_index = 1, tolag
               C = C))
 }  
 
+# Variables to lag are for instance: c("Eryt", "HKR", "Leuk", "Trom", "MCH", "MCHC", "MCV", "RDW", "CRP", "Ferritin", "TransferrinR")
+# If test_data is TRUE, then the last donations are used as the test data set, otherwise all donations are used as the train set
+# and the test data is given separately (out-of-sample prediction).
 stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = TRUE, hlen = NULL, hlen_exactly=FALSE,
                                     tolag = NULL, basic_variables, donor_variables = NULL, test_data = TRUE) {
   message("In stan_preprocess_icp_new function")
@@ -1496,39 +1504,36 @@ stan_preprocess_icp_new <- function(df, Hb_index = 1, frac = NULL, normalize = T
   # Don't filter first events: instead extract their Hb values to a separate vector
   # Also separate age, warm season and year
   
-  # Hlen variable can be used to select donors based on their donation history length
-  # For negative values: select donors with less or equal than -hlen donations
-  # For positive values: select donors with more or equal than hlen donations
-  # e.g., hlen = 5, keep donors with 5 or more events
-  # e.g., hlen = -10, keep donors with 10 or less events
-  # Take into account that the last event is used for prediction and the first event is dropped
   #message(sprintf("Number of icp-donors (1) is %i", ndonor(df)))
   old_count <- nrow(df); old_count2 <- ndonor(df)
   if (!is.null(tolag)) {
+    limit <- 2 + ifelse(test_data, 1, 0)
     df <- df %>%
       droplevels() %>%
       group_by(donor) %>%
-      filter(n() >= 3) %>% 
+      filter(n() >= limit) %>% 
       arrange(dateonly) %>% 
       mutate_at(tolag, lag) %>%
       ungroup() #%>% 
       #drop_na()
-  } else if (test_data) {
+  } else {
+    limit <- 2 + ifelse(test_data, 1, 0)
     df <- df %>%
       droplevels() %>%
       group_by(donor) %>%
-      filter(n() >= 2) %>%
+      filter(n() >= limit) %>%
       ungroup()
   }
   message(sprintf("Dropped %i / %i donations (%i / %i donors) because we dropped time series with length at most 1\n", 
                   old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2))
   #message(sprintf("Number of icp-donors (2) is %i", ndonor(df)))
   
-  old_count <- nrow(df); old_count2 <- ndonor(df)
-  df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) because we are using time series with length at least %s\n", 
-                  old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2, hlen))
+  # old_count <- nrow(df); old_count2 <- ndonor(df)
+  # df <- filter_based_on_number_of_donations(df, hlen, hlen_exactly)
+  # message(sprintf("Dropped %i / %i donations (%i / %i donors) because we are using time series with length at least %s\n", 
+  #                 old_count - nrow(df), old_count, old_count2 - ndonor(df), old_count2, hlen))
   #message(sprintf("Number of icp-donors (3) is %i", ndonor(df)))
+  
   # Change donor into integer
   df <- df  %>% 
     mutate(donor = as.factor(donor)) %>%

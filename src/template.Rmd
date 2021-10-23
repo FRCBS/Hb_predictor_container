@@ -3,9 +3,9 @@
 output: md_document
 params:
   input_file: NULL
-  hlen: NULL
-  hlen_exactly: FALSE
-  sample_fraction: 1.0
+  # hlen: NULL
+  # hlen_exactly: FALSE
+  #sample_fraction: 1.0
   model: "dt"
   mode: "initial"
   sex: "both"
@@ -119,7 +119,7 @@ rawresultdir = "../data/raw_results/"   # I store plot objects and tables in thi
 # Id for a run. For example files in rawresultdir use this id as part of their name. 
 # Probably I should add a possibility to download raw results from the web interface.
 if (is.null(params$id)) {
-  id <- paste(params$date, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
+  id <- paste(params$date, params$extra_id, sep="_") 
 } else {
   id <- params$id
 }
@@ -169,7 +169,7 @@ if (!is.null(donor_variables)) {
 
 
 # Maybe this is not needed except for linear regression
-data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
+#data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 
 

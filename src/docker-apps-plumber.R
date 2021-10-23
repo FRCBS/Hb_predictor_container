@@ -25,6 +25,7 @@ library(rjson)
 # default values for parameters
 default_max_diff_date_first_donation <- 60
 default_seed <- 123
+default_hlen <- 2
 default_Hb_cutoff_male   <- 135
 default_Hb_cutoff_female <- 125
 default_Hb_input_unit <- "gperl"
@@ -33,6 +34,7 @@ default_mode <- "initial"
 is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
 
 global_random_seed <- default_seed
+hlen_exactly <- FALSE
 
 # Show metadata about an uploaded file
 get_info <- function(x) {
@@ -194,6 +196,8 @@ hb_predictor3 <- function(ws) {
     error_messages <- c(error_messages, "The Hb cutoff must be a positive number")
   if ("unit" %in% names(post) && ! post$unit %in% c("gperl", "gperdl", "mmolperl"))
     error_messages <- c(error_messages, "The Hb unit must be either gperl, gperdl, or mmolperl")
+  if ("hlen" %in% names(post) && is.na(as.integer(post$hlen)))
+    error_messages <- c(error_messages, "The minimum number of donations must be an integer larger or equal to 2")
   if ("hyperparameters" %in% names(post) && ! post$hyperparameters %in% c("finnish", "dutch", "upload", "learn"))
     error_messages <- c(error_messages, "The hyperparameter option must be either finnish, dutch, upload, or learn")
   if ("mode" %in% names(post) && ! post$mode %in% c("initial", "final"))
@@ -249,6 +253,10 @@ hb_predictor3 <- function(ws) {
                                           as.integer(post$seed), default_seed)
   cat(sprintf("The parameter seed is %i\n", global_random_seed))
 
+  hlen <- ifelse("hlen" %in% names(post), 
+                 as.integer(post$hlen), default_hlen)
+  cat(sprintf("The parameter hlen is %i\n", hlen))
+  
   Hb_input_unit <- ifelse ("unit" %in% names(post), post$unit, default_Hb_input_unit)
   cat(sprintf("The parameter Hb_input_unit is %s\n", Hb_input_unit))
   
@@ -357,11 +365,18 @@ hb_predictor3 <- function(ws) {
     fulldata_preprocessed <- readRDS(donation_specific_filename)
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
+    
+    # Filter by time series length
+    old_count <- nrow(fulldata_preprocessed); old_count2 <- ndonor(fulldata_preprocessed)
+    fulldata_preprocessed <- filter_based_on_number_of_donations(fulldata_preprocessed, hlen, hlen_exactly)
+    message(sprintf("Dropped %i / %i donations (%i / %i donors) because we are using time series with length at least %s\n", 
+                    old_count - nrow(fulldata_preprocessed), old_count, old_count2 - ndonor(fulldata_preprocessed), old_count2, hlen))
+    
     if (sf != 1.0) {
       fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, seed=global_random_seed, donor_field = "donor", sex_field = "sex")
       donation_specific_filename <- "../output/preprocessed.rdata"
       saveRDS(fulldata_preprocessed, file=donation_specific_filename)  # Save the sample
-      post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
+      #post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
     }
   } else {
     # Do the preprocessing
@@ -401,7 +416,14 @@ hb_predictor3 <- function(ws) {
         cat("No ferritin information found.\n")
       }
     }
-    post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
+    
+    # Filter by time series length
+    old_count <- nrow(fulldata_preprocessed); old_count2 <- ndonor(fulldata_preprocessed)
+    fulldata_preprocessed <- filter_based_on_number_of_donations(fulldata_preprocessed, hlen, hlen_exactly)
+    message(sprintf("Dropped %i / %i donations (%i / %i donors) because we are using time series with length at least %s\n", 
+                    old_count - nrow(fulldata_preprocessed), old_count, old_count2 - ndonor(fulldata_preprocessed), old_count2, hlen))
+    
+    #post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
     #donation_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
@@ -437,10 +459,10 @@ hb_predictor3 <- function(ws) {
   
   myparams$input_file <- donation_specific_filename
   myparams$compute_shap_values <- compute_shap_values
-  if ("sample_fraction" %in% names(post))
-    myparams$sample_fraction <- as.numeric(post$sample_fraction)
-  if ("hlen" %in% names(post))       # Minimum length of time series
-    myparams$hlen <- as.integer(post$hlen)
+  # if ("sample_fraction" %in% names(post))
+  #   myparams$sample_fraction <- as.numeric(post$sample_fraction)
+  # if ("hlen" %in% names(post))       # Minimum length of time series
+  #   myparams$hlen <- as.integer(post$hlen)
   if (!is.null(donor_specific_filename))
     myparams$donor_specific_file <- donor_specific_filename
   

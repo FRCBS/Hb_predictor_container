@@ -3,9 +3,9 @@ output: md_document
 params:
   input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
   #input_file: "~/preprocessed_data_6243aede7.rdata"
-  hlen: NULL
-  hlen_exactly: FALSE
-  sample_fraction: 1.0
+  # hlen: NULL
+  # hlen_exactly: FALSE
+  # sample_fraction: 1.0
   model: "both"
   mode: "initial"
   sex: "both"
@@ -30,6 +30,7 @@ params:
   create_datasets_bool: TRUE
 #  donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
   donor_specific_file: NULL
+tables: true 
 ---
 
 ```{r, echo=FALSE, message=FALSE}
@@ -180,7 +181,7 @@ stanfitpath = "../data/stan_fits/"
 rawresultdir = "../data/raw_results/"
 
 if (is.null(params$id)) {
-  id <- paste(params$date, params$sample_fraction, params$hlen, params$hlen_exactly, params$extra_id, sep="_") 
+  id <- paste(params$date, params$extra_id, sep="_") 
 } else {
   id <- params$id
 }
@@ -274,7 +275,7 @@ if (out_of_sample_predictions) {
 
 if (create_datasets_bool) {
   source("create_stan_datasets.R")
-  create_stan_datasets(train, datadir, dumpdir, data_id, hlen=params$hlen, params$hlen_exactly,
+  create_stan_datasets(train, datadir, dumpdir, data_id, #hlen=params$hlen, params$hlen_exactly,
                          Hb_cutoff_male = params$Hb_cutoff_male,
                          Hb_cutoff_female = params$Hb_cutoff_female, 
                          basic_variables=basic_variables, basic_variables_dlmm=basic_variables_dlmm, donor_variables=donor_variables,
@@ -291,7 +292,7 @@ if (create_datasets_bool) {
                                              basic_variables=basic_variables_dlmm, 
                                              donor_variables = donor_variables, 
                                              test_data = FALSE,
-                                             Hb_index=Hb_index, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
+                                             Hb_index=Hb_index)#, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
       saveRDS(sl.val.dlmm, stan_preprocessed_validate_filename)
       #stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.dlmm")
     }
@@ -301,7 +302,7 @@ if (create_datasets_bool) {
       sl.val.lmm <- stan_preprocess_new(drop_some_fields(test, params$sex) %>% select(-previous_Hb),  
                                         basic_variables=basic_variables, donor_variables = donor_variables, 
                                         test_data = FALSE,
-                                        Hb_index=Hb_index, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
+                                        Hb_index=Hb_index)#, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
       saveRDS(sl.val.lmm, stan_preprocessed_validate_filename)
 #      stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.lmm")
     }
@@ -313,7 +314,7 @@ if (create_datasets_bool) {
 }
 
 # This is for summary plots only
-data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
+# data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 if (out_of_sample_predictions) {
   if (is.null(donor_variables)) {

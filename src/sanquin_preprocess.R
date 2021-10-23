@@ -79,7 +79,7 @@ sanquin_freadFRC <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female
   mm <- is.na(mytemp)
   message("Failed to parse dates:", sum(mm), "\n")
   if (sum(mm) > 0) {
-      print(donation %>% filter(mm) %>% summary %>% mutate_at("status", as.factor))
+      print(donation %>% filter(mm) %>% mutate_at("status", as.factor) %>% summary)
   }
   donation$date <- mytemp
   print(summary(donation %>% mutate_at("status", as.factor)))
@@ -161,7 +161,7 @@ sanquin_freadFRC <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female
              #donation = as.factor(donation),
              donor = as.factor(donor))
   
-  #Drop cases where date and dob are identical
+  #Drop donations where date and dob are identical
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   ids <- paste0(year(donation$date), month(donation$date), day(donation$date)) == paste0(year(donation$dob), month(donation$dob), day(donation$dob))
   donation <- donation[!ids,]
