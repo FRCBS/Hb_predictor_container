@@ -391,7 +391,8 @@ hb_predictor3 <- function(ws) {
         donations <- semi_join(donations, donors, by="KEY_DONOR")
       }
       fulldata_preprocessed <- preprocess(donations, donors,
-                                          myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit, southern_hemisphere, logger=logger)
+                                          myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit, southern_hemisphere, 
+                                          max_diff_date_first_donation, logger=logger)
     } else {  # Sanquin
       donations <- read_sanquin_donations(donations_o$tempfile)
       donors <- read_sanquin_donors(donors_o$tempfile)

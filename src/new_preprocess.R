@@ -7,7 +7,7 @@ source("helper_functions.R")  # For hours_to_numeric
 
 
 read_donations <- function(donation_file) {
-  # In the full dataset are there lots of missing values. This causes automatic recognition of column types to fail.
+  # In the full dataset there are lots of missing values. This causes automatic recognition of column types to fail.
   # Therefore we give them explicitly here.
   input_col_types <- list(
     X1 = col_character(),
@@ -25,41 +25,54 @@ read_donations <- function(donation_file) {
   )
   
   donations <- read_delim(donation_file, col_names=FALSE, delim='|', col_types=input_col_types)
-  cat(sprintf("Read %i rows from file %s\n", nrow(donations), donation_file))
+  message(sprintf("Read %i rows from file %s\n", nrow(donations), donation_file))
   
     old_names <-   c("KEY_DONAT_INDEX_DON", "KEY_DONOR", "KEY_DONAT_COLLECT", "KEY_DONAT_INDEX_DATE", "DONAT_PHLEB_START", 
                    "DONAT_STATUS", "KEY_DONAT_PHLEB", "DONAT_DIRECTED", "Field name?", "DONAT_VOL_DRAWN", "KEY_DONAT_INDEX_TEST", 
                    "DONAT_RESULT_CODE")
   names(donations) <- old_names
-  donations
+  return(donations)
 }
 
 read_donors <- function(donor_file) {
   input_col_types2 <- list(
     X1 = col_character())
   donors <- read_delim(donor_file, col_names=FALSE, delim="|", col_types = input_col_types2)
-  cat(sprintf("Read %i rows from file %s\n", nrow(donors), donor_file))
+  message(sprintf("Read %i rows from file %s\n", nrow(donors), donor_file))
   old_names <-
     c("KEY_DONOR", "DONOR_FIRST", "DONOR_NAME", "KEY_DONOR_SEX", "KEY_DONOR_DOB", "DONOR_LANGUAGE", "KEY_DONOR_ABORH", "DONOR_ADDR_1_A", 
     "KEY_DONOR_ZIP_1", "DONOR_CITY_1", "DONOR_TEL_1", "DONOR_E_MAIL", "DONOR_TEL_MOBILE", "DONOR_NOTIFIABLE", "DONOR_NOTIFICATION_METHOD_1", 
     "DONOR_NOTIFICATION_METHOD_2", "DONOR_NOTIFICATION_METHOD_3", "DONOR_NB_DONATIONS", "DONOR_NB_DONAT_PROGESA", "DONOR_NB_DONAT_OUTSIDE", 
     "DONOR_DATE_FIRST_DONATION", "DONOR_NB_WB", "DONOR_NB_PLA", "DONOR_NB_THR", "DONOR_LAST_DONAT_PHLEB", "DONOR_LAST_COLLECT")
   names(donors) <- old_names
-  donors
+	
+  donors <- donors %>% mutate(KEY_DONOR_SEX = case_when(KEY_DONOR_SEX == "Man"   ~ "M",
+                                              KEY_DONOR_SEX == "Woman" ~ "F"))
+  return(donors)
 }
 
-freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, logger)
+# max_diff_date_first_donation is a non-negative integer, which specifies the maximum allowed difference
+# between min(KEY_DONAT_INDEX_DATE) and DONOR_DATE_FIRST_DONATION
+freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
+                             max_diff_date_first_donation, logger)
 {
-  
+  message("In function freadFRC")
+  conversion <- c(donor = "KEY_DONOR", 
+                  date = "KEY_DONAT_INDEX_DATE", 
+                  phleb_start = "DONAT_PHLEB_START", 
+                  status = "DONAT_STATUS", 
+                  donat_phleb = "KEY_DONAT_PHLEB", 
+                  volume_drawn = "DONAT_VOL_DRAWN",
+                  Hb = "DONAT_RESULT_CODE")
   
   ########## DONATION
   
-  names(donation)=c('donation', 'donor', 'site', 'date', 'phleb_start',
-                    'status', 'donat_phleb', 
-                    'directed', 'donStartTime', 'volume_drawn', 'index_test', 
-                    'Hb')
-  
-  print(head(donation))
+#  names(donation)=c('donation', 'donor', 'site', 'date', 'phleb_start',
+#                    'status', 'donat_phleb', 
+#                    'directed', 'donStartTime', 'volume_drawn', 'index_test', 
+#                    'Hb')
+  donation <- donation %>% rename(!!!conversion)
+  #print(head(donation))
   mean_hb <- mean(donation$Hb, na.rm=TRUE)
   if (!is_hb_value_sane(mean_hb, Hb_input_unit)) {
     warning(sprintf("The mean Hb value %f does not seem to agree with the Hb unit %s\n", mean_hb, Hb_input_unit))
@@ -67,84 +80,71 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   donation <- donation %>%
     mutate(donat_phleb = as.factor(donat_phleb),
            volume_drawn = as.integer(volume_drawn),
-           #Hb = as.numeric(Hb),
            Hb = convert_hb_unit(Hb_input_unit, "gperl", as.numeric(Hb)),  # convert to g/L
-           phleb_start = as.character(phleb_start),
-           donStartTime = as.integer(donStartTime))
+           phleb_start = as.numeric(phleb_start))
+           #donStartTime = as.integer(donStartTime))
 
   
 
-  mytemp <- ymd_hm(paste0(as.character(donation$date)," ",donation$phleb_start))
+  mytemp <- ymd_hm(sprintf("%s %04i", donation$date, donation$phleb_start))
   mm <- is.na(mytemp)
-  cat("Failed to parse dates:", sum(mm), "\n")
+  message("Failed to parse dates:", sum(mm), "\n")
   if (sum(mm) > 0) {
-      print(donation %>% filter(mm) %>% head(20))
+      print(donation %>% filter(mm) %>% mutate_at("status", as.factor) %>% summary)
   }
   donation$date <- mytemp
+  print(summary(donation %>% mutate_at("status", as.factor)))
   
   
-  old_count <- nrow(donation); old_count2 <- ndonor(donation)
-  yn=grep("^Y\\d{14}.$", as.vector(donation[["donation"]]),perl=TRUE) #The last one can be any character. #data.table way
-  #But the ones used in luhti have 15 chars?
-  bad <- unique(as.character(donation$donation)[-yn])
-  cat("Bad ones look like this:\n",head(bad),"...",tail(bad),"\n")
-  donation <- donation[yn,]
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to badly formed ID\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
-  message(msg)
-  print(logger, msg)
-  
+  if ("KEY_DONAT_INDEX_DON" %in% colnames(donation)) {
+    old_count <- nrow(donation); old_count2 <- ndonor(donation)
+    yn=grep("^Y\\d{14}.$", as.vector(donation[["KEY_DONAT_INDEX_DON"]]),perl=TRUE) #The last one can be any character. #data.table way
+    #But the ones used in luhti have 15 chars?
+    bad <- unique(as.character(donation$KEY_DONAT_INDEX_DON)[-yn])
+    message(sprintf("Bad ones look like this:\n%s ... %s\n", paste(head(bad), collapse=" "), paste(tail(bad), collapse=" ")))
+    donation <- donation[yn,]
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to badly formed ID\n", 
+                   old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+    message(msg)
+    print(logger, msg)
+  }
   
   ######### DONOR
-  conversion <- names(donor)
-    
-  new_col_names=c('donor','first','family', 'sex', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
-                      'tel','email', 'mobile',
-                      'notifiable', 'notification_method_1', 'notification_method_2', 'notification_method_3', 
-                      'nb_donations', 'nb_donat_progesa', 'nb_donat_outside', 
-                      'date_first_donation', 'nb_wb', 'nb_pla',
-                      'nb_thr', 'last_donat_phleb', 'last_collect'
-                      
-  )
-  if (ncol(donor) == length(new_col_names) + 1) {   # label is included in the input data
-    new_col_names <- c(new_col_names, "label")   
-  }
-  names(conversion) <- new_col_names
-  donor <- donor %>% rename(!!!conversion)
+  # conversion <- names(donor)
+  #   
+  # new_col_names=c('donor','first','family', 'sex', 'dob', 'language', 'aborh', 'address', 'zip', 'city',
+  #                     'tel','email', 'mobile',
+  #                     'notifiable', 'notification_method_1', 'notification_method_2', 'notification_method_3', 
+  #                     'nb_donations', 'nb_donat_progesa', 'nb_donat_outside', 
+  #                     'date_first_donation', 'nb_wb', 'nb_pla',
+  #                     'nb_thr', 'last_donat_phleb', 'last_collect'
+  #                     
+  # )
+  # if (ncol(donor) == length(new_col_names) + 1) {   # label is included in the input data
+  #   new_col_names <- c(new_col_names, "label")   
+  # }
+  # names(conversion) <- new_col_names
+  # donor <- donor %>% rename(!!!conversion)
   
-  #1 "9626820"|
-  #2 "YYYY XXXX"|
-  #3 "ZZZZ"
-  #4 |"Mies"|
-  #5 "syntymaaika"
-  #6 |"FI"
-  #7 |"A Rh(D) pos"
-  #8 |"osoite"|
-  #9 "65200"|
-  #10 "VAASA"|
-  #11 "puh1"|
-  #12 ""|
-  #13 "puh2"
-  #14 |"Ei"
-  #15 |"01"
-  #16 |"02"
-  #17 |""
-  #18 |"7"
-  #19 |"7"
-  #20 |""
-  #21|"20030731"
-  #22 |"7"
-  #23 |""
-  #24 |""
-  #25 |"20070807"
-  #26 |"H1157"
-  #print(head(donor))
+  conversion <- c(donor="KEY_DONOR", sex="KEY_DONOR_SEX", dob="KEY_DONOR_DOB", date_first_donation="DONOR_DATE_FIRST_DONATION")
+  donor <- donor %>% rename(!!!conversion)
+
+
   donor <- donor %>%
-    mutate(sex = factor(sex, levels=c("Man", "Woman")))
+    mutate(sex = factor(sex, levels=c("M", "F")))
   print(summary(donor))
   
-  
-  variables <- c("donor", "sex", "dob", "date_first_donation", "nb_donat_progesa", "nb_donat_outside")
+  # These variables are optional. Really they should not be used at all.
+  conversion2 <- c(nb_donat_progesa="DONOR_NB_DONAT_PROGESA", nb_donat_outside="DONOR_NB_DONAT_OUTSIDE")
+  variables <- c("donor", "sex", "dob", "date_first_donation", conversion2)
+  if (length(intersect(conversion2, names(donor))) == 0)  { # numbers of donations not provided
+    donor <- donor %>% mutate(DONOR_NB_DONAT_PROGESA=NA, DONOR_NB_DONAT_OUTSIDE=0)
+    compute_donation_counts <- TRUE;
+  } else {
+    compute_donation_counts <- FALSE;
+  }
+
+  # Keep label column, if it is in the input
   variables <- c(variables, intersect(names(donor), "label"))
   
   common_donors <- intersect(unique(donation$donor), unique(donor$donor))
@@ -155,12 +155,6 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
 
   donation <- donation %>%  
     filter(donor %in% common_donors) #Remove extra donors to get clean join  
-  
-  #Droplevels so that they don't bother you later
-  #donation <- droplevels(donation)
-  #donor2 <- droplevels(donor2)
-  #The make the ordering of factors the same, as well, to avoid complaints from join
-  #levels(donor2$donor) < levels(donation$donor)
   
   
   #Format dates
@@ -173,10 +167,14 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   stopifnot(nrow(donation2)==nrow(donation))
   donation <- donation2
   
+  if (compute_donation_counts) {
+    donation <- donation %>% group_by(donor) %>% mutate(nb_donat_progesa = n()) %>% ungroup()
+  }
+  
   print(table(donation$sex))
   #English sex
-  #levels(donation$sex) = c('Men','Women')         # This is wrong!!!!!!!!!!
-  donation <- donation %>% mutate(sex=fct_recode(sex, "female" = "Woman", "male" = "Man"),
+  #levels(donation$sex) = c('Men','Women')   # This is wrong!!!!!!!!!!
+  donation <- donation %>% mutate(sex=fct_recode(sex, "female" = "F", "male" = "M"),
                                   sex=fct_relevel(sex, c("male", "female")))  # Give fixed order to levels so that caret's
                                                                                   # variable coding is predictable
 
@@ -184,11 +182,11 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   donation <- donation %>% arrange(date)  
   #Add the 13 char string
   donation <- donation %>%
-      mutate(donation13 = str_sub(donation, 1, 13),
-             donation = as.factor(donation),
+      mutate(#donation13 = str_sub(donation, 1, 13),
+             #donation = as.factor(donation),
              donor = as.factor(donor))
   
-  #Drop cases where date and dob are identical
+  #Drop donations where date and dob are identical
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   ids <- paste0(year(donation$date), month(donation$date), day(donation$date)) == paste0(year(donation$dob), month(donation$dob), day(donation$dob))
   donation <- donation[!ids,]
@@ -196,7 +194,6 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
               old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
   message(msg)
   print(logger, msg)
-  
   
   #Drop cases where either date or dob is NA
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
@@ -295,22 +292,25 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
   message(msg)
   print(logger, msg)
-  
-  # If first donation date is not given, then impute it from data.
+
+  # Select only those donors whose first blood donation is close to the date as progesa's date_first_donation tells
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   donation <- donation %>%
     group_by(donor) %>%
-    mutate(imputed_first = min(dateonly)) %>%
-    mutate(given_first = min(date_first_donation)) %>% # get a single value not vector
-    filter(given_first == imputed_first) %>%
-    ungroup()
+    mutate(imputed_first = min(dateonly),
+           given_first = min(date_first_donation),
+           difference = as.numeric(imputed_first - given_first)) %>% # get a single value not vector
+    filter(0 <= difference, difference <= max_diff_date_first_donation ) %>%
+    ungroup() %>% 
+    select(-difference)
   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because the given date_first_donation was not the oldest donation for that donor\n", 
               old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
   message(msg)
   print(logger, msg)
   
   donation <- donation %>%
-    mutate(first_event = dateonly==date_first_donation)
+    mutate(first_event = dateonly==imputed_first)
+    #mutate(first_event = dateonly==date_first_donation)
   
   # Drop donors whose first Hb is NA
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
@@ -331,7 +331,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
 
 
 
-decorateData <- function(data, southern_hemisphere, logger) {
+decorate_data <- function(data, southern_hemisphere, logger) {
   
   #Take all donations events (regardless of type)
   data$Hb[is.nan(data$Hb)] <- NA
@@ -383,7 +383,7 @@ decorateData <- function(data, southern_hemisphere, logger) {
   
   
   #print(head(data))
-  cat("Before Hb computations\n")
+  message("Before Hb computations\n")
   tic("Previous and first Hb, previous_Hb_def, and amount of dererrals")
   # Get previous and first Hb values, previous_Hb_def, and amount of deferrals since last succesful donation event
   
@@ -404,7 +404,7 @@ decorateData <- function(data, southern_hemisphere, logger) {
     mutate(hour = hours_to_numeric(date)) %>%
     mutate(year = as.integer(year(dateonly))) %>%
     #mutate(warm_season = as.logical(unlist(lapply(month(dateonly), FUN = get_season))))
-    mutate(warm_season = get_season(month(dateonly), southern_hemisphere))
+    mutate(warm_season = get_season(month(dateonly), {{southern_hemisphere}}))
   toc()
   
   # Fix values where hour is 0
@@ -439,6 +439,8 @@ decorateData <- function(data, southern_hemisphere, logger) {
   #   ungroup()
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
+  n <- nrow(data %>% filter(first_event==TRUE & !(donat_phleb == 'K' | donat_phleb == '*')))
+  message(sprintf("There are %i first donations with donat_phleb being neither 'K' nor '*'\n", n))
   data <- data %>%
     filter(donat_phleb == 'K' | donat_phleb == '*')
   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donat_phleb was not 'K' nor '*'\n", 
@@ -471,14 +473,10 @@ decorateData <- function(data, southern_hemisphere, logger) {
            nb_donat_progesa = as.integer(nb_donat_progesa),
            nb_donat_outside = as.integer(nb_donat_outside)) %>%
     select(!!!variables) %>%
-    # select(don_id, donor, Hb, dateonly, previous_Hb_def, days_to_previous_fb, donat_phleb, sex, age,
-    #        Hb_deferral, nb_donat_progesa, nb_donat_outside,
-    #        first_event, previous_Hb, year, warm_season, Hb_first, hour, consecutive_deferrals, recent_donations,
-    #        recent_deferrals) %>%
     arrange(donor)
   toc()
   
-  cat(sprintf("Final preprocessed data has %i donations and %i donors\n", nrow(data), ndonor(data)))
+  message(sprintf("Final preprocessed data has %i donations and %i donors\n", nrow(data), ndonor(data)))
   invisible(data)
   return(data)
 }
@@ -563,7 +561,7 @@ myjoin <- function(df1, df2, by="donation", values=NULL) {
 
 
 preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl",
-                       southern_hemisphere=FALSE, logger) {
+                       southern_hemisphere=FALSE, max_diff_date_first_donation, logger) {
   tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
@@ -572,10 +570,11 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
   if (is.character(donors)) {   # is a filename instead of a dataframe?
     donors <- read_donors(donors)
   }
-  data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, logger)
+  data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
+                   max_diff_date_first_donation, logger=logger)
   toc()
   tic()
-  data <- decorateData(data, southern_hemisphere, logger)
+  data <- decorate_data(data, southern_hemisphere, logger)
   toc()
   toc()
   return(data)
