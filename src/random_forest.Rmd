@@ -446,8 +446,8 @@ if (use_pdf) {
   saveRDS(rrfFit_roc, fit_filename)
 }
 
-write_csv(train, '../output/train.csv')
-write_csv(validate, '../output/validate.csv')
+#write_csv(train, '../output/train.csv')
+#write_csv(validate, '../output/validate.csv')
 
 ```
 

@@ -287,10 +287,11 @@ if (!is.null(donor_variables)) {
 }
   
 #Train
+save(variables, train_orig, test, file=sprintf("/tmp/baseline-%s.rdata", params$sex))
 
 train <- additional_preprocess(train_orig, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
 
-train <- caret::upSample(x = train, y = train$Hb_deferral)
+train <- caret::upSample(x = train, y = train$Hb_deferral) %>% as_tibble() %>% select(-Class)
 
 #up_train <- upSample(x = imbal_train[, -ncol(imbal_train)],
 #                     y = imbal_train$Class)            
@@ -352,7 +353,7 @@ predict_baseline <- function(glm.fit, data, threshold = NULL) {
   result <- tibble(score = glm.probs, 
                    original_value = data$Hb,
                    predicted_value = NA,
-                   original_label = as.integer(data$Hb_deferral),
+                   original_label = as.integer(data$Hb_deferral=="Deferred"),
                    previous_Hb = data$previous_Hb
                    )
 
@@ -371,7 +372,7 @@ optimize_threshold <- function(df) {
     return(cp$optimal_cutpoint)
 }
 
-enriched_result <- predict_baseline(fit, train)
+enriched_result <- predict_baseline(fit, train %>% mutate(Hb=0))  # Add dummy Hb value to prevent a warning
 # Optimize the probability threshold
 threshold <- optimize_threshold(enriched_result)
 enriched_result <- enriched_result %>%
@@ -392,7 +393,35 @@ rm(data); invisible(gc())
 
 ## Results
 
+```{r SHAP values, eval=params$compute_shap_values}
+message(paste(colnames(train), collapse=" "))
+message(paste(colnames(validate), collapse=" "))
 
+
+shap_filename <- sprintf("/tmp/shap_values_%s_%s.rds", params$model, params$sex)
+if (use_pdf) {     
+  res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
+} else {
+  res <- compute_shap_values_fastshap(fit, validate, variables, seed=global_random_seed) 
+  #res <- compute_shap_values(svmFit_roc$finalModel, train, validate, variables)
+  saveRDS(res, shap_filename)
+}
+
+if (!is.null(res)) {
+  if (!is.null(params$shap_value_table_file)) {
+    write_csv(res, params$shap_value_table_file)   # Pass the table to the web app as well
+  }
+
+  variables_renamed <- FALSE
+  
+  shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)
+  shap_plot_rf2 <- plot_shap_values(res, variables_renamed)
+  #ive_rf <- shapper::shap(exp_rf, new_observation = validate2[1,], nsamples=50)
+  #plot(ive_rf)
+  plot(shap_plot_rf)
+  plot(shap_plot_rf2)
+}
+```
 
 
 ```{r Baseline results, results="hide"}

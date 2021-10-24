@@ -290,7 +290,7 @@ gather_results <- function(df, Id, Model, Pretty, Sex) {
   result$roc_plot <- create_roc_new(df$original_label, df$score) #, boot.n=boot.n)
   ret <- tryCatch(
     error =  function(cnd) {
-      message(paste("in error handler, possibly the deferral score is constant", cnd))
+      warning(paste("Could not compute precision-recall curve, possibly the deferral score is constant", cnd))
       return(-1)      
     },
     {
@@ -484,18 +484,11 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   message("In function compute_shap_values_fastshap")
   set.seed(seed)
   
-  # if ("sex" %in% variables) {
-  #   validate2 <- validate %>% select(-c(Hb))
+  # if ("sex" %in% colnames(validate)) {
+  #   validate2 <- validate  %>% slice_sample(n=n) %>% select(-c(Hb_deferral, Hb, sex))
   # } else {
-  #   validate2 <- validate %>% select(-c(Hb, sex))
-  # }
-  #validate2 <- as.data.frame(validate2)
-  #validate2 <- validate %>% mutate(previous_Hb_def = as.integer(previous_Hb_def))
-  if ("sex" %in% colnames(validate)) {
-    validate2 <- validate  %>% slice_sample(n=n) %>% select(-c(Hb_deferral, Hb, sex))
-  } else {
     validate2 <- validate  %>% slice_sample(n=n) %>% select(-c(Hb_deferral, Hb))
-  }
+#  }
 
   pfun_randomForest <- function(object, newdata) {
     predict(object, newdata = newdata, type="prob")[,2]
@@ -526,10 +519,17 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
     },
     {
       rlang::with_options(lifecycle_verbosity = "quiet", {  # Prevent the deprecation message caused by the explain function
-        shap <- fastshap::explain(model, 
-                                  X = as.data.frame(validate2),
-                                  pred_wrapper = pfun, 
-                                  nsim = nsim)
+        if ("lm" %in% class(model)) {
+          shap <- fastshap::explain(model,
+                                    feature_names = "previous_Hb",
+                                    newdata = as.data.frame(validate2 %>% select(previous_Hb)),
+                                    exact = TRUE)
+        } else {
+          shap <- fastshap::explain(model, 
+                                    X = as.data.frame(validate2),
+                                    pred_wrapper = pfun, 
+                                    nsim = nsim)
+        }
       })
       shap <- as_tibble(shap)
     }
@@ -543,7 +543,10 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   attributions <- pivot_longer(attributions, cols=!id) %>%
     select(Variable=name, id, attribution=value)
   features <- validate2 %>% mutate(id=1:n)
-  features <- pivot_longer(features, cols=!id) %>%
+  if ("sex" %in% colnames(validate2)) {
+    features <- features %>% mutate(sex = sex=="female")
+  }
+  features <- features %>% pivot_longer(cols=!id) %>%
     select(Variable=name, id, value=value)
   res <- inner_join(attributions, features, by=c("Variable", "id")) %>%
     group_by(Variable) %>%

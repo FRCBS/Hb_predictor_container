@@ -385,7 +385,7 @@ hb_predictor3 <- function(ws) {
     if (input_format == "FRCBS") {
       donations <- read_donations(donations_o$tempfile)
       donors <- read_donors(donors_o$tempfile)
-      donors <- split_set3(donors, seed=global_random_seed)  # label the donors to either train, validate, or test
+      donors <- split_set3(donors, seed=42)  # label the donors to either train, validate, or test
       if (sf != 1.0) {
         donors <- stratified_sample(donors, stratify_by_sex, sf, seed=global_random_seed)
         donations <- semi_join(donations, donors, by="KEY_DONOR")
