@@ -262,14 +262,10 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
 
   
   #Add deferral rate
-  # hbd <- rep(0, nrow(donation))
-  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_male & donation$sex == 'Men'] <- 1
-  # hbd[donation$donat_phleb == '*' & donation$Hb < Hb_cutoff_female & donation$sex == 'Women'] <- 1
-  # donation$'Hb_deferral' <- hbd
   donation <- donation %>%
     mutate(Hb_deferral=case_when(
-      donat_phleb == '*' & Hb < Hb_cutoff_male   & sex == 'male'   ~ 1,
-      donat_phleb == '*' & Hb < Hb_cutoff_female & sex == 'female' ~ 1,
+      Hb < Hb_cutoff_male   & sex == 'male'   ~ 1,
+      Hb < Hb_cutoff_female & sex == 'female' ~ 1,
       TRUE ~ 0
     ))
   print(table(donation$sex, as.factor(donation$Hb_deferral)))
@@ -437,6 +433,33 @@ decorate_data <- function(data, southern_hemisphere, logger) {
   #   group_by(donor) %>%
   #   mutate(times_donated = 1:n()) %>%
   #   ungroup()
+  
+  possibly_drop_last <- function(g, donor) {
+    n <- nrow(g)
+    if (n > 1 && g[[n-1, "Hb_deferral"]] == TRUE && !is.na(g[[n-1, "volume_drawn"]]) && g[[n-1, "volume_drawn"]] > 100) {
+      return(head(g, n=n-1))
+    } else {
+      return(g)
+    }
+  }
+  
+  # This is for Belgian data
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  data2 <- data %>%
+    group_by(donor) %>%
+    arrange(dateonly) %>%
+    group_map(possibly_drop_last, .keep=TRUE) %>%
+    bind_rows()
+  # Get the time series from which the last donation would be dropped
+  bad_donors <- setdiff(data, data2)$donor
+  bad_data <- data %>% filter(donor %in% bad_donors)
+  saveRDS(bad_data, "/tmp/bad_data.rds")
+  data <- data2
+  rm(data2)
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because second last event had low hb but volume drawn > 100\n", 
+                 old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
   n <- nrow(data %>% filter(first_event==TRUE & !(donat_phleb == 'K' | donat_phleb == '*')))
