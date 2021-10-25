@@ -56,7 +56,7 @@ suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
 suppressPackageStartupMessages(library(sn))
 suppressPackageStartupMessages(library(tidyverse))
-suppressPackageStartupMessages(library(shapper))
+#suppressPackageStartupMessages(library(shapper))
 suppressPackageStartupMessages(library(DALEX))
 #set.seed(123)
 
