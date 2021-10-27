@@ -1,4 +1,4 @@
-# Version 0.25 (2021-10-xx)
+# Version 0.25 (2021-10-27)
 
 * Removed overlapping and overflowing content from pdf reports.
 
@@ -13,6 +13,8 @@
 
 * The shap value computation works baseline, rf, and svm.
 
-* 
+* Belgian data is now handled differently.
+
+* The container can now also run preprocessing only without fitting any models.
 
 # Version 0.24 (2021-09-13)
