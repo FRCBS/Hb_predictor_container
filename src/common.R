@@ -179,7 +179,9 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
   #file <- "../output/learned_hyperparameters.Rdata"
   
   #Initialise parallellisation
-  cl <- parallel::makePSOCKcluster(cores)
+  # Option outfile="" keeps stdout and stderr, otherwise they are thrown away
+  # https://stackoverflow.com/questions/34870249/caret-train-not-outputting-progress
+  cl <- parallel::makePSOCKcluster(cores, outfile = "")
   doParallel::registerDoParallel(cl)
   
   
@@ -200,6 +202,7 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
   }
   
   #Train
+  sink(file=stderr(), type="output");
   rrfFit_roc_hyper <- caret::train(Hb_deferral ~ ., data = df, 
                                    method = method, 
                                    trControl = fitControl, 
@@ -214,7 +217,7 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
                                    #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
                                    #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
   )
-  
+  sink()
   #save(rrfFit_roc_hyper, file=file)
   parallel::stopCluster(cl)
   return(as.list(rrfFit_roc_hyper$bestTune))
@@ -245,14 +248,15 @@ additional_preprocess <- function(data, variables) {
     filter( !nb_donat == '0') #Some spurious mistake in the donation record
   message(sprintf("Dropped %i / %i donations (%i / %i donors) due to nb_donat being '0'\n", 
                   old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
-  
-  old_count <- nrow(data); old_count2 <- ndonor(data)
-  data <- data %>% #Take out people that return faster than they should as we do not really know what they mean
-    filter(!(days_to_previous_fb < 62 & sex == "male"),
-           !(days_to_previous_fb < 92 & sex == "female"))
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to days_to_previous_fb < 62 (men) or 92 (women)\n", 
-                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
-  
+
+  if (FALSE) {  
+    old_count <- nrow(data); old_count2 <- ndonor(data)
+    data <- data %>% #Take out people that return faster than they should as we do not really know what they mean
+      filter(!(days_to_previous_fb < 62 & sex == "male"),
+             !(days_to_previous_fb < 92 & sex == "female"))
+    message(sprintf("Dropped %i / %i donations (%i / %i donors) due to days_to_previous_fb < 62 (men) or 92 (women)\n", 
+                    old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+  }
   
   data <- data %>%   select(all_of(variables))
   return(data)

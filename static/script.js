@@ -383,6 +383,9 @@ document.onreadystatechange = function() {
 		document.getElementById("preprocessed").style.display = "none";
 	} else if (data.type == "status") {
 	    // Show status
+	    if (data.status == "Ready") {   // This is not very pretty. Try to do it better later.
+		document.getElementById("results-container").removeAttribute("hidden");  
+	    }
 	    document.getElementById("status").innerHTML = data.status;
 	} else if (data.type == "info") {
             // Show information about input and preprocessed dataframes

@@ -5,6 +5,7 @@ suppressPackageStartupMessages(library(tictoc, quietly = TRUE))
 
 source("helper_functions.R")  # For hours_to_numeric
 
+compute_donations_counts <- FALSE
 
 read_donations <- function(donation_file) {
   # In the full dataset there are lots of missing values. This causes automatic recognition of column types to fail.
@@ -139,9 +140,9 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   variables <- c("donor", "sex", "dob", "date_first_donation", conversion2)
   if (length(intersect(conversion2, names(donor))) == 0)  { # numbers of donations not provided
     donor <- donor %>% mutate(DONOR_NB_DONAT_PROGESA=NA, DONOR_NB_DONAT_OUTSIDE=0)
-    compute_donation_counts <- TRUE;
+    compute_donation_counts <<- TRUE;
   } else {
-    compute_donation_counts <- FALSE;
+    compute_donation_counts <<- FALSE;
   }
 
   # Keep label column, if it is in the input
@@ -167,9 +168,6 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   stopifnot(nrow(donation2)==nrow(donation))
   donation <- donation2
   
-  if (compute_donation_counts) {
-    donation <- donation %>% group_by(donor) %>% mutate(nb_donat_progesa = n()) %>% ungroup()
-  }
   
   print(table(donation$sex))
   #English sex
@@ -434,6 +432,25 @@ decorate_data <- function(data, southern_hemisphere, logger) {
   #   mutate(times_donated = 1:n()) %>%
   #   ungroup()
   
+  
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  n <- nrow(data %>% filter(first_event==TRUE & !(donat_phleb == 'K' | donat_phleb == '*')))
+  message(sprintf("There are %i first donations with donat_phleb being neither 'K' nor '*'\n", n))
+  data <- data %>%
+    filter(donat_phleb == 'K' | donat_phleb == '*')
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donat_phleb was not 'K' nor '*'\n", 
+              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
+  
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  data <- data %>%
+    filter(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because Hb or days_to_previous_fb was NA for a non-first donation\n", 
+              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
+
   possibly_drop_last <- function(g, donor) {
     n <- nrow(g)
     if (n > 1 && g[[n-1, "Hb_deferral"]] == TRUE && !is.na(g[[n-1, "volume_drawn"]]) && g[[n-1, "volume_drawn"]] > 100) {
@@ -461,23 +478,9 @@ decorate_data <- function(data, southern_hemisphere, logger) {
   message(msg)
   print(logger, msg)
   
-  old_count <- nrow(data); old_count2 <- ndonor(data)
-  n <- nrow(data %>% filter(first_event==TRUE & !(donat_phleb == 'K' | donat_phleb == '*')))
-  message(sprintf("There are %i first donations with donat_phleb being neither 'K' nor '*'\n", n))
-  data <- data %>%
-    filter(donat_phleb == 'K' | donat_phleb == '*')
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donat_phleb was not 'K' nor '*'\n", 
-              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
-  message(msg)
-  print(logger, msg)
-  
-  old_count <- nrow(data); old_count2 <- ndonor(data)
-  data <- data %>%
-    filter(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because Hb or days_to_previous_fb was NA for a non-first donation\n", 
-              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
-  message(msg)
-  print(logger, msg)
+  if (compute_donation_counts) {
+    data <- data %>% group_by(donor) %>% mutate(nb_donat_progesa = n()) %>% ungroup()
+  }
   
   # Select only the interesting variables, rename some of them and change the types
   variables <- c("don_id", "donor", "Hb", "dateonly", "previous_Hb_def", "days_to_previous_fb", "donat_phleb", "sex", "age",

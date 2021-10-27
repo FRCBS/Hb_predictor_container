@@ -1,8 +1,10 @@
 # Usage
 
+## Quick start
+
 Download
 the docker image with command `docker pull toivoja/hb-predictor`.
-A specific version (0.23) can be downloaded with `docker pull toivoja/hb-predictor:0.23`.
+A specific version (for example 0.23) can be downloaded with `docker pull toivoja/hb-predictor:0.23`.
 
 ```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor```  
 
@@ -30,8 +32,66 @@ Two generated example files exist that should get you started. The example file 
 https://raw.githubusercontent.com/FRCBS/Hb_predictor_container/master/generated_example_donations_sanquin.data
 And the donor example file is here https://raw.githubusercontent.com/FRCBS/Hb_predictor_container/master/generated_example_donors_sanquin.data
 The example data contains 5600 donations from 200 donors. The Hb unit in the example data is "g/dL", but the
-output of the container always uses the unit "g/L".
+preprocessed data and the output of the container always uses the unit "g/L".
 Running the example data set using all predictions methods
 took 6 minutes on my machine. The results the from the predictor are non-sensical.
 This is provided to demonstrate the format of the data, and to let you test the container and see the results.
 If time permits, I may add later a more realistic generated data set.
+
+## Running on real data
+
+It is recommended to start using the container with real data in four phases. The options that hold for all phases are:
+
+* Stratify by sex: on
+* Hyperparameters: Finnish (currently)
+* Mode: Initial (currently)
+* Select all variables as predictors
+* Extra variables: off (We don't use extra variables, such as ferritin, at this point)
+
+**NOTE** The effect of the sample size/fraction depends on the input format (raw or preprocessed). If input is in raw form, then the sample is taken *before* preprocessing. If the input is already preprocessed, then the sample is taken after donors with less than the specified number of donations (e.g. 7) are filtered out. 
+
+### Phase 1. Testing that the input is in correct format
+
+Because the input data is first preprocessed, and preprocesing might take a long time, it is useful to first try preprocessing only a small amount of data so that the possible errors appear quickly. For this try the following parameters:
+
+* input format: Sanquin
+* sample size: 1000 donors
+* Minimum donations: not important at this phase
+* Deselect all models. This ensures that preprocessing is done only, no models are fitted.
+
+If this works, then the columns in the input data are probably correctly defined.
+
+### Phase 2. Run preprocessing on full data
+
+* Input format: Sanquin
+* Sample size: 1.0 (meaning all data)
+* Minimum donations: not important at this phase
+* Deselect all models. This ensures that preprocessing is done only, no models are fitted.
+
+This will take a few hours, depending on how much data and how fast computer you have.
+If it works, download the preprocessed data (`preprocessed.rds`) for later use.
+
+### Phase 3. Running some models with small amount of data
+
+* Input format: preprocessed
+* Input data: the `preprocessed.rds` file you got from phase 2.
+* Sample size: 1000
+* Minimum donations: 7
+* Select the models you want to try. Random forest is a good start option.
+
+### Phase 4. Running models with larger amount of data.
+
+* Input format: preprocessed
+* Input data: the `preprocessed.rds` file you got from phase 2.
+* Sample size: 10000
+* Minimum donations: 7
+
+Try with at least baseline, random forest, and support vector machine algorithms. If it works, download the `results-0.25.zip` file (version number of the container is part of filename), which contains all results. These results should not contain any individual level data, but it is better to verify that before spreading the file. Send the `summary.csv` file to Marieke (and Jarkko).
+
+## Mart's help picture
+
+Mart's picture is otherwise accurate except the preprocessing will probably take more time than 20 minutes, and the internal Hb units are g/L, not g/dL.
+
+![help picture](help.png)
+
+

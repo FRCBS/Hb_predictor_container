@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="pre0.25"
+container_version="0.25"
 cat(container_version, file = "../output/version.txt")
 zip_file <- sprintf("results-%s.zip", container_version)
 
@@ -60,6 +60,7 @@ check_columns <- function(got, expected) {
 }
 
 create_summary_table <- function(summary_table) {
+  message("In function create_summary_table")
   cols <- c("Model"="Pretty", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", 
             "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
   summary_table_string <- kable(summary_table %>% select(!!!cols), format="html", digits=3, 
@@ -166,7 +167,8 @@ hb_predictor3 <- function(ws) {
   system(command)
   post <- rjson::fromJSON(file="/tmp/parsed.json")
   unlink("/tmp/raw_form_data.bin")
-  unlink("/tmp/parsed.json")
+  #unlink("/tmp/parsed.json")
+  file.rename("/tmp/parsed.json", "../output/input_parameters.json")
   toc()
   
   ws$send(rjson::toJSON(list(type="status", status="Reading parameters")))
@@ -352,6 +354,8 @@ hb_predictor3 <- function(ws) {
   #    myparams$skip_train <- TRUE
   #    myparams$create_datasets_bool <- FALSE
   
+  timing <- tibble(id=character(), model=character(), sex=character(), time=numeric(), unit=character())
+  
   ################################
   #
   # Do the preprocessing
@@ -374,13 +378,14 @@ hb_predictor3 <- function(ws) {
     
     if (sf != 1.0) {
       fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, seed=global_random_seed, donor_field = "donor", sex_field = "sex")
-      donation_specific_filename <- "../output/preprocessed.rdata"
+      donation_specific_filename <- "../output/preprocessed.rds"
       saveRDS(fulldata_preprocessed, file=donation_specific_filename)  # Save the sample
       #post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
     }
   } else {
     # Do the preprocessing
     tic("Preprocessing data")
+    now <- lubridate::now()
     ws$send(rjson::toJSON(list(type="status", status="Preprocessing")))
     if (input_format == "FRCBS") {
       donations <- read_donations(donations_o$tempfile)
@@ -410,7 +415,7 @@ hb_predictor3 <- function(ws) {
 
         donor_specific <- sanquin_preprocess_donor_specific(donors, fulldata_preprocessed, use_only_first_ferritin)
         
-        donor_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
+        donor_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rds")
         saveRDS(donor_specific, file = donor_specific_filename)
         cat(sprintf("Saved donor specific variables (%ix%i) to file %s\n", nrow(donor_specific), ncol(donor_specific), donor_specific_filename))
       } else {
@@ -428,10 +433,18 @@ hb_predictor3 <- function(ws) {
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
     #donation_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
-    donation_specific_filename <- "../output/preprocessed.rdata"
+    donation_specific_filename <- "../output/preprocessed.rds"
     saveRDS(fulldata_preprocessed, file=donation_specific_filename)
     toc()
     message(sprintf("Saved preprocessed data to file %s\n", donation_specific_filename))
+
+    # Store the used time to a dataframe and display it
+    tm <- lubridate::now() - now
+    message(sprintf("%s-%s took %f %s", "Preprocessing", "both", as.numeric(tm), units(tm)))
+    timing <- timing %>% add_row(id=sprintf("%s-%s", "Preprocessing", "both"), 
+                                 model=str_to_sentence("Preprocessing"), sex="both", time=as.numeric(tm), unit=units(tm))
+    ws$send(rjson::toJSON(list(type="timing", timing_table_string = create_timing_table(timing))))
+    
   }
   print(summary(fulldata_preprocessed))
   
@@ -439,8 +452,8 @@ hb_predictor3 <- function(ws) {
   print(fulldata_preprocessed %>% count(donor, name="Length") %>% count(Length, name="Count"))
   
   if (stratify_by_sex) {
-    male_donation_specific_filename   <- "../output/male_preprocessed.rdata"
-    female_donation_specific_filename <- "../output/female_preprocessed.rdata"
+    male_donation_specific_filename   <- "../output/male_preprocessed.rds"
+    female_donation_specific_filename <- "../output/female_preprocessed.rds"
     tmp <- fulldata_preprocessed %>% filter(sex=="male")
     saveRDS(tmp,   file=male_donation_specific_filename)
     tmp <- fulldata_preprocessed %>% filter(sex=="female")
@@ -526,9 +539,9 @@ hb_predictor3 <- function(ws) {
       length(tmp) == 2 ~ "both")
   }
   
-  result_page_files <- c() # These will be included in the zip file
+  result_page_files <- character() # These will be included in the zip file
   
-  timing <- tibble(id=character(), model=character(), sex=character(), time=numeric(), unit=character())
+  message("here1")
   
   models <- intersect(c("dt", "bl", "rf", "svm"), names(post))
   models <- c(models, linear_models)
@@ -660,10 +673,20 @@ hb_predictor3 <- function(ws) {
   #
   ####################
   
-  summary_table <- bind_rows(summary_tables)
+  message("here2")
+  
+  if (length(summary_tables) > 0) { 
+    summary_table <- bind_rows(summary_tables)
+  } else {  # If no models were selected, create an empty table to make sure the function create_summary_table still works
+    summary_table <- tibble(Pretty=character(), Sex=character(), `MAE (g / L)`=double(), `RMSE (g / L)`=double(), 
+                            `MAE (mmol / L)`=double(), `RMSE (mmol / L)`=double(),              
+                            `AUROC value`=double(), `AUPR value`=double(), `F1 value`=double())
+  }
   write_excel_csv(summary_table, "../output/summary.csv")
   summary_table_string <- create_summary_table(summary_table)
   ws$send(rjson::toJSON(list(type="summary", summary_table_string = summary_table_string)))
+  
+  message("here3")
   
   effect_size_table <- bind_rows(effect_size_tables)
   write_excel_csv(effect_size_table, "../output/effect-size.csv")
@@ -677,13 +700,19 @@ hb_predictor3 <- function(ws) {
   prediction_table <- bind_rows(prediction_tables)
   write_excel_csv(prediction_table, "../output/prediction.csv")
   
+  message("here4")
+  
   write_csv(timing, file="../output/timing.csv")
+  
+  message("here5")
   
   # Create a zip package containing all results
   files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
-             "exclusions.txt", "hyperparameters.json")
+             "exclusions.txt", "hyperparameters.json", "input_parameters.json")
   files <- c(files, basename(result_page_files))
   system(sprintf("cd ../output; zip %s %s", zip_file, paste(files, collapse=" ")))
+  
+  message("here6")
   
   ws$send(rjson::toJSON(list(type="status", status="Ready")))
   
@@ -740,7 +769,7 @@ hb_predictor <- function(req){
           <li id="prediction"> <a href="/output/prediction.csv" target="_blank">Prediction data</a> (CSV)</li>
           <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
           <li id="exclusions"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>
-          <li id="preprocessed"> <a href="/output/preprocessed.rdata" target="_blank">Preprocessed data</a> (R binary)</li>
+          <li id="preprocessed"> <a href="/output/preprocessed.rds" target="_blank">Preprocessed data</a> (R binary)</li>
           <li id="download_all_results"> <a href="/output/%s" target="_blank">All results</a> (ZIP)</li>
           <!--
             <li id="train"> <a href="/output/train.csv" target="_blank">Train</a> </li>
@@ -768,7 +797,13 @@ hb_predictor <- function(req){
   </head>
   
   <body>
-  <div id="version">Version %s</div> 
+  
+  <div id="version">
+  Version %s
+  <a href="https://github.com/FRCBS/Hb_predictor_container/blob/master/minimal_input.xlsx" target="_blank">Input variables</a>
+  <a href="https://github.com/FRCBS/Hb_predictor_container/blob/master/usage.md" target="_blank">Manual</a>
+  </div> 
+  
   <div id="container">
   
     <div id="logos">
@@ -800,8 +835,8 @@ hb_predictor <- function(req){
         </fieldset>
         
         <table id="input_table">
-        <tr id="donations_row"><td>Upload donations file:</td> <td><input type=file name="donations_file_upload"></td> </tr>
-        <tr id="donors_row"><td>Upload donors file:</td>    <td><input type=file name="donors_file_upload"></td> </tr>
+        <tr id="donations_row"><td data-toggle="tooltip" data-placement="left" title="Text file where the columns are separated by the | character">Upload donations file:</td> <td><input type=file name="donations_file_upload"></td> </tr>
+        <tr id="donors_row"><td data-toggle="tooltip" data-placement="left" title="Text file where the columns are separated by the | character">Upload donors file:</td>    <td><input type=file name="donors_file_upload"></td> </tr>
         <tr id="donor_specific_row" style="display: none"><td>Upload donor specific file:</td>    <td><input type=file name="donor_specific_file_upload"></td> </tr>
         <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type=file name="preprocessed_file_upload"></td> </tr>
         <tr><td>Hb cutoff (male)</td>       <td><input id="Hb_cutoff_male" name="Hb_cutoff_male" value="%i" maxlength="5" size="5">
@@ -815,8 +850,8 @@ hb_predictor <- function(req){
           <option value="mmolperl" label="mmol/L">mmol/L</option>
         </select>
         </td></tr>
-        <tr><td>Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
-        <tr><td>Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
+        <tr><td data-toggle="tooltip" data-placement="left" title="Donors with less donations than this limit will be excluded">Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
+        <tr><td data-toggle="tooltip" data-placement="left" title="Either fraction between 0 and 1 or the number of donors n. If stratification by sex is chosen, then a sample will be taken with n males and n females.">Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
         <tr><td>Random seed</td>      <td><input name="seed" value="123" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr id="compute_shap_values_row">
         <td>Compute shap values</td>
