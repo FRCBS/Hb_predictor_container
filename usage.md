@@ -12,7 +12,7 @@ Then go to the following address in the browser:
 
 http://localhost:8080/hb-predictor
 
-Kill the server (and the server) by pressing control-c.
+Stop the computation (and the running container) by pressing control-c.
 
 If you want to run a specific version of the container, use the form
 ```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor:0.23```  
