@@ -1,3 +1,8 @@
+# Version 0.26 (2021-10-29)
+
+* Disabled parallelism in computing confidence intervals of AUPR and F1. This avoids crashing due to insufficient memory
+  on systems for little memory.
+  
 # Version 0.25 (2021-10-27)
 
 * Removed overlapping and overflowing content from pdf reports.

@@ -111,7 +111,8 @@ precision_recall_ci <- function(df, method="norm", boot.n=NULL) {
   pb <- progress::progress_bar$new(total = boot.n+1)# init progress bar
   pb$tick(0)
   #p <- progress_estimated(n+1)  # init progress bar
-  b <- boot(df, statistic = get_aupr, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="multicore")#, ncpus=1)
+  #b <- boot(df, statistic = get_aupr, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="multicore")#, ncpus=1)
+  b <- boot(df, statistic = get_aupr, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="no")#, ncpus=1)
   ret <- tryCatch(
     error = function(cnd) return(-1),
     {
@@ -186,7 +187,8 @@ get_f1_ci <- function(df, method="norm", boot.n=2000) {
   pb$tick(0)
   #message("moi5")
   #p <- progress_estimated(n+1)  # init progress bar
-  b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="multicore")
+  #b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="multicore")
+  b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="no")
   #message("moi6")
   error_code <- tryCatch(
     error = function(cnd) -1 # return exit code
