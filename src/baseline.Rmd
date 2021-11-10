@@ -106,15 +106,18 @@ mode <- params$mode
 
 
 #set.seed(123)
-number_of_cores <- parallel::detectCores()
-if (!is.null(params$cores)) {
-  number_of_cores <- min(params$cores, number_of_cores)
-  options(mc.cores   = number_of_cores)   # This option is in package parallel
-  options(boot.ncpus = number_of_cores)   # For bootstrapping
-} else {
-  options(mc.cores   = number_of_cores)
-  options(boot.ncpus = number_of_cores)
-}
+
+set_cores_options(params$cores)
+
+# number_of_cores <- parallel::detectCores()
+# if (!is.null(params$cores)) {
+#   number_of_cores <- min(params$cores, number_of_cores)
+#   options(mc.cores   = number_of_cores)   # This option is in package parallel
+#   options(boot.ncpus = number_of_cores)   # For bootstrapping
+# } else {
+#   options(mc.cores   = number_of_cores)
+#   options(boot.ncpus = number_of_cores)
+# }
 
 
 

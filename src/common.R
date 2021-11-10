@@ -604,6 +604,7 @@ plot_shap_values <- function(df, variables_renamed) {
 }
 
 # Constructor of the MyLogger class
+# S3 class
 new_logger <- function(prefix="", file="", silent=FALSE) {
   stopifnot(is.character(prefix))
   structure(list(prefix=prefix, file=file, silent=silent), class = "MyLogger")
@@ -612,5 +613,17 @@ new_logger <- function(prefix="", file="", silent=FALSE) {
 print.MyLogger <- function(object, msg) {
   if (! object$silent) {
     cat(object$prefix, msg, file=object$file, append=TRUE)
+  }
+}
+
+set_cores_options <- function(cores) {
+  number_of_cores <- parallel::detectCores()
+  if (!is.null(cores)) {
+    number_of_cores <- min(cores, number_of_cores)
+    options(mc.cores   = number_of_cores)   # This option is in package parallel
+    options(boot.ncpus = number_of_cores)   # For bootstrapping
+  } else {
+    options(mc.cores   = number_of_cores)
+    options(boot.ncpus = number_of_cores)
   }
 }

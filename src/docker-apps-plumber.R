@@ -25,6 +25,7 @@ library(rjson)
 # default values for parameters
 default_max_diff_date_first_donation <- 60
 default_seed <- 123
+default_cores <- as.integer(parallel::detectCores() / 2)
 default_hlen <- 2
 default_Hb_cutoff_male   <- 135
 default_Hb_cutoff_female <- 125
@@ -255,6 +256,10 @@ hb_predictor3 <- function(ws) {
                                           as.integer(post$seed), default_seed)
   cat(sprintf("The parameter seed is %i\n", global_random_seed))
 
+  cores <- ifelse ("cores" %in% names(post), 
+                   as.integer(post$cores), default_cores)
+  cat(sprintf("The parameter cores is %i\n", cores))
+  
   hlen <- ifelse("hlen" %in% names(post), 
                  as.integer(post$hlen), default_hlen)
   cat(sprintf("The parameter hlen is %i\n", hlen))
@@ -473,6 +478,7 @@ hb_predictor3 <- function(ws) {
   
   myparams$input_file <- donation_specific_filename
   myparams$compute_shap_values <- compute_shap_values
+  myparams$cores <- cores
   # if ("sample_fraction" %in% names(post))
   #   myparams$sample_fraction <- as.numeric(post$sample_fraction)
   # if ("hlen" %in% names(post))       # Minimum length of time series
@@ -784,10 +790,8 @@ hb_predictor <- function(req){
       </table>
     </div>
   ', zip_file)
-  
-  response = sprintf('
-  <html>
-  
+
+  myhead <- '
   <head>
   <meta charset="UTF-8"/>
   <title>Hemoglobin predictor</title>
@@ -795,11 +799,17 @@ hb_predictor <- function(req){
   <link rel="stylesheet" href="static/style.css">
   <script type="text/javascript" src="static/script.js"></script>
   </head>
+    '
+            
+  response = glue::glue('
+  <html>
+
+                     {myhead}  
   
   <body>
   
   <div id="version">
-  Version %s
+  Version {container_version}
   <a href="https://github.com/FRCBS/Hb_predictor_container/blob/master/minimal_input.xlsx" target="_blank">Input variables</a>
   <a href="https://github.com/FRCBS/Hb_predictor_container/blob/master/usage.md" target="_blank">Manual</a>
   </div> 
@@ -839,9 +849,9 @@ hb_predictor <- function(req){
         <tr id="donors_row"><td data-toggle="tooltip" data-placement="left" title="Text file where the columns are separated by the | character">Upload donors file:</td>    <td><input type=file name="donors_file_upload"></td> </tr>
         <tr id="donor_specific_row" style="display: none"><td>Upload donor specific file:</td>    <td><input type=file name="donor_specific_file_upload"></td> </tr>
         <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type=file name="preprocessed_file_upload"></td> </tr>
-        <tr><td>Hb cutoff (male)</td>       <td><input id="Hb_cutoff_male" name="Hb_cutoff_male" value="%i" maxlength="5" size="5">
+        <tr><td>Hb cutoff (male)</td>       <td><input id="Hb_cutoff_male" name="Hb_cutoff_male" value="{round(default_Hb_cutoff_male)}" maxlength="5" size="5">
           <!--<span id="male_unit">g/L</span>--></td> </tr>
-        <tr><td>Hb cutoff (female)</td>     <td><input id="Hb_cutoff_female" name="Hb_cutoff_female" value="%i" maxlength="5" size="5">
+        <tr><td>Hb cutoff (female)</td>     <td><input id="Hb_cutoff_female" name="Hb_cutoff_female" value="{round(default_Hb_cutoff_female)}" maxlength="5" size="5">
         <!--<span id="female_unit">g/L</span>--></td> </tr>
         <tr><td>Hb unit</td>                <td>
         <select id="unit" name="unit">
@@ -850,9 +860,10 @@ hb_predictor <- function(req){
           <option value="mmolperl" label="mmol/L">mmol/L</option>
         </select>
         </td></tr>
-        <tr><td data-toggle="tooltip" data-placement="left" title="Donors with less donations than this limit will be excluded">Minimum donations</td>      <td><input name="hlen" value="7" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
+        <tr><td data-toggle="tooltip" data-placement="left" title="Donors with less donations than this limit will be excluded">Minimum donations</td>      <td><input name="hlen" value="5" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td data-toggle="tooltip" data-placement="left" title="Either fraction between 0 and 1 or the number of donors n. If stratification by sex is chosen, then a sample will be taken with n males and n females.">Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
         <tr><td>Random seed</td>      <td><input name="seed" value="123" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
+        <tr><td>Number of cores</td>      <td><input name="cores" value="{default_cores}" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr id="compute_shap_values_row">
         <td>Compute shap values</td>
             <td>
@@ -862,7 +873,7 @@ hb_predictor <- function(req){
         
         <tr id="max_diff_date_first_donation_row" hidden>
           <td>Max tolerance in DONOR_DATE_FIRST_DONATION</td>        
-          <td><input name="max_diff_date_first_donation" value="%i" maxlength="5" size="5"></td> 
+          <td><input name="max_diff_date_first_donation" value="{default_max_diff_date_first_donation}" maxlength="5" size="5"></td> 
         </tr>
         <tr id="use_only_first_ferritin_row" hidden>
         <td>Use only first ferritin value</td>
@@ -961,15 +972,18 @@ hb_predictor <- function(req){
         </form>
       </div> <!-- id="form-container -->
       
-      %s
+                        {info}
       
-      %s  
+                        {results}
   </div> <!-- id="content -->
   </div> <!-- id="container -->
   </body>
   </html>
-  ', container_version, round(default_Hb_cutoff_male), round(default_Hb_cutoff_female), default_max_diff_date_first_donation, 
-                     info, results)
+  ')
+  # ', myhead, container_version, round(default_Hb_cutoff_male), round(default_Hb_cutoff_female), 
+  #                    default_cores,
+  #                    default_max_diff_date_first_donation, 
+  #                    info, results)
 
   response
 }
