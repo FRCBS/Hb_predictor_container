@@ -277,6 +277,7 @@ stratified_sample <- function(df, stratify_by_sex, size, seed,
   donors <- df %>% 
     select(all_of(donor_field), label, all_of(sex_field)) %>%
     distinct()
+  #print(head(donors))
   if (size <= 1.0) {
     prop <- size
     if (stratify_by_sex) {
@@ -299,17 +300,18 @@ stratified_sample <- function(df, stratify_by_sex, size, seed,
     n <- n_distinct(df[[donor_field]])
     if (stratify_by_sex) {
       g <- donors %>%
-        group_by(label, all_of(sex_field)) 
+        group_by(label, .data[[sex_field]]) 
     } else {
       g <- donors %>%
         group_by(label) 
     }
-    lst <- g %>%
+    strata <- g %>%
       group_split()
     keys <- g %>%
       group_keys() %>%
       inner_join(counts)
-    donors <- map2_dfr(lst, keys$count, function(df, count) slice_sample(df, n=count))
+    #print(keys)
+    donors <- map2_dfr(strata, keys$count, function(stratum, count) slice_sample(stratum, n=count))
   }
   result <- df %>% semi_join(donors, by=donor_field)
   return(result)
