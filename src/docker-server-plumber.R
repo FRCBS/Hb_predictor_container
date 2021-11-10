@@ -80,19 +80,36 @@ s <- runServer("0.0.0.0", port,
                      ws$onMessage(function(binary, message) {
                        cat("Server received message:", message, "\n")
                        #result <- list()
+                       #result <- withCallingHandlers(
+
                        result <- tryCatch(
-                         error = function(cnd) {
-                           message("In error handler of docker-server-plumber.R\n")
-                           error_messages <- c(sprintf("Error in %s call:", "hb_predictor3"), cnd$message)
-                           cat(paste(error_messages, collapse="\n"))
-                           cat("\n")
-                           result <- list(type="final", error_messages=error_messages)
-                           return(result)
-                         },
-                         {
-                           hb_predictor3(ws)
-                         }
+                           error = function(cnd) {
+                             message("In error handler of docker-server-plumber.R\n")
+                             error_messages <- c(sprintf("Error in %s call:", "hb_predictor3"), cnd$message)
+                             cat(paste(error_messages, collapse="\n"))
+                             #traceback(1)
+                             #print(rlang::trace_back())
+                             cat("\n")
+                             result <- list(type="final", error_messages=error_messages)
+                             return(result)
+                           },
+                           expr = {
+                             withCallingHandlers(
+                               error=function(cnd){
+                                 traceback()
+                                 print(rlang::trace_back())
+                               }, 
+                               {
+                                 hb_predictor3(ws)
+                               }
+                             )
+                           }
                        )
+                       #if ("error_messages" %in% names(result)) {
+                         #message("Täällä ollaan!!!!!!!!!!!!!!!!")
+                         #traceback()
+                         #print(rlang::last_trace())
+                       #}
                        # if (!is.null(error_messages)) {
                        #   cat(paste0(error_messages))
                        #   result <- list(type="final", error_messages=error_messages)

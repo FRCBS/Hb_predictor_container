@@ -297,10 +297,7 @@ message("and here")
 
 variables <- params$predictive_variables
 
-variables <- c(variables, 
-               c(
-               "Hb_deferral",
-               "nb_donat"))
+variables <- c(variables, "Hb_deferral")
 
 if (!is.null(donor_variables)) {
   variables <- c(variables, donor_variables)
@@ -308,11 +305,11 @@ if (!is.null(donor_variables)) {
   
 #Train
 
-train <- additional_preprocess(train_orig, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
+train <- additional_preprocess(train_orig, c(variables, "label"), logger=logger)    # Label is needed if we will learn hyperparameters.
 
 #Validate
 
-validate <- additional_preprocess(test, c(variables, "Hb", "sex")) # We want to include Hb and sex to the prediction result table
+validate <- additional_preprocess(test, c(variables, "Hb", "sex"), logger=logger) # We want to include Hb and sex to the prediction result table
 
 
 

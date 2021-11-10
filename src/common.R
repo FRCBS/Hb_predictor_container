@@ -226,36 +226,48 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
 # This is currently used by the RF and SVM models.
 # These should be dropped or incorporated into the main preprocessing.
 # Note that this also contains Finnish specific donation intervals 62 and 92
-additional_preprocess <- function(data, variables) {
+additional_preprocess <- function(data, variables, logger) {
   old_count <- nrow(data); old_count2 <- ndonor(data)
   data <- data %>% group_by(donor) %>%
     dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
     ungroup()
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to length of time series being one\n", 
-                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to length of time series being one\n", 
+                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
   data <- data %>% group_by(donor) %>%
     slice_max(order_by = dateonly, n=1) %>%
-    mutate(nb_donat = sum(nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)) %>% 
-    ungroup() %>% 
-    mutate(Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred")))
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to taking only the last donation of each time series\n", 
-                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+    ungroup() 
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to taking only the last donation of each time series\n", 
+                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
   
-  old_count <- nrow(data); old_count2 <- ndonor(data)
-  data <- data %>%
-    filter( !nb_donat == '0') #Some spurious mistake in the donation record
-  message(sprintf("Dropped %i / %i donations (%i / %i donors) due to nb_donat being '0'\n", 
-                  old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+  data <- data %>% 
+    mutate(Hb_deferral=factor(ifelse(Hb_deferral, "Deferred", "Accepted"), levels = c("Accepted","Deferred")))
 
+  if ("nb_donat" %in% variables) {  
+    old_count <- nrow(data); old_count2 <- ndonor(data)
+    data <- data %>%
+      mutate(nb_donat = sum(nb_donat_progesa, nb_donat_outside ,na.rm=TRUE)) %>% 
+      filter( !nb_donat == '0') #Some spurious mistake in the donation record
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to nb_donat being '0'\n", 
+                   old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+    message(msg)
+    print(logger, msg)
+  }
+  
   if (FALSE) {  
     old_count <- nrow(data); old_count2 <- ndonor(data)
     data <- data %>% #Take out people that return faster than they should as we do not really know what they mean
       filter(!(days_to_previous_fb < 62 & sex == "male"),
              !(days_to_previous_fb < 92 & sex == "female"))
-    message(sprintf("Dropped %i / %i donations (%i / %i donors) due to days_to_previous_fb < 62 (men) or 92 (women)\n", 
-                    old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2))
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to days_to_previous_fb < 62 (men) or 92 (women)\n", 
+                    old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+    message(msg)
+    print(logger, msg)
   }
   
   data <- data %>%   select(all_of(variables))

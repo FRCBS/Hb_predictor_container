@@ -378,15 +378,20 @@ hb_predictor3 <- function(ws) {
     # Filter by time series length
     old_count <- nrow(fulldata_preprocessed); old_count2 <- ndonor(fulldata_preprocessed)
     fulldata_preprocessed <- filter_based_on_number_of_donations(fulldata_preprocessed, hlen, hlen_exactly)
-    message(sprintf("Dropped %i / %i donations (%i / %i donors) because we are using time series with length at least %s\n", 
-                    old_count - nrow(fulldata_preprocessed), old_count, old_count2 - ndonor(fulldata_preprocessed), old_count2, hlen))
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because we are using time series with length at least %s\n", 
+                    old_count - nrow(fulldata_preprocessed), old_count, old_count2 - ndonor(fulldata_preprocessed), old_count2, hlen)
+    message(msg)
+    print(logger, msg)
     
     if (sf != 1.0) {
-      fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, seed=global_random_seed, donor_field = "donor", sex_field = "sex")
-      donation_specific_filename <- "../output/preprocessed.rds"
-      saveRDS(fulldata_preprocessed, file=donation_specific_filename)  # Save the sample
-      #post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
+      fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, seed=global_random_seed, 
+                                                 donor_field = "donor", sex_field = "sex")
     }
+    
+      #donation_specific_filename <- "../output/preprocessed.rds"
+      #saveRDS(fulldata_preprocessed, file=donation_specific_filename)  # Save the sample
+      #post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
+
   } else {
     # Do the preprocessing
     tic("Preprocessing data")
@@ -428,20 +433,24 @@ hb_predictor3 <- function(ws) {
       }
     }
     
+    # Save preprocessed, but not yet filtered, data
+    donation_specific_filename <- "../output/preprocessed.rds"
+    saveRDS(fulldata_preprocessed, file=donation_specific_filename)
+    message(sprintf("Saved preprocessed data to file %s\n", donation_specific_filename))
+    
     # Filter by time series length
     old_count <- nrow(fulldata_preprocessed); old_count2 <- ndonor(fulldata_preprocessed)
     fulldata_preprocessed <- filter_based_on_number_of_donations(fulldata_preprocessed, hlen, hlen_exactly)
-    message(sprintf("Dropped %i / %i donations (%i / %i donors) because we are using time series with length at least %s\n", 
-                    old_count - nrow(fulldata_preprocessed), old_count, old_count2 - ndonor(fulldata_preprocessed), old_count2, hlen))
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because we are using time series with length at least %s\n", 
+                    old_count - nrow(fulldata_preprocessed), old_count, old_count2 - ndonor(fulldata_preprocessed), old_count2, hlen)
+    message(msg)
+    print(logger, msg)
     
     #post$sample_fraction <- 1.0   # Do not repeat the sampling in the Rmd files
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
     ws$send(rjson::toJSON(list(type="info", result=preprocessed_info)))
     #donation_specific_filename <- tempfile(pattern = "preprocessed_data_", fileext = ".rdata")
-    donation_specific_filename <- "../output/preprocessed.rds"
-    saveRDS(fulldata_preprocessed, file=donation_specific_filename)
     toc()
-    message(sprintf("Saved preprocessed data to file %s\n", donation_specific_filename))
 
     # Store the used time to a dataframe and display it
     tm <- lubridate::now() - now
@@ -459,6 +468,7 @@ hb_predictor3 <- function(ws) {
   if (stratify_by_sex) {
     male_donation_specific_filename   <- "../output/male_preprocessed.rds"
     female_donation_specific_filename <- "../output/female_preprocessed.rds"
+    both_donation_specific_filename <- NA_character_
     tmp <- fulldata_preprocessed %>% filter(sex=="male")
     saveRDS(tmp,   file=male_donation_specific_filename)
     tmp <- fulldata_preprocessed %>% filter(sex=="female")
@@ -467,6 +477,8 @@ hb_predictor3 <- function(ws) {
   } else {
     male_donation_specific_filename <- NA_character_
     female_donation_specific_filename <- NA_character_
+    both_donation_specific_filename   <- "../output/both_preprocessed.rds"
+    saveRDS(fulldata_preprocessed, file=both_donation_specific_filename)
   }
   rm(fulldata_preprocessed)
   
@@ -476,7 +488,7 @@ hb_predictor3 <- function(ws) {
   #
   ################################
   
-  myparams$input_file <- donation_specific_filename
+  #myparams$input_file <- donation_specific_filename
   myparams$compute_shap_values <- compute_shap_values
   myparams$cores <- cores
   # if ("sample_fraction" %in% names(post))
@@ -563,7 +575,7 @@ hb_predictor3 <- function(ws) {
       cat(sprintf("Running sex %s\n", sex))
       ws$send(rjson::toJSON(list(type="status", status=sprintf("Running %s %s", ifelse(sex=="both", "", sex), pretty))))
       myparams["sex"] <- sex
-      myparams$input_file <- case_when(sex=="both" ~ donation_specific_filename,
+      myparams$input_file <- case_when(sex=="both" ~ both_donation_specific_filename,
                                        sex == "male" ~ male_donation_specific_filename,
                                        sex == "female" ~ female_donation_specific_filename
       )
@@ -596,20 +608,22 @@ hb_predictor3 <- function(ws) {
       
       now <- lubridate::now()
       error_messages <- tryCatch(
-        withCallingHandlers({
-          rmarkdown::render(
-            rmd,
-            #'template.Rmd',
-            output_file=rep(sprintf('results-%s-%s', m, sex), 2),   # One for each output format: html and pdf 
-            output_format=c('html_document', 'pdf_document'),
-            clean=FALSE,
-            output_dir='../output',
-            params = myparams)
-          NULL
-        }, 
-        warning = function(w) ws$send(rjson::toJSON(list(type="warning", 
-                                                         warning_messages=c(sprintf("Warning in %s %s call \n", sex, pretty),
-                                                                            w$message))))),
+        withCallingHandlers(
+          {
+            rmarkdown::render(
+              rmd,
+              #'template.Rmd',
+              output_file=rep(sprintf('results-%s-%s', m, sex), 2),   # One for each output format: html and pdf 
+              output_format=c('html_document', 'pdf_document'),
+              clean=FALSE,
+              output_dir='../output',
+              params = myparams)
+            NULL
+          }, 
+          warning = function(w) ws$send(rjson::toJSON(list(type="warning", 
+                                                           warning_messages=c(sprintf("Warning in %s %s call \n", sex, pretty),
+                                                                              w$message))))
+        ),
         error = function(cnd) {
           error_messages <- c(sprintf("Error in %s %s call \n", sex, pretty), cnd$message)
           #rlang::last_error()

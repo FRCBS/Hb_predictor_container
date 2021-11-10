@@ -152,7 +152,7 @@ donor_specific_variables <- NULL
 # data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 
-
+logger <- new_logger(prefix=sprintf("Baseline %s:", params$sex), file="../output/exclusions.txt", silent=use_pdf)
 ```
 
 
@@ -280,10 +280,7 @@ message("and here")
 
 variables <- params$predictive_variables
 
-variables <- c(variables, 
-               c(
-               "Hb_deferral",
-               "nb_donat"))
+variables <- c(variables, "Hb_deferral")
 
 if (!is.null(donor_variables)) {
   variables <- c(variables, donor_variables)
@@ -292,16 +289,12 @@ if (!is.null(donor_variables)) {
 #Train
 save(variables, train_orig, test, file=sprintf("/tmp/baseline-%s.rdata", params$sex))
 
-train <- additional_preprocess(train_orig, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
+train <- additional_preprocess(train_orig, c(variables, "label"), logger=logger)    # Label is needed if we will learn hyperparameters.
 
-train <- caret::upSample(x = train, y = train$Hb_deferral) %>% as_tibble() %>% select(-Class)
-
-#up_train <- upSample(x = imbal_train[, -ncol(imbal_train)],
-#                     y = imbal_train$Class)            
 
 #Validate
 
-validate <- additional_preprocess(test, c(variables, "Hb", "sex")) # We want to include Hb and sex to the prediction result table
+validate <- additional_preprocess(test, c(variables, "Hb", "sex"), logger=logger) # We want to include Hb and sex to the prediction result table
 
 
 
@@ -335,6 +328,11 @@ logistic_regression <- function(data) {
                family = binomial)
   return(glm.fit)  
 }
+
+train <- caret::upSample(x = train, y = train$Hb_deferral) %>% as_tibble() %>% select(-Class)
+
+#up_train <- upSample(x = imbal_train[, -ncol(imbal_train)],
+#                     y = imbal_train$Class)            
 
 
 fit_filename <- sprintf("%s/baseline-fit-%s-%s.rds", datadir, params$model, params$sex)

@@ -293,10 +293,7 @@ message("and here")
 
 variables <- params$predictive_variables
 
-variables <- c(variables, 
-               c(
-               "Hb_deferral",
-               "nb_donat"))
+variables <- c(variables, "Hb_deferral")
 
 if (!is.null(donor_variables)) {
   variables <- c(variables, donor_variables)
@@ -304,11 +301,11 @@ if (!is.null(donor_variables)) {
   
 #Train
 
-train <- additional_preprocess(train_orig, c(variables, "label"))    # Label is needed if we will learn hyperparameters.
+train <- additional_preprocess(train_orig, c(variables, "label"), logger=logger)    # Label is needed if we will learn hyperparameters.
 
 #Validate
 
-validate <- additional_preprocess(test, c(variables, "Hb", "sex")) # We want to include Hb and sex to the prediction result table
+validate <- additional_preprocess(test, c(variables, "Hb", "sex"), logger=logger) # We want to include Hb and sex to the prediction result table
 write_csv(validate, "../output/validate.csv")
 
 
@@ -569,7 +566,7 @@ df <- tibble(
 
 message("biep")
 
-sink(file=stderr(), type="output"); summary(df %>% mutate_at(c("original_label", "predicted_label"), as.factor)); sink()
+sink(file=stderr(), type="output"); summary(df %>% mutate(across(c("original_label", "predicted_label"), as.factor))); sink()
 
 if (!is.null(params$prediction_table_file)) {
   write_csv(df, params$prediction_table_file)   # Pass the table to the web app as well
