@@ -55,7 +55,7 @@ read_donors <- function(donor_file) {
 # max_diff_date_first_donation is a non-negative integer, which specifies the maximum allowed difference
 # between min(KEY_DONAT_INDEX_DATE) and DONOR_DATE_FIRST_DONATION
 freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
-                             max_diff_date_first_donation, logger)
+                             southern_hemisphere, max_diff_date_first_donation, logger)
 {
   message("In function freadFRC")
   conversion <- c(donor = "KEY_DONOR", 
@@ -212,7 +212,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   print(logger, msg)
   
   
-  # Drop cases where date_first_donation is NA
+  # Drop donors whose date_first_donation is NA
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   donation <- donation %>%
     filter(!is.na(date_first_donation))
@@ -226,7 +226,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   age <- as.integer(as.period(interval(start = donation$dob, end = donation$date))$year)
   donation$age <- age
   
-  #Drop anything of age below 18
+  #Drop donations done when younger than 18 years
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   ids <- donation$age < 18
   donation <- donation[!ids,]
@@ -318,16 +318,15 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   message(msg)
   print(logger, msg)
   
-  invisible(donation)
-}
+  data <- donation
 
 
 
 
 
-decorate_data <- function(data, southern_hemisphere, logger) {
-  
   #Take all donations events (regardless of type)
+  
+  
   data$Hb[is.nan(data$Hb)] <- NA
   
   # Sort the data into ascending timeseries
@@ -362,6 +361,28 @@ decorate_data <- function(data, southern_hemisphere, logger) {
     ungroup() %>%
     select(-current_or_previous_full_blood_date)
   toc()
+  
+  
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  n <- nrow(data %>% filter(first_event==TRUE & !(donat_phleb == 'K' | donat_phleb == '*')))
+  message(sprintf("There are %i first donations with donat_phleb being neither 'K' nor '*'\n", n))
+  data <- data %>%
+    filter(donat_phleb == 'K' | donat_phleb == '*')
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donat_phleb was not 'K' nor '*'\n", 
+                 old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
+  
+  # Drop donor if his first donation got deleted
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  data <- data %>%
+    group_by(donor) %>%
+    filter(any(first_event)) %>%
+    ungroup()
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because first event of a donor got deleted because it wasn't 'K' or '*'\n", 
+                 old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
   
   # Assumes Hb_deferral is never NA
   consecutive_deferrals_f <- function(Hb_deferral) {
@@ -402,7 +423,7 @@ decorate_data <- function(data, southern_hemisphere, logger) {
   toc()
   
   # Fix values where hour is 0
-  hour.mean <- mean(data$hour)
+  #hour.mean <- mean(data$hour)
   data <- mutate(data, hour = ifelse(hour == 0, mean(data$hour), hour))
   
 
@@ -433,15 +454,6 @@ decorate_data <- function(data, southern_hemisphere, logger) {
   #   ungroup()
   
   
-  old_count <- nrow(data); old_count2 <- ndonor(data)
-  n <- nrow(data %>% filter(first_event==TRUE & !(donat_phleb == 'K' | donat_phleb == '*')))
-  message(sprintf("There are %i first donations with donat_phleb being neither 'K' nor '*'\n", n))
-  data <- data %>%
-    filter(donat_phleb == 'K' | donat_phleb == '*')
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donat_phleb was not 'K' nor '*'\n", 
-              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
-  message(msg)
-  print(logger, msg)
   
   old_count <- nrow(data); old_count2 <- ndonor(data)
   data <- data %>%
@@ -450,7 +462,15 @@ decorate_data <- function(data, southern_hemisphere, logger) {
               old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
   message(msg)
   print(logger, msg)
-
+  
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  data <- data %>%
+    filter(year(dateonly) <= 2020)
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donation year was more recent than 2020\n", 
+                 old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
+  
   possibly_drop_last <- function(g, donor) {
     n <- nrow(g)
     if (n > 1 && g[[n-1, "Hb_deferral"]] == TRUE && !is.na(g[[n-1, "volume_drawn"]]) && g[[n-1, "volume_drawn"]] > 100) {
@@ -588,7 +608,7 @@ myjoin <- function(df1, df2, by="donation", values=NULL) {
 
 preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl",
                        southern_hemisphere=FALSE, max_diff_date_first_donation, logger) {
-  tic()
+#  tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
     donations <- read_donations(donations)
@@ -597,12 +617,12 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
     donors <- read_donors(donors)
   }
   data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
-                   max_diff_date_first_donation, logger=logger)
+                   southern_hemisphere, max_diff_date_first_donation, logger=logger)
   toc()
-  tic()
-  data <- decorate_data(data, southern_hemisphere, logger)
-  toc()
-  toc()
+  # tic()
+  # data <- decorate_data(data, southern_hemisphere, logger)
+  # toc()
+  # toc()
   return(data)
 }
 
