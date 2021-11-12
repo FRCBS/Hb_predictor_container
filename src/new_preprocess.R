@@ -55,9 +55,12 @@ read_donors <- function(donor_file) {
 # max_diff_date_first_donation is a non-negative integer, which specifies the maximum allowed difference
 # between min(KEY_DONAT_INDEX_DATE) and DONOR_DATE_FIRST_DONATION
 freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
-                             southern_hemisphere, max_diff_date_first_donation, logger)
+                             southern_hemisphere, max_diff_date_first_donation, restrict_time_window=TRUE, logger)
 {
   message("In function freadFRC")
+  
+  
+  
   conversion <- c(donor = "KEY_DONOR", 
                   date = "KEY_DONAT_INDEX_DATE", 
                   phleb_start = "DONAT_PHLEB_START", 
@@ -73,7 +76,8 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
 #                    'directed', 'donStartTime', 'volume_drawn', 'index_test', 
 #                    'Hb')
   donation <- donation %>% rename(!!!conversion)
-  #print(head(donation))
+
+    #print(head(donation))
   mean_hb <- mean(donation$Hb, na.rm=TRUE)
   if (!is_hb_value_sane(mean_hb, Hb_input_unit)) {
     warning(sprintf("The mean Hb value %f does not seem to agree with the Hb unit %s\n", mean_hb, Hb_input_unit))
@@ -96,8 +100,8 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   donation$date <- mytemp
   print(summary(donation %>% mutate_at("status", as.factor)))
   
-  
-  if ("KEY_DONAT_INDEX_DON" %in% colnames(donation)) {
+  # No point filtering by this rule
+  if (FALSE && "KEY_DONAT_INDEX_DON" %in% colnames(donation)) {
     old_count <- nrow(donation); old_count2 <- ndonor(donation)
     yn=grep("^Y\\d{14}.$", as.vector(donation[["KEY_DONAT_INDEX_DON"]]),perl=TRUE) #The last one can be any character. #data.table way
     #But the ones used in luhti have 15 chars?
@@ -212,14 +216,16 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   print(logger, msg)
   
   
-  # Drop donors whose date_first_donation is NA
-  old_count <- nrow(donation); old_count2 <- ndonor(donation)
-  donation <- donation %>%
-    filter(!is.na(date_first_donation))
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because date_first_donation is not known.\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
-  message(msg)
-  print(logger, msg)
+  if (FALSE) {
+    # Drop donors whose date_first_donation is NA
+    old_count <- nrow(donation); old_count2 <- ndonor(donation)
+    donation <- donation %>%
+      filter(!is.na(date_first_donation))
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because date_first_donation is not known.\n", 
+                   old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+    message(msg)
+    print(logger, msg)
+  }
   
   #make age at time of donation
   #https://stackoverflow.com/questions/31126726/efficient-and-accurate-age-calculation-in-years-months-or-weeks-in-r-given-b
@@ -287,20 +293,40 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   message(msg)
   print(logger, msg)
 
-  # Select only those donors whose first blood donation is close to the date as progesa's date_first_donation tells
-  old_count <- nrow(donation); old_count2 <- ndonor(donation)
+  time_window_end <- max(donation$dateonly)
+  time_window_start <- time_window_end - lubridate::dyears(5)
+
+  # Drop old donations
+  if (restrict_time_window) {
+    old_count <- nrow(donation); old_count2 <- ndonor(donation)
+    donation <- donation %>%
+      filter(dateonly >= time_window_start)
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donation happened before date %s\n", 
+                   old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2, time_window_start)
+    message(msg)
+    print(logger, msg)
+  }
+
+  # Find the first donation ('imputed_first') of each donor
   donation <- donation %>%
     group_by(donor) %>%
-    mutate(imputed_first = min(dateonly),
-           given_first = min(date_first_donation),
-           difference = as.numeric(imputed_first - given_first)) %>% # get a single value not vector
-    filter(0 <= difference, difference <= max_diff_date_first_donation ) %>%
-    ungroup() %>% 
-    select(-difference)
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because the given date_first_donation was not the oldest donation for that donor\n", 
-              old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
-  message(msg)
-  print(logger, msg)
+    mutate(imputed_first = first(dateonly)) %>% # get a single value not vector
+    ungroup()
+    
+  if (FALSE) {
+    # Select only those donors whose first blood donation is close to the date as progesa's date_first_donation tells
+    old_count <- nrow(donation); old_count2 <- ndonor(donation)
+    donation <- donation %>%
+      group_by(donor) %>%
+      mutate(given_first = min(date_first_donation, na.rm=TRUE),
+             difference = as.numeric(imputed_first - given_first)) %>% # get a single value not vector
+      ungroup() %>%
+      filter(0 <= difference, difference <= max_diff_date_first_donation )
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because the given date_first_donation was not the oldest donation for that donor\n", 
+                   old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+    message(msg)
+    print(logger, msg)
+  }
   
   donation <- donation %>%
     mutate(first_event = dateonly==imputed_first)
@@ -319,7 +345,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   print(logger, msg)
   
   data <- donation
-
+  rm(donation)
 
 
 
@@ -429,8 +455,8 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
 
   
   tic("Two year donations/deferrals")
-  two_year_sliding_window_sum <- function(weight, date) {
-    v <- as.numeric(slider::slide_index(weight, date, sum, .before = lubridate::dyears(2))) # years(2) had problems with leap days
+  x_year_sliding_window_sum <- function(weight, date, x=2) {
+    v <- as.numeric(slider::slide_index(weight, date, sum, .before = lubridate::dyears(x))) # years(2) had problems with leap days
     return(v)
   }
   
@@ -439,10 +465,10 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
            Hb_deferral = Hb_deferral) %>%
     arrange(date) %>%
     group_by(donor) %>%
-    mutate(recent_donations = two_year_sliding_window_sum(weight_donation, date)) %>%
-    mutate(recent_deferrals = two_year_sliding_window_sum(Hb_deferral, date)) %>%
+    mutate(recent_donations = x_year_sliding_window_sum(weight_donation, date, x=5)) %>%   # five years
+    mutate(recent_deferrals = x_year_sliding_window_sum(Hb_deferral, date, x=2)) %>%
     ungroup() %>%
-    mutate(recent_donations = as.integer(recent_donations-weight_donation),   # exclude the current donation from previous two years
+    mutate(recent_donations = as.integer(recent_donations-weight_donation),   # exclude the current donation from previous five years
            recent_deferrals = as.integer(recent_deferrals-Hb_deferral))       # exclude the current deferral from previous two years
   toc()
   
@@ -462,14 +488,30 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
               old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
   message(msg)
   print(logger, msg)
+
+  if (restrict_time_window) {
+    any_donations_during_last_year <- function(dateonly, time_window_end) {
+      year_ago <- time_window_end - lubridate::dyears(1)
+      return(any(year_ago <= dateonly & dateonly <= time_window_end))
+    }
+    old_count <- nrow(data); old_count2 <- ndonor(data)
+    data <- data %>%
+      group_by(donor) %>%
+      filter(any_donations_during_last_year(dateonly, time_window_end)) %>%
+      ungroup()
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because there was no donation attempt in the year before %s\n", 
+                   old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2, time_window_end)
+    message(msg)
+    print(logger, msg)
+  }
   
-  old_count <- nrow(data); old_count2 <- ndonor(data)
-  data <- data %>%
-    filter(year(dateonly) <= 2020)
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donation year was more recent than 2020\n", 
-                 old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
-  message(msg)
-  print(logger, msg)
+  # old_count <- nrow(data); old_count2 <- ndonor(data)
+  # data <- data %>%
+  #   filter(year(dateonly) <= 2020)
+  # msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because donation year was more recent than 2020\n", 
+  #                old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  # message(msg)
+  # print(logger, msg)
   
   possibly_drop_last <- function(g, donor) {
     n <- nrow(g)
@@ -607,7 +649,7 @@ myjoin <- function(df1, df2, by="donation", values=NULL) {
 
 
 preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl",
-                       southern_hemisphere=FALSE, max_diff_date_first_donation, logger) {
+                       southern_hemisphere=FALSE, max_diff_date_first_donation, restrict_time_window=TRUE, logger) {
 #  tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
@@ -617,7 +659,7 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
     donors <- read_donors(donors)
   }
   data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
-                   southern_hemisphere, max_diff_date_first_donation, logger=logger)
+                   southern_hemisphere, max_diff_date_first_donation, restrict_time_window=restrict_time_window, logger=logger)
   toc()
   # tic()
   # data <- decorate_data(data, southern_hemisphere, logger)

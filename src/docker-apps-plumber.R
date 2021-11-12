@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.26"
+container_version="pre0.27"
 cat(container_version, file = "../output/version.txt")
 zip_file <- sprintf("results-%s.zip", container_version)
 
@@ -733,6 +733,7 @@ hb_predictor3 <- function(ws) {
   system(sprintf("cd ../output; zip %s %s", zip_file, paste(files, collapse=" ")))
   
   message("here6")
+  message("Ready")
   
   ws$send(rjson::toJSON(list(type="status", status="Ready")))
   

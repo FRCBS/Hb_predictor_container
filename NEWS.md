@@ -1,3 +1,22 @@
+# Version 0.27 (2021-11-xx)
+
+* The number of cores used in parallel computation can now be specified in the user interface.
+  By reducing the number of cores one may try to reduce the memory usage.
+  
+* Fixed a bug in stratified sampling. Now if you specify sample size, e.g. 10 000 and stratify by sex is selected.
+  then in the sample there will 10 000 male donors and 10 000 female donors.
+  
+* Variable `nb_donat` is no longer included as a predictor by default. Fixed small upsampling problem with baseline model.
+  Fixed logging of data exclusions. 
+
+* The downloadable preprocessed data is no longer filtered by time-series length.
+
+* The final number of donations, donors and deferrals are now reported in a table form in each Rmd.
+
+* Don't drop donor anymore even if date_first_donation field is NA.
+
+* Implemented the five-year time window. And the recent donations variable now refers to the last five years.
+
 # Version 0.26 (2021-10-29)
 
 * Disabled parallelism in computing confidence intervals of AUPR and F1. This avoids crashing due to insufficient memory

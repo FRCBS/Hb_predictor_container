@@ -223,6 +223,19 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
   return(as.list(rrfFit_roc_hyper$bestTune))
 }
 
+data_counts <- function(train, validate) {
+  helper <- function(df) {
+    dd <- sum(df %>% group_by(donor) %>% summarise(deferred=max(Hb_deferral)) %>% pull(deferred))
+    dld <- sum(df %>% group_by(donor) %>% slice_max(order_by = dateonly, n=1) %>% ungroup() %>% pull(Hb_deferral))
+    t <- tibble(Donations=nrow(df), Donors=n_distinct(df$donor), Deferrals=sum(df$Hb_deferral), 
+                `Deferred donors`=dd, `Deferred last donations`=dld)
+  }
+  sizes <- bind_rows(helper(train), helper(validate)) %>%
+    mutate(Dataset = c("train", "validate")) %>%
+    relocate(Dataset)
+  return(sizes)
+}
+
 # This is currently used by the RF and SVM models.
 # These should be dropped or incorporated into the main preprocessing.
 # Note that this also contains Finnish specific donation intervals 62 and 92
@@ -554,8 +567,13 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   if (is.null(result_code)) {
     return(NULL)
   }
+  
+  if (any(shap %>% mutate(c=if_any(everything(), is.na)) %>% pull(c)) || nrow(shap) == 2*n) {
+    warning("Predict function failed in compute_shap_values_fastshap. You could try rerunning with a different seed")
+    return(NULL)
+  }
   n <- nrow(validate2)
-  attributions <- as_tibble(shap) %>% mutate(id=1:n)
+  attributions <- shap %>% mutate(id=1:n)
   attributions <- pivot_longer(attributions, cols=!id) %>%
     select(Variable=name, id, attribution=value)
   features <- validate2 %>% mutate(id=1:n)
