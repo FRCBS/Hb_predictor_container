@@ -434,7 +434,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
     sink(file=stderr(), type="output")  # Let's see if this brings the progress bars visible
     fit <- stan(file = stan_model, 
                 data = stan.lists,
-                save_warmup = TRUE,
+                save_warmup = FALSE,
                 iter = params$iterations,
                 open_progress = TRUE,
                 verbose = TRUE,
