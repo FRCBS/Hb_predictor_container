@@ -4,6 +4,7 @@ suppressPackageStartupMessages(library(lubridate, quietly = TRUE))
 suppressPackageStartupMessages(library(tictoc, quietly = TRUE))
 
 source("helper_functions.R")  # For hours_to_numeric
+source("common.R") # For new_logger
 
 compute_donations_counts <- FALSE
 
@@ -171,7 +172,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   
   stopifnot(nrow(donation2)==nrow(donation))
   donation <- donation2
-  
+  rm(donation2)
   
   print(table(donation$sex))
   #English sex
@@ -192,7 +193,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   ids <- paste0(year(donation$date), month(donation$date), day(donation$date)) == paste0(year(donation$dob), month(donation$dob), day(donation$dob))
   donation <- donation[!ids,]
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to indentical date and dob\n", 
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to identical date and dob\n", 
               old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
   message(msg)
   print(logger, msg)
@@ -649,17 +650,35 @@ myjoin <- function(df1, df2, by="donation", values=NULL) {
 
 
 preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl",
-                       southern_hemisphere=FALSE, max_diff_date_first_donation, restrict_time_window=TRUE, logger) {
+                       southern_hemisphere=FALSE, max_diff_date_first_donation, restrict_time_window=TRUE, cores=1, logger) {
 #  tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
     donations <- read_donations(donations)
   }
+  
   if (is.character(donors)) {   # is a filename instead of a dataframe?
     donors <- read_donors(donors)
   }
-  data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
-                   southern_hemisphere, max_diff_date_first_donation, restrict_time_window=restrict_time_window, logger=logger)
+  
+  helper <- function(donations, donors, logger) {
+    freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
+             southern_hemisphere, max_diff_date_first_donation, restrict_time_window=restrict_time_window, 
+             logger=logger)
+  }
+  if (cores == 1) {
+    data <- helper(donations, donors, logger)
+  } else {
+    # Split the donors into 'cores' group and preprocess them in parallel
+    loggers <- map(1:cores, function(i) {new_logger(prefix=sprintf("Preprocess %i:", i), 
+                                                    file=sprintf("/tmp/exclusions-%i.txt", i))})
+    folds <- createFolds(1:nrow(donors), k = cores, list = TRUE, returnTrain = FALSE)
+    options(future.globals.maxSize = 1.5e9)  # This is the maximum amount of data that can be passed to workers.
+    future::plan(multicore, workers = cores)  # Multicore does not work with Rstudio. Multisession causes problems with logging
+    data <- furrr::future_map2_dfr(folds, loggers, 
+                                   function(indices, logger) helper(donations, donors[indices,], logger)
+                                   )
+  }
   toc()
   # tic()
   # data <- decorate_data(data, southern_hemisphere, logger)

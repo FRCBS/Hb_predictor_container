@@ -407,7 +407,7 @@ hb_predictor3 <- function(ws) {
       }
       fulldata_preprocessed <- preprocess(donations, donors,
                                           myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit, southern_hemisphere, 
-                                          max_diff_date_first_donation, logger=logger)
+                                          max_diff_date_first_donation, cores=1, logger=logger)
     } else {  # Sanquin
       donations <- read_sanquin_donations(donations_o$tempfile)
       donors <- read_sanquin_donors(donors_o$tempfile)
@@ -419,7 +419,7 @@ hb_predictor3 <- function(ws) {
       fulldata_preprocessed <- sanquin_preprocess(donations, donors,
                                                   #donations_o$tempfile, donors_o$tempfile,
                                                   myparams$Hb_cutoff_male, myparams$Hb_cutoff_female, Hb_input_unit, southern_hemisphere,
-                                                  max_diff_date_first_donation, logger=logger)
+                                                  max_diff_date_first_donation, cores=1, logger=logger)
       if (allow_extra_variables && "FERRITIN_FIRST" %in% names(donors)) {
         cat("hep\n")
 
@@ -634,6 +634,7 @@ hb_predictor3 <- function(ws) {
       message(sprintf("%s-%s took %f %s", m, sex, as.numeric(tm), units(tm)))
       timing <- timing %>% add_row(id=sprintf("%s-%s", m, sex), model=str_to_sentence(pretty), sex=sex, time=as.numeric(tm), unit=units(tm))
       ws$send(rjson::toJSON(list(type="timing", timing_table_string = create_timing_table(timing))))
+      gc(full=TRUE)
       
       if (!is.null(error_messages)) {
         cat(paste0(error_messages))

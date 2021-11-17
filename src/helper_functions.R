@@ -235,10 +235,10 @@ split_set <- function(df, train_frac) {
 tvt_ratios <- c(train=0.64, validate=0.16, test=0.20)
 
 # Can be used to split data set to train, validate, and test parts in given fraction
-split_set3 <- function(df, seed, prob=tvt_ratios) {
+split_set3 <- function(df, seed, prob=tvt_ratios, donor_field = "KEY_DONOR") {
   message("In function split_set3")
   set.seed(seed)
-  donors <- unique(df$KEY_DONOR)
+  donors <- unique(df[[donor_field]])
   n <- length(donors)
   if (FALSE) {
     labels <- sample(factor(c("train", "validate", "test"), levels = c("train", "validate", "test")), 
@@ -252,7 +252,7 @@ split_set3 <- function(df, seed, prob=tvt_ratios) {
   }
   classes <- tibble(donor=donors,
                     label=labels)
-  return(df %>% inner_join(classes, by=c("KEY_DONOR" = "donor")))
+  return(classes %>% inner_join(df, by=c(donor = {{donor_field}})) %>% relocate(label, .after = last_col()))
 }
 
 # Take a sample of donors
