@@ -1,4 +1,4 @@
-# Version 0.27 (2021-11-xx)
+# Version 0.27 (2021-11-17)
 
 * The number of cores used in parallel computation can now be specified in the user interface.
   By reducing the number of cores one may try to reduce the memory usage.
