@@ -282,6 +282,15 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
 
   donation <- donation %>% mutate(dateonly = date(date))
   
+  # Drop donors whose Hb is NA
+  old_count <- nrow(donation); old_count2 <- ndonor(donation)
+  donation <- donation %>%
+    filter(!is.na(Hb))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) whose Hb is NA\n", 
+                 old_count - nrow(donation), old_count, old_count2 - ndonor(donation), old_count2)
+  message(msg)
+  print(logger, msg)
+  
   # Find the number of tries per day, and select the last try of the day
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   donation <- donation %>% 
@@ -411,6 +420,15 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   message(msg)
   print(logger, msg)
   
+  old_count <- nrow(data); old_count2 <- ndonor(data)
+  data <- data %>%
+    filter(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))
+  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because days_to_previous_fb was NA for a non-first donation\n", 
+                 old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+  message(msg)
+  print(logger, msg)
+  
+  
   # Assumes Hb_deferral is never NA
   consecutive_deferrals_f <- function(Hb_deferral) {
     c <- cumsum(Hb_deferral)
@@ -482,13 +500,6 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   
   
   
-  old_count <- nrow(data); old_count2 <- ndonor(data)
-  data <- data %>%
-    filter(first_event==TRUE | (!is.na(days_to_previous_fb) & !is.na(Hb)))
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because Hb or days_to_previous_fb was NA for a non-first donation\n", 
-              old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
-  message(msg)
-  print(logger, msg)
 
   if (restrict_time_window) {
     any_donations_during_last_year <- function(dateonly, time_window_end) {
