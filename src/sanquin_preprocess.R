@@ -461,7 +461,7 @@ read_sanquin_donors <- function(donor_file) {
 
 # The first two parameters can be either filenames or dataframes
 sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, southern_hemisphere,
-                               max_diff_date_first_donation, logger) {
+                               max_diff_date_first_donation, restrict_time_window=TRUE, cores=1, logger) {
   #tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
@@ -471,8 +471,15 @@ sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_fema
     donors <- read_sanquin_donors(donors)
   }
   
-  data <- freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
-                   southern_hemisphere, max_diff_date_first_donation, logger=logger)
+  # Split the donors into 'cores' group and preprocess them in parallel
+  folds <- createFolds(1:nrow(donors), k = cores, list = TRUE, returnTrain = FALSE)
+  future::plan(multicore, workers = cores)
+  data <- furrr::future_map_dfr(folds, 
+                                function(indices) {                             
+                                  freadFRC(donations, donors[indices,], Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
+                                           southern_hemisphere, max_diff_date_first_donation, 
+                                           restrict_time_window=restrict_time_window, logger=logger)
+                                })
   toc()
   # tic()
   # data <- decorate_data(data, southern_hemisphere, logger)
