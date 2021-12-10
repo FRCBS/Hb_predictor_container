@@ -399,7 +399,7 @@ res[[3]]
 
 
 ```{r, results="asis", echo=FALSE}
-cat(sprintf("The %s set contains %i donations from %i donors.", params$sex, nrow(data), n_distinct(data$donor)))
+#cat(sprintf("The %s set contains %i donations from %i donors.", params$sex, nrow(data), n_distinct(data$donor)))
 #cat(sprintf("The female set contains %i donations from %i donors.", nrow(data.female), n_distinct(data.female$donor)))
 sizes <- data_counts(train=train, validate=test)
 kbl(sizes) %>% kable_styling()
@@ -437,7 +437,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
                 save_warmup = FALSE,
                 iter = params$iterations,
                 open_progress = TRUE,
-                verbose = TRUE,
+                #verbose = TRUE,
                 seed = global_random_seed,
                 control = list(max_treedepth = 12))
     sink()
@@ -495,20 +495,52 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   message("Here3")
   
   if (out_of_sample_predictions) {
-    df <- create_result_dataframe(sl.val, prediction_matrix, Hb_cutoff, metric="mean")  
+    helper <- function(stan.preprocessed, fit) {
+      pred.list <- create_model_list(fit, type = Model, stan.preprocessed)
+      results <- predict_new(pred.list, n.samples = params$iterations / 2, seed=global_random_seed)
+      stan.preprocessed$y_test <- stan.preprocessed$y_train[results$last_events]
+      prediction_matrix <- results$prediction_matrix
+      df <- tibble(
+        original_value = denormalize_vector(stan.preprocessed$y_test, stan.preprocessed$par_means["Hb"], stan.preprocessed$par_sds["Hb"]) ,
+        original_label = ifelse(original_value < Hb_cutoff, 1, 0),
+        score = get_scores(prediction_matrix, Hb_cutoff, stan.preprocessed$par_means[["Hb"]], stan.preprocessed$par_sds[["Hb"]])
+      )
+      return(df)
+    }
+    filename <- sprintf("/tmp/cp_%s_%s.rds", Sex, Model)
+    if (skip_train) {
+      cp <- readRDS(filename)
+    } else {
+      df_train <- helper(stan.preprocessed, fit)  # Get results on train data
+      capture.output(summary(df_train), file=stderr())
+      cp <- get_optimal_cut_point(df_train$score, df_train$original_label, pos_class=1)
+      saveRDS(cp, filename)
+    }
+    f1_threshold <- cp$optimal_cutpoint
+    msg <- sprintf("Train data F1 threshold is %.3f, FPR is %.3f, TPR is %.3f\n", f1_threshold, 1-cp$specificity, cp$sensitivity)
+    cat(msg)
+    message(msg)
+
+    df <- create_result_dataframe(sl.val, prediction_matrix, Hb_cutoff, metric="mean", f1_threshold=f1_threshold)  
   } else {
     df <- create_result_dataframe(stan.preprocessed, prediction_matrix, Hb_cutoff, metric="mean")
   }
+  cp_validate <- get_optimal_cut_point(df$score, df$original_label, pos_class=1)
+  message("Here4")
   
+  #sink(file=stderr(), type="output")
   
+  capture.output(summary(df), file=stderr())
+  #sink()
   val <- validate_fit(fit, 
                       df=df, Hb_cutoff=Hb_cutoff,
                       params=stan_parameters, pnames=pretty_variables, cat.plot = FALSE)
 
+  message("Here5")
   
   d <- val$df %>% 
     mutate(id=Id, model=Model, sex=Sex) %>% 
-    select(id, model, sex, original_label, predicted_label, score, original_value, predicted_value)
+    select(id, model, sex, original_label, predicted_label, score, original_value, predicted_value, score_predicted_label, f1_threshold)
   
   t <- tibble(Id=Id, Model=Model, Pretty=Pretty, Sex=Sex, 
               "MAE (g / L)"=val$mae, "RMSE (g / L)"=val$rmse, 
@@ -518,7 +550,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   e <- val$posterior.plot$cis %>% mutate(Id=Id)
   
   saveRDS(val, file = sprintf("%s/raw_result_%s_%s_%s.rds", rawresultdir, Sex, Model, fit_id))
-  return(list(summary=t, effect_size=e, prediction=d, val=val))
+  return(list(summary=t, effect_size=e, prediction=d, val=val, cp=cp, cp_validate=cp_validate))
 }
 
 ```
@@ -537,11 +569,21 @@ effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction
 
 val <- res$val
+message("moi1")
 val$posterior.plot
+message("moi2")
 val$scatter_plot
+message("moi3")
 val$confusion.matrix.plot
+message("moi4")
+plot(val$cp)
+message("moi5")
+plot_metric(val$cp, conf_lvl = 0.95)
+message("moi6")
 val$roc_plot
+message("moi7")
 val$pr_plot
+message("moi8")
 
 ```
 
@@ -552,7 +594,7 @@ val$pr_plot
 ### Dynamic linear mixed model
 ```
 
-```{r Dynamic linear mixed model, results="hide", eval=compute_dlmm}
+```{r Dynamic linear mixed model, results="asis", eval=compute_dlmm}
 
 
 id <- sprintf("dlmm-%s", params$sex)

@@ -101,7 +101,7 @@ mode <- params$mode
 
 #set.seed(123)
 
-set_cores_options(params$cores)
+number_of_cores <- set_cores_options(params$cores)
 
 
 #rstan_options(auto_write = TRUE) # To avoid recompilation of unchanged Stan programs, we recommend calling
@@ -320,19 +320,19 @@ rm(logger2)
 ```{r Info about datasets, results="asis", echo=FALSE}
 msg <- sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train))
 message(msg)
-cat(msg)
+#cat(msg)
 sink(file=stderr(), type="output"); summary(train); sink()
 
 msg <- sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate))
 message(msg)
-cat(msg)
+#cat(msg)
 sink(file=stderr(), type="output"); summary(validate); sink()
 
 
 train_deferred <- train %>% filter(Hb_deferral == "Deferred")
 validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
-cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
-cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
+#cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
+#cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
 kbl(sizes) %>% kable_styling()
 rm(train_deferred)
 rm(validate_deferred)
@@ -537,20 +537,48 @@ svm_variable_importances_plot
 
 
 ```{r Predict deferral classes and probabilities}
-train$pred <- predict(svmFit_roc, newdata = train)
-prediction_vl <- predict(svmFit_roc, newdata = validate)
-prediction_probs <- as.data.frame(predict(svmFit_roc, newdata = validate, type="prob"))
-if (any(is.na(prediction_probs$Deferred) | is.na(prediction_probs$Accepted))) {
+
+
+# Predicted labels
+prediction_train_labels    <- predict(svmFit_roc, newdata = train)
+prediction_validate_labels <- predict(svmFit_roc, newdata = validate)
+# Predicted probabilities
+prediction_train_probs    <- as.data.frame(predict(svmFit_roc, newdata = train, type="prob"))
+prediction_validate_probs <- as.data.frame(predict(svmFit_roc, newdata = validate, type="prob"))
+
+if (any(is.na(prediction_validate_probs$Deferred) | is.na(prediction_validate_probs$Accepted))) {
   stop("Predict function failed. You could try rerunning with a different seed")
 }
-write_csv(train, '../output/predtrain.csv')
-write_csv(as.data.frame(prediction_vl), '../output/predvl.csv')
-write_csv(prediction_probs, '../output/predprobs.csv')
 
-# No variable importance plot for SVM, will be replaced by shap values
-#if (!is.null(params$effect_size_table_file)) {
-#  write_csv(validate, params$effect_size_table_file)   # Pass the table to the web app as well
-#}
+```
+
+```{r Optimize cutpoint, results="asis"}
+# Find the threshold for probability that maximizes the F1 score
+cp <- get_optimal_cut_point(prediction_train_probs$Deferred, train$Hb_deferral)
+cp_validate <- get_optimal_cut_point(prediction_validate_probs$Deferred, validate$Hb_deferral)
+
+cp_filename <- sprintf("/tmp/cut_point_%s_%s.rds", params$model, params$sex)
+saveRDS(cp, cp_filename)
+
+f1_threshold <- cp$optimal_cutpoint
+cat(sprintf("Train data F1 threshold is %.3f, FPR is %.3f, TPR is %.3f\n", f1_threshold, 1-cp$specificity, cp$sensitivity))
+sink(file=stderr(), type="output"); cp; sink()
+```
+
+### Train data cutoff plot
+
+```{r}
+summary(cp)
+plot(cp)
+plot_metric(cp, conf_lvl = 0.95)
+```
+
+### Validation data cutoff plot
+
+```{r}
+summary(cp_validate)
+plot(cp_validate)
+plot_metric(cp_validate, conf_lvl = 0.95)
 ```
 
 
@@ -559,16 +587,18 @@ write_csv(prediction_probs, '../output/predprobs.csv')
 source("validate_stan_fit.R")
 id <- sprintf("svm-%s", params$sex)
 
-message(nrow(validate))
-message(class(prediction_probs))
+#message(nrow(validate))
+#message(class(prediction_probs))
 
 df <- tibble(
   id=id,
   model="svm",
   sex=validate$sex,
   original_label = ifelse(validate$Hb_deferral == "Deferred", 1, 0), 
-  predicted_label = ifelse(prediction_vl == "Deferred", 1, 0), 
-  score=prediction_probs$Deferred,
+  predicted_label = ifelse(prediction_validate_labels == "Deferred", 1, 0), 
+  score=prediction_validate_probs$Deferred,
+  f1_threshold = f1_threshold,
+  score_predicted_label = as.integer(score >= f1_threshold),
   original_value=validate$Hb,
   predicted_value=NA)
 

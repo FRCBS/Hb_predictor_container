@@ -310,19 +310,19 @@ rm(logger2)
 ```{r Info about datasets, results="asis", echo=FALSE}
 msg <- sprintf("The train set contains %i donations from %i donors.", nrow(train), nrow(train))
 message(msg)
-cat(msg)
+#cat(msg)
 sink(file=stderr(), type="output"); summary(train); sink()
 
 msg <- sprintf("The validate set contains %i donations from %i donors.", nrow(validate), nrow(validate))
 message(msg)
-cat(msg)
+#cat(msg)
 sink(file=stderr(), type="output"); summary(validate); sink()
 
 
 train_deferred <- train %>% filter(Hb_deferral == "Deferred")
 validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
-cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
-cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
+#cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
+#cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
 kbl(sizes) %>% kable_styling()
 rm(train_deferred)
 rm(validate_deferred)
@@ -367,26 +367,40 @@ predict_baseline <- function(glm.fit, data, threshold = NULL) {
 
   if (!is.null(threshold)) {  
     result <- result %>%
-      mutate(predicted_label = as.integer(score > threshold))
+      mutate(predicted_label = as.integer(score >= threshold),
+             f1_threshold = threshold,
+             score_predicted_label = predicted_label)
   }
   
   return(result)
 }
 
-optimize_threshold <- function(df) {
-    cp <- cutpointr::cutpointr(df$score, df$original_label, 
-                    direction="<=",   # Smaller values mean positive class 
-                    method = maximize_metric, metric = sum_sens_spec)
-    return(cp$optimal_cutpoint)
-}
+# optimize_threshold <- function(df) {
+#     cp <- cutpointr::cutpointr(df$score, df$original_label, 
+#                     direction="<=",   # Smaller values mean positive class 
+#                     method = maximize_metric, metric = sum_sens_spec)
+#     return(cp$optimal_cutpoint)
+# }
 
 enriched_result <- predict_baseline(fit, train %>% mutate(Hb=0))  # Add dummy Hb value to prevent a warning
 # Optimize the probability threshold
-threshold <- optimize_threshold(enriched_result)
+cp <- get_optimal_cut_point(enriched_result$score, enriched_result$original_label, pos_class=1)
+
+cp_filename <- sprintf("/tmp/cut_point_%s_%s.rds", params$model, params$sex)
+saveRDS(cp, cp_filename)
+
+f1_threshold <- cp$optimal_cutpoint
+cat(sprintf("Train data F1 threshold is %.3f, FPR is %.3f, TPR is %.3f\n", f1_threshold, 1-cp$specificity, cp$sensitivity))
+sink(file=stderr(), type="output"); cp; sink()
+
+#threshold <- optimize_threshold(enriched_result)
 enriched_result <- enriched_result %>%
-  mutate(predicted_label = as.integer(score > threshold))
+  mutate(predicted_label = as.integer(score >= f1_threshold),
+         f1_threshold = f1_threshold,
+         score_predicted_label = predicted_label)
   
-test_result <- predict_baseline(fit, validate, threshold)
+test_result <- predict_baseline(fit, validate, f1_threshold)
+cp_validate <- get_optimal_cut_point(test_result$score, test_result$original_label, pos_class=1)
 ```
 
 
@@ -395,6 +409,21 @@ test_result <- predict_baseline(fit, validate, threshold)
 rm(data); invisible(gc())
 ```
 
+### Train data cutoff plot
+
+```{r}
+summary(cp)
+plot(cp)
+plot_metric(cp, conf_lvl = 0.95)
+```
+
+### Validation data cutoff plot
+
+```{r}
+summary(cp_validate)
+plot(cp_validate)
+plot_metric(cp_validate, conf_lvl = 0.95)
+```
 
 
 
@@ -488,8 +517,8 @@ plot_logistic_regression <- function(df, title, previous_Hb) {
     labs(y="Probability", title=title)
   return(g)
 }
-previous_Hb <- get_inverse(fit, threshold)
-cat(sprintf("The previous_Hb value %.2f corresponds approximately to the threshold value %.2f\n", previous_Hb, threshold))
+previous_Hb <- get_inverse(fit, f1_threshold)
+cat(sprintf("The previous_Hb value %.2f corresponds approximately to the threshold value %.2f\n", previous_Hb, f1_threshold))
 enriched_g <- plot_logistic_regression(enriched_result, "enriched data", previous_Hb)
 test_g <- plot_logistic_regression(test_result, "test data", previous_Hb)
 ```

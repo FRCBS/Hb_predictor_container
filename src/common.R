@@ -178,6 +178,10 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
   df <- df %>% filter(label=="train") %>% select(-label) # Drop donors that belong to the original validate set
   #file <- "../output/learned_hyperparameters.Rdata"
   
+  # For debugging:
+  #mypar <- list(df, method, search_grid, cores, ...)
+  #saveRDS(mypar, "/tmp/parameterit.rds")
+  
   #Initialise parallellisation
   # Option outfile="" keeps stdout and stderr, otherwise they are thrown away
   # https://stackoverflow.com/questions/34870249/caret-train-not-outputting-progress
@@ -310,13 +314,33 @@ new_split <- function(data, mode) {
   return(list(train=train, test=test))
 }
 
-gather_results <- function(df, Id, Model, Pretty, Sex) {
+get_optimal_cut_point <- function(score, original_label, pos_class=NULL) {
+  if (is.null(pos_class)) pos_class <- "Deferred"
+  # Find the threshold for probability that maximizes the F1 score
+  cp <- cutpointr::cutpointr(score, 
+                             original_label, 
+                             pos_class = pos_class, 
+                             direction=">=",   # Larger values mean positive class 
+                             #boot_runs = 1000,
+                             method = maximize_metric, 
+                             #metric = sum_sens_spec
+                             metric = F1_score
+  )
+  
+}
+
+gather_results <- function(df, Id, Model, Pretty, Sex, f1_threshold = 0.5) {
   message("In gather_results function")
   #boot.n = 2000
   result <- list()
   result$df <- df
-  result$confusion_matrix_plot <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
+  # Confusion matrix
+  result$confusion_matrix_plot <- create_confusion_matrix_plot(df$original_label, df$score_predicted_label)
+  # ROC
   result$roc_plot <- create_roc_new(df$original_label, df$score) #, boot.n=boot.n)
+  
+  
+  # Precision-Recall
   ret <- tryCatch(
     error =  function(cnd) {
       warning(paste("Could not compute precision-recall curve, possibly the deferral score is constant", cnd))
@@ -333,7 +357,9 @@ gather_results <- function(df, Id, Model, Pretty, Sex) {
     result$pr_plot <- pr_plot
   }
   message("seko1")
-  result$f1_ci <- get_f1_ci(df)#, boot.n=boot.n)
+  
+  # F1 score
+  result$f1_ci <- get_f1_ci(df, threshold = f1_threshold)#, boot.n=boot.n)
   result$f1_ci
   message("seko2")
   
@@ -345,8 +371,6 @@ gather_results <- function(df, Id, Model, Pretty, Sex) {
   t <- bind_cols(c(t, result$roc_plot$roc_ci, result$pr_plot$pr_ci, result$f1_ci))
   result$summary <- t
   
-  #result$f1 <- get_f1(tibble(obs = factor(ifelse(df$deferral == 1, "Deferred", "Accepted"), levels=c("Accepted", "Deferred")),
-  #                    Deferred = df$scores))
   return(result)
 }
 
@@ -586,6 +610,9 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
     group_by(Variable) %>%
     mutate(value=scale(value)[,1]) %>%
     ungroup()
+  
+  res <- res %>% select(-id) %>% slice_sample(prop = 1.0)  # permute the rows
+  
   return(res)
 }
 
@@ -656,4 +683,5 @@ set_cores_options <- function(cores) {
     options(mc.cores   = number_of_cores)
     options(boot.ncpus = number_of_cores)
   }
+  return(number_of_cores)
 }

@@ -471,15 +471,30 @@ sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_fema
     donors <- read_sanquin_donors(donors)
   }
   
-  # Split the donors into 'cores' group and preprocess them in parallel
-  folds <- createFolds(1:nrow(donors), k = cores, list = TRUE, returnTrain = FALSE)
-  future::plan(multicore, workers = cores)
-  data <- furrr::future_map_dfr(folds, 
-                                function(indices) {                             
-                                  freadFRC(donations, donors[indices,], Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
-                                           southern_hemisphere, max_diff_date_first_donation, 
-                                           restrict_time_window=restrict_time_window, logger=logger)
-                                })
+  helper <- function(donations2, donors2, logger) {
+    #cat(paste(format(get_object_sizes(rlang::current_env()), n=Inf), collapse="\n"))
+    freadFRC(donations2, donors2, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
+             southern_hemisphere, max_diff_date_first_donation, restrict_time_window=restrict_time_window, 
+             logger=logger)
+  }
+  cat(sprintf("Number of cores is %i\n", cores))
+  if (cores == 1) {
+    data <- helper(donations, donors, logger)
+  } else {
+    # Split the donors into 'cores' group and preprocess them in parallel
+    folds <- createFolds(1:nrow(donors), k = cores, list = TRUE, returnTrain = FALSE)
+    loggers <- map(1:cores, function(i) {new_logger(prefix=sprintf("Preprocess %i:", i), 
+                                                    file=sprintf("/tmp/exclusions-%i.txt", i))})
+    future::plan(multicore, workers = cores)
+    data <- furrr::future_map2_dfr(folds, loggers,
+                                  function(indices, logger) {         
+                                    helper(donations, donors[indices,], logger)
+                                    # freadFRC(donations, donors[indices,], Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
+                                    #          southern_hemisphere, max_diff_date_first_donation, 
+                                    #          restrict_time_window=restrict_time_window, logger=logger)
+                                  })
+  }
+  
   toc()
   # tic()
   # data <- decorate_data(data, southern_hemisphere, logger)

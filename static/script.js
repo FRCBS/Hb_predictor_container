@@ -79,7 +79,8 @@ function handle_input_format(e) {
 	show_and_enable(e2);
 	hide_and_disable(e3);
 	hide_and_disable(e4);
-	show_and_enable(e5);
+	hide_and_disable(e5);
+	//show_and_enable(e5);
 
 	// e1.style.display = "table-row";
 	// e2.style.display = "table-row";
@@ -142,7 +143,7 @@ document.onreadystatechange = function() {
 	    inp = document.createElement('input');
 	    inp.setAttribute("type", "checkbox");
 	    inp.setAttribute("value", "on");
-	    if (dvs[i] != "nb_donat") 
+	    if (dvs[i] != "nb_donat" && dvs[i] != "year") 
 		inp.checked = true;
 	    else
 		inp.checked = false;

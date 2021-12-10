@@ -14,10 +14,15 @@ output/
 #output/*.err
 #output/*.time
 
+# Latex auxilary files
+*.aux
+*.log
+*.out
+
 *.knit.md
 *.utf8.md
 
 .Rhistory
 
-src/stan/*.rds
+*.rds
 .Rproj.user

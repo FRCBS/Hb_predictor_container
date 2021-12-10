@@ -76,7 +76,7 @@ If it works, download the preprocessed data (`preprocessed.rds`) for later use.
 * Input format: preprocessed
 * Input data: the `preprocessed.rds` file you got from phase 2.
 * Sample size: 1000
-* Minimum donations: 7
+* Minimum donations: 5
 * Select the models you want to try. Random forest is a good start option.
 
 ### Phase 4. Running models with larger amount of data.
@@ -84,13 +84,13 @@ If it works, download the preprocessed data (`preprocessed.rds`) for later use.
 * Input format: preprocessed
 * Input data: the `preprocessed.rds` file you got from phase 2.
 * Sample size: 10000
-* Minimum donations: 7
+* Minimum donations: 5
 
-Try with at least baseline, random forest, and support vector machine algorithms. If it works, download the `results-0.25.zip` file (version number of the container is part of filename), which contains all results. These results should not contain any individual level data, but it is better to verify that before spreading the file. Send the `summary.csv` file to Marieke (and Jarkko).
+Try with at least baseline, random forest, and support vector machine algorithms. If it works, download the `results-0.28.zip` file (version number of the container is part of filename), which contains all results. These results should not contain any individual level data, but it is better to verify that before spreading the file. Send the `summary.csv` file to Marieke (and Jarkko).
 
 ## Mart's help picture
 
-Mart's picture is otherwise accurate except the preprocessing will probably take more time than 20 minutes, and the internal Hb units are g/L, not g/dL.
+Mart's picture is otherwise accurate except the preprocessing will probably take more time than 20 minutes, and the internal Hb units are g/L, not g/dL. And the minimum number of donations should be 5 instead of 7, and the sample size in the end should be 10 000.
 
 ![help picture](help.png)
 

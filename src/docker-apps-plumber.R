@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.27"
+container_version="pre0.28"
 cat(container_version, file = "../output/version.txt")
 zip_file <- sprintf("results-%s.zip", container_version)
 
@@ -411,7 +411,7 @@ hb_predictor3 <- function(ws) {
     } else {  # Sanquin
       donations <- read_sanquin_donations(donations_o$tempfile)
       donors <- read_sanquin_donors(donors_o$tempfile)
-      donors <- split_set3(donors, seed=global_random_seed)  # label the donors to either train, validate, or test
+      donors <- split_set3(donors, seed=42)  # label the donors to either train, validate, or test
       if (sf != 1.0) {
         donors <- stratified_sample(donors, stratify_by_sex, sf, seed=global_random_seed)
         donations <- semi_join(donations, donors, by="KEY_DONOR")
@@ -719,6 +719,7 @@ hb_predictor3 <- function(ws) {
   write_excel_csv(shap_value_table, "../output/shap-value.csv")
 
   prediction_table <- bind_rows(prediction_tables)
+  prediction_table <- prediction_table %>% slice_sample(prop = 1.0)   # Permute the rows
   write_excel_csv(prediction_table, "../output/prediction.csv")
   
   message("here4")

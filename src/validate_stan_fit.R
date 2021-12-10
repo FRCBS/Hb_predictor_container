@@ -167,12 +167,12 @@ get_f1 <- function(df, threshold = 0.5) {
   return(f1)   # Returns a single value
 }
 
-get_f1_ci <- function(df, method="norm", boot.n=2000) {
+get_f1_ci <- function(df, method="norm", boot.n=2000, threshold = 0.5) {
   #message("Computing the F1 score")
   f1_helper <- function(df, indices) {
     df2 <- df[indices,]
     pb$tick()  # update progress bar
-    f1 <- get_f1(df2)
+    f1 <- get_f1(df2, threshold)
     return(f1)
   }
   #message("moi1")
@@ -206,7 +206,7 @@ get_f1_ci <- function(df, method="norm", boot.n=2000) {
     })
   #message("moi999")
   if (!is.null(error_code) && error_code == -1) {
-    f1 <- get_f1(df)
+    f1 <- get_f1(df, threshold = threshold)
     ci <- tibble("F1 value"=f1, "F1 low"=f1, "F1 high"=f1)
   }
   #message("moi10")
@@ -226,6 +226,7 @@ generate_my_breaks <- function(step) {
 }
 
 create_confusion_matrix_plot <- function(orig_labels, pred_labels) {
+  message("In create_confusion_matrix_plot function")
   conf.matrix <- caret::confusionMatrix(factor(pred_labels, levels=c(0,1), labels=c("no", "yes")), 
                                         factor(orig_labels, levels=c(0,1), labels=c("no", "yes")), 
                                         dnn=c("Observed deferral", "Predicted deferral"))
@@ -236,6 +237,7 @@ create_confusion_matrix_plot <- function(orig_labels, pred_labels) {
 
 
 create_scatter_plot <- function(df, threshold) {
+  message("In create_scatter_plot function")
   xymin <- min(min(df$predicted_value), min(df$original_value))
   xymax <- max(max(df$predicted_value), max(df$original_value))
 
@@ -409,7 +411,8 @@ create_scatter_confusion_plots <- function(df, Hb_cutoff,
   scatter_confusion
 }
 
-create_result_dataframe <- function(stan.preprocessed, prediction_matrix, Hb_cutoff, metric="mean") {
+create_result_dataframe <- function(stan.preprocessed, prediction_matrix, Hb_cutoff, metric="mean", f1_threshold = 0.5) {
+  
   df <- tibble(
     original_value = denormalize_vector(stan.preprocessed$y_test, stan.preprocessed$par_means["Hb"], stan.preprocessed$par_sds["Hb"]) ,
     original_label = ifelse(original_value < Hb_cutoff, 1, 0),
@@ -431,7 +434,9 @@ create_result_dataframe <- function(stan.preprocessed, prediction_matrix, Hb_cut
     mutate(sds = apply(prediction_matrix, 2, FUN = sd),
            #predicted_value = denormalize(y_pred, original_value),
            predicted_value = denormalize_vector(y_pred, stan.preprocessed$par_means["Hb"], stan.preprocessed$par_sds["Hb"]),
-           predicted_label = ifelse(predicted_value < Hb_cutoff, 1, 0))
+           predicted_label = ifelse(predicted_value < Hb_cutoff, 1, 0),
+           f1_threshold = f1_threshold,
+           score_predicted_label = as.integer(score >= f1_threshold))
   
   
   return(df)
@@ -490,6 +495,7 @@ validate_fit <- function(fit, df, Hb_cutoff, params, pnames = NULL,
   
   # Confusion matrix
   confusion.matrix.plot <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
+  score.confusion.matrix.plot <- create_confusion_matrix_plot(df$original_label, df$score_predicted_label)
   # "Optimal" confusion matrix
   if (use_optimal_cutoff) {
     cp <- cutpointr::cutpointr(df$predicted_value, df$original_label, 
@@ -514,7 +520,10 @@ validate_fit <- function(fit, df, Hb_cutoff, params, pnames = NULL,
   rmse2 <- ModelMetrics::rmse(original_Hb2, Hb_predictions2)
   
   # F1 score and confidence intervals
-  f1_ci <- get_f1_ci(df)
+  f1_threshold <- df$f1_threshold[[1]]
+  message(sprintf("before. f1_threshold is %f", f1_threshold))
+  f1_ci <- get_f1_ci(df, threshold = f1_threshold)
+  message("after")
   
 
   
@@ -523,6 +532,7 @@ validate_fit <- function(fit, df, Hb_cutoff, params, pnames = NULL,
               #loo = loo1,
               #loo.plot = loo.plot,
               confusion.matrix.plot = confusion.matrix.plot,
+              score.confusion.matrix.plot = score.confusion.matrix.plot,
               optimal.confusion.matrix.plot = optimal.confusion.matrix.plot,
               predicted_label = df$predicted_label,
               predicted_value = df$predicted_value,

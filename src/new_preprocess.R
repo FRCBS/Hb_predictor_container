@@ -660,6 +660,12 @@ myjoin <- function(df1, df2, by="donation", values=NULL) {
 
 
 
+get_object_sizes <- function(e = rlang::global_env()) {
+  s <- lobstr::obj_sizes(!!!as.list(e))
+  t <- tibble(object=names(s), bytes=as.numeric(s), isfunction=map_lgl(object, ~ is.function(get(.x, envir = e))))
+  return(arrange(t, isfunction, desc(bytes)))
+}
+
 preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl",
                        southern_hemisphere=FALSE, max_diff_date_first_donation, restrict_time_window=TRUE, cores=1, logger) {
 #  tic()
@@ -672,11 +678,16 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
     donors <- read_donors(donors)
   }
   
-  helper <- function(donations, donors, logger) {
-    freadFRC(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
+  # For testing purposes
+  #cat(paste(format(get_object_sizes(rlang::current_env()), n=Inf), collapse="\n"))
+  
+  helper <- function(donations2, donors2, logger) {
+    #cat(paste(format(get_object_sizes(rlang::current_env()), n=Inf), collapse="\n"))
+    freadFRC(donations2, donors2, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
              southern_hemisphere, max_diff_date_first_donation, restrict_time_window=restrict_time_window, 
              logger=logger)
   }
+  cat(sprintf("Number of cores is %i\n", cores))
   if (cores == 1) {
     data <- helper(donations, donors, logger)
   } else {
@@ -687,7 +698,8 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
     options(future.globals.maxSize = 1.5e9)  # This is the maximum amount of data that can be passed to workers.
     future::plan(multicore, workers = cores)  # Multicore does not work with Rstudio. Multisession causes problems with logging
     data <- furrr::future_map2_dfr(folds, loggers, 
-                                   function(indices, logger) helper(donations, donors[indices,], logger)
+                                   function(indices, logger) helper(donations, donors[indices,], logger), 
+                                   .options =  furrr_options(seed=TRUE)
                                    )
   }
   toc()

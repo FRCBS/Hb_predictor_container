@@ -250,9 +250,16 @@ split_set3 <- function(df, seed, prob=tvt_ratios, donor_field = "KEY_DONOR") {
     labels <- c(rep("train", n1), rep("validate", n2), rep("test", n3))
     labels <- factor(sample(labels, size = n), levels=c("train", "validate", "test"))  # permute
   }
-  classes <- tibble(donor=donors,
+  # This is a cleaner solution than the one commented out.
+  classes <- tibble({{donor_field}} := donors,
                     label=labels)
-  return(classes %>% inner_join(df, by=c(donor = {{donor_field}})) %>% relocate(label, .after = last_col()))
+  return(inner_join(df, classes))
+  # classes <- tibble(donor=donors,
+  #                   label=labels)
+  # return(classes %>% 
+  #          inner_join(df, by=c(donor = {{donor_field}})) %>% 
+  #          relocate(label, .after = last_col()) %>%
+  #          rename({{donor_field}} := donor))
 }
 
 # Take a sample of donors
