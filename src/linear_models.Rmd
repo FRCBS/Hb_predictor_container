@@ -138,6 +138,8 @@ knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, time_it=TRUE)
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE)
 #options(warn = 1)
 
+options(tinytex.clean = FALSE)  #################### REMOVE THIS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
 message("Parameters are:")
 for (name in names(params)) {
@@ -161,7 +163,7 @@ compute_dlmm <- params$model %in% c("dlmm", "both")
 
 #set.seed(123)
 
-set_cores_options(params$cores)
+number_of_cores <- set_cores_options(params$cores)
 
 # number_of_cores <- parallel::detectCores()
 # if (!is.null(params$cores)) {
@@ -185,11 +187,13 @@ dumpdir = "../data/rdump/"
 stanfitpath = "../data/stan_fits/"
 rawresultdir = "../data/raw_results/"
 
-if (is.null(params$id)) {
-  id <- paste(params$date, params$extra_id, sep="_") 
-} else {
-  id <- params$id
-}
+# if (is.null(params$id)) {
+#   id <- paste(params$date, params$extra_id, sep="_") 
+# } else {
+#   id <- params$id
+# }
+
+id <- sprintf("%s_%s", Model, Sex)
 data_id <- id
 
 fit_id = id
@@ -425,9 +429,10 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   stan_lists_filename <- sprintf("%s/stan_lists_%s_%s.rds", datadir, Model, Sex)
   stan.preprocessed <- readRDS(stan_preprocessed_filename) 
   stan.lists <- readRDS(stan_lists_filename) 
-  cat("1\n")
+  #cat("1\n")
   message("1")
-  stan_fit_file <- sprintf("%s/model_%s.rds", stanfitpath, fit_id)
+  sprintf("%s/stan_preprocessed_validate_datasets_%s_%s.rds", datadir, "dlmm", Sex)
+  stan_fit_file <- sprintf("%s/model_%s_%s.rds", stanfitpath, Model, Sex)
   if (skip_train == TRUE) {
     fit <- readRDS(stan_fit_file)
   } else {
@@ -517,7 +522,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
       saveRDS(cp, filename)
     }
     f1_threshold <- cp$optimal_cutpoint
-    msg <- sprintf("Train data F1 threshold is %.3f, FPR is %.3f, TPR is %.3f\n", f1_threshold, 1-cp$specificity, cp$sensitivity)
+    msg <- sprintf("\nTrain data F1 threshold is %.3f, FPR is %.3f, TPR is %.3f\n\n", f1_threshold, 1-cp$specificity, cp$sensitivity)
     cat(msg)
     message(msg)
 
@@ -525,7 +530,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   } else {
     df <- create_result_dataframe(stan.preprocessed, prediction_matrix, Hb_cutoff, metric="mean")
   }
-  cp_validate <- get_optimal_cut_point(df$score, df$original_label, pos_class=1)
+  #cp_validate <- get_optimal_cut_point(df$score, df$original_label, pos_class=1)
   message("Here4")
   
   #sink(file=stderr(), type="output")
@@ -550,7 +555,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   e <- val$posterior.plot$cis %>% mutate(Id=Id)
   
   saveRDS(val, file = sprintf("%s/raw_result_%s_%s_%s.rds", rawresultdir, Sex, Model, fit_id))
-  return(list(summary=t, effect_size=e, prediction=d, val=val, cp=cp, cp_validate=cp_validate))
+  return(list(summary=t, effect_size=e, prediction=d, val=val, cp=cp))#, cp_validate=cp_validate))
 }
 
 ```
@@ -559,7 +564,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
 ### Linear mixed model
 ```
 
-```{r Linear mixed model, results="hide", eval=compute_lmm}
+```{r Linear mixed model, results="asis", eval=compute_lmm}
 
 id <- sprintf("lmm-%s", params$sex)
 res <- run_linear_model(Id=id, Model = "lmm", Pretty="Linear mixed model", Sex=params$sex, stan_model_file_lmm, 
@@ -570,15 +575,16 @@ prediction_rows[[length(prediction_rows)+1]] <- res$prediction
 
 val <- res$val
 message("moi1")
-val$posterior.plot
+val$posterior.plot$plot
 message("moi2")
 val$scatter_plot
 message("moi3")
 val$confusion.matrix.plot
+val$score.confusion.matrix.plot
 message("moi4")
-plot(val$cp)
+#plot(val$cp)
 message("moi5")
-plot_metric(val$cp, conf_lvl = 0.95)
+#plot_metric(val$cp, conf_lvl = 0.95)
 message("moi6")
 val$roc_plot
 message("moi7")
@@ -605,9 +611,10 @@ effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction
 
 val <- res$val
-val$posterior.plot
+val$posterior.plot$plot
 val$scatter_plot
 val$confusion.matrix.plot
+val$score.confusion.matrix.plot
 val$roc_plot
 val$pr_plot
 

@@ -175,7 +175,11 @@ get_f1_ci <- function(df, method="norm", boot.n=2000, threshold = 0.5) {
     f1 <- get_f1(df2, threshold)
     return(f1)
   }
-  #message("moi1")
+  message("moi0")
+  f1 <- get_f1(df, threshold = threshold)
+  message("moi0.5")
+  if (is.na(f1)) return(tibble("F1 value"=NA_real_, "F1 low"=NA_real_, "F1 high"=NA_real_))
+  message("moi1")
   df <- df %>% select(original_label, score)
   #message("moi2")
   if (is.null(boot.n)) {
@@ -189,27 +193,28 @@ get_f1_ci <- function(df, method="norm", boot.n=2000, threshold = 0.5) {
   #p <- progress_estimated(n+1)  # init progress bar
   #b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="multicore")
   b <- boot(df, statistic = f1_helper, R=boot.n, sim="ordinary", stype="i", strata=df$original_label, parallel="no")
-  #message("moi6")
+  message("moi6")
   error_code <- tryCatch(
     error = function(cnd) -1 # return exit code
     ,
     {
       #message("moi7")
-      result <- boot.ci(b, conf=0.95, type=method)
+      error_msg <- capture.output(result <- boot.ci(b, conf=0.95, type=method))
+      if (is.null(result)) stop()
       #message("moi8")
       var <- recode(method, "norm"="normal", "perc"="percent", "stud"="student")  # The name of the output field is stupidly sometimes not the same as the parameter name
       #message("moi9")
       cis <- if (method=="norm") result[[var]][2:3] else result[[var]][4:5]
       #message("moi99")
       ci <- tibble("F1 value"=result$t0, "F1 low"=cis[1], "F1 high"=cis[2])
-      print(ci)
+      #print(ci)
+      NULL
     })
-  #message("moi999")
+  message("moi999")
   if (!is.null(error_code) && error_code == -1) {
-    f1 <- get_f1(df, threshold = threshold)
-    ci <- tibble("F1 value"=f1, "F1 low"=f1, "F1 high"=f1)
+    ci <- tibble("F1 value"=f1, "F1 low"=NA_real_, "F1 high"=NA_real_)
   }
-  #message("moi10")
+  message("moi10")
   return(list(ci=ci))
 }
 
@@ -293,7 +298,7 @@ create_forest_plot <- function(posterior, variables) {
   #result <- as_tibble(result)
   #result <- map_dfr(seq_along(posterior), function(i) forest_plot_helper(posterior[[i]], variables[[i]]))
   result <- map2_dfr(posterior, variables, forest_plot_helper)
-  str(result)
+  #str(result)
   cis <- result
   result <- DescTools::Rev(result, margin=1)   # Reverse the order of rows so they appear in correct order in the forest plot
   #print(head(result))
@@ -495,7 +500,9 @@ validate_fit <- function(fit, df, Hb_cutoff, params, pnames = NULL,
   
   # Confusion matrix
   confusion.matrix.plot <- create_confusion_matrix_plot(df$original_label, df$predicted_label)
-  score.confusion.matrix.plot <- create_confusion_matrix_plot(df$original_label, df$score_predicted_label)
+  score.confusion.matrix.plot <- create_confusion_matrix_plot(df$original_label, df$score_predicted_label) +
+    labs(title = "Optimal F1 score cutoff confusion matrix")
+  
   # "Optimal" confusion matrix
   if (use_optimal_cutoff) {
     cp <- cutpointr::cutpointr(df$predicted_value, df$original_label, 

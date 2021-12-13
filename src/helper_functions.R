@@ -1905,7 +1905,7 @@ new_predictions_dlmm <- function(model.list, n.samples = 1000) {
   #predicted_probabilities <- c()
   number_of_donors <- length(unique(ml$donor))
   prediction_matrix <- matrix(nrow=n.samples, ncol=number_of_donors)
-  tic(sprintf("Predicting Hb-values for %i donation events using Heckman adjusted LME-model.", N))
+  #tic(sprintf("Predicting Hb-values for %i donation events using Heckman adjusted LME-model.", N))
   for (i in 1:N) {
     donbs <- rnorm(n.samples, ml$new_donbs[i,1], ml$new_donbs[i,2])
     if (i %in% ml$first_events) {
@@ -1929,7 +1929,7 @@ new_predictions_dlmm <- function(model.list, n.samples = 1000) {
       prediction_matrix[,ml$donor[i]] <- preds
     }
   }
-  toc()
+  #toc()
   # return(list(predictions = predictions,
   #             predicted_probabilities = predicted_probabilities))
   return(prediction_matrix)
@@ -1946,7 +1946,7 @@ new_predictions_lmm <- function(model.list, n.samples = 1000) {
   #predicted_probabilities <- c()
   number_of_donors <- length(unique(ml$donor))
   prediction_matrix <- matrix(nrow=n.samples, ncol=number_of_donors)
-  tic(sprintf("Predicting Hb-values for %i donation events using LME-model without lagged Hb.", N))
+  #tic(sprintf("Predicting Hb-values for %i donation events using LME-model without lagged Hb.", N))
   for (i in 1:N) {
     #message(sprintf("i=%i", i))
     donbs <- rnorm(n.samples, ml$new_donbs[i,1], ml$new_donbs[i,2])
@@ -1966,7 +1966,7 @@ new_predictions_lmm <- function(model.list, n.samples = 1000) {
       prediction_matrix[,ml$donor[i]] <- preds
     }
   }
-  toc()
+  #toc()
 #  return(list(predictions = predictions,
 #              predicted_probabilities = predicted_probabilities))
   return(prediction_matrix)
