@@ -1850,13 +1850,16 @@ predict_new <- function(model.list, n.samples = 1000, seed) {
     prediction_matrix <- new_predictions_lmm(model.list, n.samples=n.samples)
   }
   return(list(new_donbs = new_donbs[model.list$last_events,],   # take only donbs for last events
-              prediction_matrix = prediction_matrix,
-              last_events = model.list$last_events))
+              prediction_matrix = prediction_matrix,  # rows are samples, columns are donors
+              last_events = model.list$last_events))  # For each donor gives the integer index of the last donation of that donor
 #              predictions = pred.list$predictions,
 #              predicted_probabilities = pred.list$predicted_probabilities))
 }
 
 # Note: n.samples is not used for anything!
+# Input dataframe contains the donations of a single donor.
+# Returns a matrix of dimension Nx2, where N is the number of donations of the donor.
+# The columns are the mean and sd of the donb
 calculate_donbs <- function(df, model.list, donor, n.samples) {
   #message("In calculate_donbs function")
   
@@ -1909,14 +1912,17 @@ new_predictions_dlmm <- function(model.list, n.samples = 1000) {
   for (i in 1:N) {
     donbs <- rnorm(n.samples, ml$new_donbs[i,1], ml$new_donbs[i,2])
     if (i %in% ml$first_events) {
-      preds <- apply(ml$ups,2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$Z[ml$donor[i],] + 
+      preds <- 
+        apply(ml$ups,2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$Z[ml$donor[i],] + 
         sample(ml$theta, n.samples, replace = TRUE) * donbs + 
         rnorm(n = n.samples, mean = 0, sd = sample(ml$sigma_eeta, size = n.samples, replace = TRUE))
       if (!is.null(C)) {
         preds <- preds + apply(ml$phi, 2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$C[ml$donor[i],]
       }
     } else {
-      preds <- apply(ml$beta, 2, function(x) sample(x, size = n.samples, replace =TRUE)) %*% ml$x[i,] + donbs +
+      preds <- 
+        apply(ml$beta, 2, function(x) sample(x, size = n.samples, replace =TRUE)) %*% ml$x[i,] + 
+        donbs +
         rnorm(n = n.samples, mean = 0, sd = sample(ml$sigma_epsilon, size = n.samples, replace = TRUE))
       if (!is.null(C)) {
         preds <- preds + apply(ml$phi, 2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$C[ml$donor[i],]
@@ -1947,12 +1953,15 @@ new_predictions_lmm <- function(model.list, n.samples = 1000) {
   number_of_donors <- length(unique(ml$donor))
   prediction_matrix <- matrix(nrow=n.samples, ncol=number_of_donors)
   #tic(sprintf("Predicting Hb-values for %i donation events using LME-model without lagged Hb.", N))
-  for (i in 1:N) {
+  for (i in 1:N) {   # Iterate over all donations
     #message(sprintf("i=%i", i))
     donbs <- rnorm(n.samples, ml$new_donbs[i,1], ml$new_donbs[i,2])
     #message("here1")
-    preds <- apply(ml$beta, 2, function(x) sample(x, size = n.samples, replace =TRUE)) %*% ml$x[i,] + donbs +
+    preds <- 
+      apply(ml$beta, 2, function(x) sample(x, size = n.samples, replace = TRUE)) %*% ml$x[i,] + 
+      donbs +
       rnorm(n = n.samples, mean = 0, sd = sample(ml$sigma_epsilon, size = n.samples, replace = TRUE))
+  
     #message("here2")
     if (!is.null(C)) {
       #message("here2.5")

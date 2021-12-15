@@ -193,8 +193,8 @@ rawresultdir = "../data/raw_results/"
 #   id <- params$id
 # }
 
-id <- sprintf("%s_%s", Model, Sex)
-data_id <- id
+id <- sprintf("%s_%s", params$model, params$sex)
+#data_id <- id
 
 fit_id = id
 
@@ -284,7 +284,7 @@ if (out_of_sample_predictions) {
 
 if (create_datasets_bool) {
   source("create_stan_datasets.R")
-  create_stan_datasets(train, datadir, dumpdir, data_id, #hlen=params$hlen, params$hlen_exactly,
+  create_stan_datasets(train, datadir, dumpdir, #data_id, #hlen=params$hlen, params$hlen_exactly,
                          Hb_cutoff_male = params$Hb_cutoff_male,
                          Hb_cutoff_female = params$Hb_cutoff_female, 
                          basic_variables=basic_variables, basic_variables_dlmm=basic_variables_dlmm, donor_variables=donor_variables,
@@ -452,6 +452,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   rhats <- bayesplot::rhat(fit)
   message(sprintf("Maximum rhat is %f for %s %s\n", max(rhats), Sex, Model))
   
+  # Compute predictions on validation data
   if (out_of_sample_predictions) {
     if(Model=="lmm") {
       sl.val <- sl.val.lmm
@@ -499,6 +500,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   message(sprintf("Length of Hb_cutoff: %i, mean: %f\n", length(Hb_cutoff), mean(Hb_cutoff)))
   message("Here3")
   
+  # Compute classification results based on probability threshold that maximizes F1 score on train data
   if (out_of_sample_predictions) {
     helper <- function(stan.preprocessed, fit) {
       pred.list <- create_model_list(fit, type = Model, stan.preprocessed)
@@ -542,6 +544,34 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
                       params=stan_parameters, pnames=pretty_variables, cat.plot = FALSE)
 
   message("Here5")
+
+  #####################
+  # Compute shap values
+  #####################
+  
+  shap_filename <- sprintf("/tmp/shap_values_%s_%s.rds", Model, Sex)
+  if (use_pdf) {     
+    res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
+  } else {
+    res <- compute_shap_values_fastshap(fit, pred.list$x, variables, seed=global_random_seed)
+    #res <- compute_shap_values_shapper(rrfFit_roc$finalModel, train, validate, variables)
+    saveRDS(res, shap_filename)
+  }
+  
+  if (!is.null(res)) {
+    
+    if (!is.null(params$shap_value_table_file)) {
+      write_csv(res, params$shap_value_table_file)   # Pass the table to the web app as well
+    }
+    
+    variables_renamed <- FALSE
+    
+    shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)
+    shap_plot_rf2 <- plot_shap_values(res, variables_renamed)
+    plot(shap_plot_rf)
+    plot(shap_plot_rf2)
+  }
+  
   
   d <- val$df %>% 
     mutate(id=Id, model=Model, sex=Sex) %>% 

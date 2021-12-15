@@ -4,6 +4,7 @@ suppressPackageStartupMessages(library(doParallel))
 suppressPackageStartupMessages(library(shapr))
 suppressPackageStartupMessages(library(fastshap))
 suppressPackageStartupMessages(library(ggforce))
+suppressPackageStartupMessages(library(tidyverse))
 
 descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
                                 "year", "warm_season", "consecutive_deferrals", "recent_donations",
@@ -533,6 +534,7 @@ compute_shap_values_shapr <- function(model, validate, variables, n=100, seed) {
   return(res)
 }
 
+# The nsim parameter seems to have linear effect on running time
 compute_shap_values_fastshap <- function(model, validate, variables, n=1000, seed, nsim=10) {
   message("In function compute_shap_values_fastshap")
   set.seed(seed)
@@ -540,9 +542,17 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   # if ("sex" %in% colnames(validate)) {
   #   validate2 <- validate  %>% slice_sample(n=n) %>% select(-c(Hb_deferral, Hb, sex))
   # } else {
-    validate2 <- validate  %>% slice_sample(n=n) %>% select(-c(Hb_deferral, Hb))
+  validate2 <- validate  %>% slice_sample(n=n) %>% select(-any_of(c("Hb_deferral", "Hb")))
 #  }
 
+  pfun_lmm <- function(object, newdata) {
+    message(sprintf("In function pfun_lmm: rows=%i cols=%i", nrow(newdata), ncol(newdata)))
+    t <- as_tibble(rownames_to_column(as.data.frame(rstan::get_posterior_mean(object))))
+    beta <- t %>% filter(str_detect(rowname, r"(^beta\[\d+\])")) %>% pull(`mean-all chains`) #select(rowname, mean=`mean-all chains`)
+    result <- as.vector(beta %*% t(as.matrix(newdata)))
+    return(result)
+  }
+  
   pfun_randomForest <- function(object, newdata) {
     predict(object, newdata = newdata, type="prob")[,2]
   }
@@ -556,13 +566,17 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
     predict(object, newdata = newdata, type="prob")[,2]
   }
   
+  
   if ("randomForest" %in% class(model)) {
     pfun <- pfun_randomForest
   } else if ("ksvm" %in% class(model)) {
     pfun <- pfun_ksvm
   } else if ("train" %in% class(model)) {
     pfun <- pfun_train
+  } else if ("stanfit" %in% class(model)) {
+    pfun <- pfun_lmm
   }
+  
   result_code <- tryCatch(
     error = function(cnd) {
       msg <- paste("\nComputation of shap values failed:", cnd$message, 
@@ -573,10 +587,17 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
     {
       rlang::with_options(lifecycle_verbosity = "quiet", {  # Prevent the deprecation message caused by the explain function
         if ("lm" %in% class(model)) {
-          shap <- fastshap::explain(model,
+          shap <- fastshap::explain(model,   # This is for the baseline logistic regression
                                     feature_names = "previous_Hb",
                                     newdata = as.data.frame(validate2 %>% select(previous_Hb)),
                                     exact = TRUE)
+        } else if ("stanfit" %in% class(model)) {
+          shap <- fastshap::explain(model, 
+                                    X = as.data.frame(validate2), 
+                                    #newdata = as.data.frame(validate), 
+                                    #feature_names = setdiff(v, "age"),
+                                    pred_wrapper = pfun, 
+                                    nsim = nsim)
         } else {
           shap <- fastshap::explain(model, 
                                     X = as.data.frame(validate2),
@@ -584,7 +605,7 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
                                     nsim = nsim)
         }
       })
-      shap <- as_tibble(shap)
+      shap <- as_tibble(shap)  # This drops the class "explain"
     }
     
   )
