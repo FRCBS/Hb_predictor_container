@@ -3,18 +3,10 @@ title: "`r sprintf('Linear mixed models (%s)', params$sex)`"
 output: md_document
 params:
   input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
-  #input_file: "~/preprocessed_data_6243aede7.rdata"
-  # hlen: NULL
-  # hlen_exactly: FALSE
-  # sample_fraction: 1.0
   model: "both"
   mode: "initial"
   sex: "both"
   id: NULL
-  # sample_fraction: 0.004
-  # method: "icp-fix"
-  # sex: "male"
-  # id:   date-2020-07-17-sex-male-method-icp-fix-sample_fraction-0.004
   date: "2020-07-08"
   extra_id: NULL
   summary_table_file: NULL
@@ -167,20 +159,10 @@ compute_dlmm <- params$model %in% c("dlmm", "both")
 
 number_of_cores <- set_cores_options(params$cores)
 
-# number_of_cores <- parallel::detectCores()
-# if (!is.null(params$cores)) {
-#   options(mc.cores = min(4, params$cores, number_of_cores))  # Only four chains used by stan by default
-#   options(boot.ncpus = min(params$cores, number_of_cores))   # For bootstrapping
-# } else {
-#   options(mc.cores = min(4, number_of_cores))  # Only four chains used by stan by default
-#   options(boot.ncpus = number_of_cores)
-# }
 rstan_options(auto_write = TRUE)
 
 # Set variables to save time knitting the document
-#skip_train = params$skip_train
 skip_train = use_pdf
-#create_datasets_bool = params$create_datasets_bool
 create_datasets_bool = ! use_pdf
 knit = TRUE
 
@@ -189,14 +171,8 @@ dumpdir = "../data/rdump/"
 stanfitpath = "../data/stan_fits/"
 rawresultdir = "../data/raw_results/"
 
-# if (is.null(params$id)) {
-#   id <- paste(params$date, params$extra_id, sep="_") 
-# } else {
-#   id <- params$id
-# }
 
 id <- sprintf("%s_%s", params$model, params$sex)
-#data_id <- id
 
 fit_id = id
 
@@ -217,9 +193,6 @@ data <- data %>%
 
 
 if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) > 0)) {
-  #donor_variables <- c("smoking", "bmi", "RNF43_mutant", "prs")
-  #donor_variables <- c("smoking", "height", "weight", "RNF43_mutant", "prs")
-  #pretty_donor_variables <- c("Smoking", "Height", "Weight", "RNF43 mutant", "Polygenic risk score")
   donor_specific_variables <- readRDS(params$donor_specific_file)
   if ("FERRITIN_LAST_DATE" %in% names(donor_specific_variables))   # This variable is only included to be able to filter data in random_forest.Rmd
     donor_specific_variables <- donor_specific_variables %>% select(-FERRITIN_LAST_DATE)
@@ -234,9 +207,6 @@ if (!is.null(params$donor_specific_file) && (length(params$donor_specific_file) 
   donor_specific_variables <- NULL
 }
 
-#basic_prediction_variables <- setdiff(descript$Variable, c("donor", "Hb", "Hb_deferral")) 
-# Modify this if you want to use a subset of variables for predicting
-#basic_prediction_variables <- setdiff(basic_prediction_variables, c("previous_Hb_def", "consecutive_deferrals", "recent_deferrals"))
 basic_prediction_variables <- params$predictive_variables
 
 basic_variables <- setdiff(basic_prediction_variables, "previous_Hb")
@@ -246,7 +216,6 @@ basic_variables_dlmm <- setdiff(basic_prediction_variables, "Hb_first")
 pretty_variables <- descript %>% filter(Variable %in% basic_variables) %>% pull(Pretty)   # Convert to pretty names
 pretty_variables_dlmm <- descript %>% filter(Variable %in%  basic_variables_dlmm) %>% pull(Pretty)   # Convert to pretty names
 first_variables <- c("First age", "First year", "First warm season", "First hour")
-#pretty_variables <- basic_vars
 pretty_variables_dlmm <- c(pretty_variables_dlmm, first_variables)
 if (!is.null(donor_variables)) {
   pretty_variables     <- c(pretty_variables, pretty_donor_variables)
@@ -305,7 +274,6 @@ if (create_datasets_bool) {
                                              test_data = FALSE,
                                              Hb_index=Hb_index)#, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
       saveRDS(stan.preprocessed.validate.dlmm, stan_preprocessed_validate_filename)
-      #stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.dlmm")
     }
     
     if (compute_lmm) {
@@ -315,17 +283,8 @@ if (create_datasets_bool) {
                                         test_data = FALSE,
                                         Hb_index=Hb_index)#, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
       saveRDS(stan.preprocessed.validate.lmm, stan_preprocessed_validate_filename)
-#      stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.lmm")
-    }
-  
-    #stan_preprocessed_validate_filename <- paste(datadir,"stan_preprocessed_validate_datasets_", id, ".RData", sep = '')
-    #save(list=stan_preprocessed_validate_objects, file = stan_preprocessed_validate_filename)
-
   }
 }
-
-# This is for summary plots only
-# data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 if (out_of_sample_predictions) {
   if (is.null(donor_variables)) {
@@ -405,8 +364,6 @@ res[[3]]
 
 
 ```{r, results="asis", echo=FALSE}
-#cat(sprintf("The %s set contains %i donations from %i donors.", params$sex, nrow(data), n_distinct(data$donor)))
-#cat(sprintf("The female set contains %i donations from %i donors.", nrow(data.female), n_distinct(data.female$donor)))
 sizes <- data_counts(train=train, validate=test)
 kbl(sizes) %>% kable_styling()
 ```
@@ -467,9 +424,6 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
     } else {
       pred.list <- create_model_list(fit, type = Model, stan.preprocessed.validate)
       saveRDS(pred.list, sprintf("%s/pred_list_%s_%s.rds", datadir, Sex, Model))   # Only for debugging, remove me
-      #pred.list$type <- Model
-      #pred.list$threshold <- normalize_vector(model.params$threshold, sl.val$par_means[["Hb"]], sl.val$par_sds[["Hb"]])     # Added by Jarkko
-      #assign("jarkko_predictions", pred.list, envir=globalenv())   # Remove this
       results <- predict_new(pred.list, n.samples = params$iterations / 2, seed=global_random_seed)
       saveRDS(results, oos_prediction_filename)   # Only for debugging, remove me
     }

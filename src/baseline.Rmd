@@ -3,9 +3,6 @@ title: "`r sprintf('Baseline (%s)', params$sex)`"
 output: md_document
 params:
   input_file: NULL
-  # hlen: NULL
-  # hlen_exactly: FALSE
-  #sample_fraction: 1.0
   model: "dt"
   mode: "initial"
   sex: "both"
@@ -57,7 +54,7 @@ suppressPackageStartupMessages(library(ggridges))
 suppressPackageStartupMessages(library(ROCR))
 suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
-suppressPackageStartupMessages(library(sn))
+#suppressPackageStartupMessages(library(sn))
 suppressPackageStartupMessages(library(tidyverse))
 
 source("common.R")
@@ -105,20 +102,7 @@ mode <- params$mode
 
 
 
-#set.seed(123)
-
 set_cores_options(params$cores)
-
-# number_of_cores <- parallel::detectCores()
-# if (!is.null(params$cores)) {
-#   number_of_cores <- min(params$cores, number_of_cores)
-#   options(mc.cores   = number_of_cores)   # This option is in package parallel
-#   options(boot.ncpus = number_of_cores)   # For bootstrapping
-# } else {
-#   options(mc.cores   = number_of_cores)
-#   options(boot.ncpus = number_of_cores)
-# }
-
 
 
 datadir = "../data/rdata/"
@@ -146,10 +130,6 @@ data <- data %>%
 
 donor_variables = NULL
 donor_specific_variables <- NULL
-
-
-# Maybe this is not needed except for linear regression
-# data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 
 logger <- new_logger(prefix=sprintf("Baseline %s:", params$sex), file="../output/exclusions.txt", silent=use_pdf)
@@ -202,78 +182,27 @@ res[[3]]
 
 
 ```{r Partition and enrich, echo=FALSE}
-# enriched_filename <- sprintf("%s/baseline-enriched-%s-%s.rds", datadir, params$model, params$sex)
-# test_filename <- sprintf("%s/baseline-test-%s-%s.rds", datadir, params$model, params$sex)
-# if (skip_train) {
-#   enriched <- readRDS(enriched_filename)
-#   test <- readRDS(test_filename)
-# } else {
-  debug <- TRUE
-  
-  donors <- ndonor(data)
-  message(sprintf("Number of donors is %i\n", length(donors)))
-  old_count <- nrow(data); old_count2 <- ndonor(data)
-  
-  #tmp <- old_split(data)
-  tmp <- new_split(data, mode)
-  train_orig <-tmp$train
-  test <- tmp$test
-  
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
-                  old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2)
-  message(msg)
-  print(logger, msg)
-  message("Here")
-  sink(file=stderr(), type="output"); summary(train_orig); sink()
-  n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
-  message(sprintf("%i donors have at least one deferral\n", n))
-  #message(summary(train_orig))
-  #if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rdata")
-  
-  # # enrich the data so that 50% of the donors have deferral as their last donation attempt
-  # old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
-  # #sink(file=stderr(), type="output")
-  # if (old_count2 >= 1000) {
-  #   enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
-  #   #sink()
-  #   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
-  #                   old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
-  #   message(msg)
-  #   print(logger, msg)
-  #   #if (debug) save(enriched, file="/tmp/post-enriched.rdata")
-  # } else {  # Don't enrich if less than 1000 donors
-  #   message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
-  #   enriched <- train_orig
-  # }
-  # 
-  # n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
-  # message(sprintf("%i donors have at least one deferral\n", n))
-  # 
-  # sink(file=stderr(), type="output"); summary(enriched); sink()
-  # #if (debug) save(enriched, file="/tmp/enriched.rdata")
-  # #enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
-  # #rm(train_orig)
-  # 
-  # saveRDS(enriched, enriched_filename)
-#   saveRDS(test, test_filename)
-# }
+debug <- TRUE
+
+donors <- ndonor(data)
+message(sprintf("Number of donors is %i\n", length(donors)))
+old_count <- nrow(data); old_count2 <- ndonor(data)
+
+tmp <- new_split(data, mode)
+train_orig <-tmp$train
+test <- tmp$test
+
+msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to taking training subsample\n", 
+               old_count - nrow(train_orig), old_count, old_count2 - ndonor(train_orig), old_count2)
+message(msg)
+print(logger, msg)
+message("Here")
+sink(file=stderr(), type="output"); summary(train_orig); sink()
+n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
+message(sprintf("%i donors have at least one deferral\n", n))
 message("and here")
 ```
 
-```{r Take the last events}
-# helper <- function(data) {
-#   data <- data %>% group_by(donor) %>%
-#     dplyr::filter(n()>1) %>%  #Take out the ones with only one event 
-#     slice_max(order_by = dateonly, n=1) %>%
-#     ungroup()
-# }
-# 
-# # Take only the last events
-# enriched <- helper(enriched)
-# test <- helper(test)
-# sink(file=stderr(), type="output"); summary(enriched); sink()
-# sink(file=stderr(), type="output"); summary(test); sink()
-```
 
 ```{r Process train and validate sets further}
 
@@ -321,8 +250,6 @@ sink(file=stderr(), type="output"); summary(validate); sink()
 
 train_deferred <- train %>% filter(Hb_deferral == "Deferred")
 validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
-#cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
-#cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
 kbl(sizes) %>% kable_styling()
 rm(train_deferred)
 rm(validate_deferred)
@@ -338,9 +265,6 @@ logistic_regression <- function(data) {
 
 train <- caret::upSample(x = train, y = train$Hb_deferral) %>% as_tibble() %>% select(-Class)
 
-#up_train <- upSample(x = imbal_train[, -ncol(imbal_train)],
-#                     y = imbal_train$Class)            
-
 
 fit_filename <- sprintf("%s/baseline-fit-%s-%s.rds", datadir, params$model, params$sex)
 if (skip_train) {
@@ -349,7 +273,6 @@ if (skip_train) {
   fit <- logistic_regression(train)
   saveRDS(fit, fit_filename)
 }
-#fit
 ```
 
 ```{r Predict validate data, results="asis", echo=FALSE}
@@ -375,12 +298,6 @@ predict_baseline <- function(glm.fit, data, threshold = NULL) {
   return(result)
 }
 
-# optimize_threshold <- function(df) {
-#     cp <- cutpointr::cutpointr(df$score, df$original_label, 
-#                     direction="<=",   # Smaller values mean positive class 
-#                     method = maximize_metric, metric = sum_sens_spec)
-#     return(cp$optimal_cutpoint)
-# }
 
 enriched_result <- predict_baseline(fit, train %>% mutate(Hb=0))  # Add dummy Hb value to prevent a warning
 # Optimize the probability threshold
@@ -393,7 +310,6 @@ f1_threshold <- cp$optimal_cutpoint
 cat(sprintf("Train data F1 threshold is %.3f, FPR is %.3f, TPR is %.3f\n", f1_threshold, 1-cp$specificity, cp$sensitivity))
 sink(file=stderr(), type="output"); cp; sink()
 
-#threshold <- optimize_threshold(enriched_result)
 enriched_result <- enriched_result %>%
   mutate(predicted_label = as.integer(score >= f1_threshold),
          f1_threshold = f1_threshold,
@@ -440,7 +356,6 @@ if (use_pdf) {
   res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
 } else {
   res <- compute_shap_values_fastshap(fit, validate, variables, seed=global_random_seed) 
-  #res <- compute_shap_values(svmFit_roc$finalModel, train, validate, variables)
   saveRDS(res, shap_filename)
 }
 
@@ -453,8 +368,6 @@ if (!is.null(res)) {
   
   shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)
   shap_plot_rf2 <- plot_shap_values(res, variables_renamed)
-  #ive_rf <- shapper::shap(exp_rf, new_observation = validate2[1,], nsamples=50)
-  #plot(ive_rf)
   plot(shap_plot_rf)
   plot(shap_plot_rf2)
 }
@@ -488,9 +401,6 @@ results_baseline$pr_plot
 
 summary_table <- results_baseline$summary
 
-# if (!is.null(params$effect_size_table_file)) {
-#   write_csv(rrfFit.varimp, params$effect_size_table_file)   # Pass the table to the web app as well
-# }
 
 
 
@@ -507,7 +417,6 @@ get_inverse <- function(fit, threshold) {
   return(previous_Hb)
 }
 
-#saveRDS(df, sprintf("/tmp/df2-%s", params$sex))   # For debugging, remove
 plot_logistic_regression <- function(df, title, previous_Hb) {
   g <- df %>% 
     ggplot(aes(x=previous_Hb, y=score)) + 
@@ -542,7 +451,6 @@ if (!is.null(params$summary_table_file)) {
 ```
 
 ```{r Show summary table, results="markup"}
-#cols <- c("Model"="Pretty", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 cols <- c("Model"="Pretty", "Sex", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kbl(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3)) %>% kable_styling()
 ```

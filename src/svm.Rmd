@@ -3,9 +3,6 @@ title: "`r sprintf('Support vector machine (%s)', params$sex)`"
 output: md_document
 params:
   input_file: "~/FRCBS/interval_prediction/data/full_data_preprocessed-2020-05-25-train.rdata"
-  # hlen: NULL
-  # hlen_exactly: FALSE
-  # sample_fraction: 1.0
   model: "svm"
   mode: "initial"
   sex: "both"
@@ -51,7 +48,7 @@ suppressPackageStartupMessages(library(ggridges))
 suppressPackageStartupMessages(library(ROCR))
 suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
-suppressPackageStartupMessages(library(sn))
+#suppressPackageStartupMessages(library(sn))
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(kernlab))    # For the SVM model
 suppressPackageStartupMessages(library(shapr))
@@ -99,13 +96,8 @@ mode <- params$mode
 
 
 
-#set.seed(123)
 
 number_of_cores <- set_cores_options(params$cores)
-
-
-#rstan_options(auto_write = TRUE) # To avoid recompilation of unchanged Stan programs, we recommend calling
-
 
 
 
@@ -126,7 +118,6 @@ logger <- new_logger(prefix=sprintf("SVM %s:", params$sex), file="../output/excl
 
 ```{r Load input data, echo=FALSE}
 data <- readRDS(params$input_file)
-#data <- load_single("~/FRCBS/Hb_predictor_container/output/preprocessed.rdata")
 
 data <- data %>%
   mutate(days_to_previous_fb = as.double(days_to_previous_fb),
@@ -154,9 +145,6 @@ if (!is.null(donor_variables)) {
 } else {
   data <- data %>% select(all_of(variables_in_order), everything())
 }
-
-# Maybe this is not needed except for linear regression
-# data <- filter_based_on_number_of_donations(data, params$hlen, params$hlen_exactly)
 
 
 ```
@@ -217,7 +205,6 @@ donors <- ndonor(data)
 message(sprintf("Number of donors is %i\n", length(donors)))
 old_count <- nrow(data); old_count2 <- ndonor(data)
 
-#tmp <- old_split(data)
 tmp <- new_split(data, mode)
 train_orig <-tmp$train
 test <- tmp$test
@@ -230,47 +217,7 @@ message("Here")
 sink(file=stderr(), type="output"); summary(train_orig); sink()
 n <- length(unique(train_orig %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
 message(sprintf("%i donors have at least one deferral\n", n))
-#message(summary(train_orig))
 if (debug) saveRDS(train_orig, file="/tmp/pre-enriched.rds")
-
-# # enrich the data so that 50% of the donors have deferral as their last donation attempt
-# old_count <- nrow(train_orig); old_count2 <- ndonor(train_orig)
-# #sink(file=stderr(), type="output")
-# if (old_count2 >= 1000) {
-#   enriched <- enrich_deferrals_rf(train_orig, 0.5, seed=global_random_seed)  # truncates time series
-#   #sink()
-#   msg <- sprintf("Dropped %i / %i donations (%i / %i donors) due to enrichment\n", 
-#                   old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
-#   message(msg)
-#   print(logger, msg)
-#   if (debug) saveRDS(enriched, file="/tmp/post-enriched.rds")
-# } else {  # Don't enrich if less than 1000 donors
-#   message(sprintf("Skipped enrichment of train data, since number of donors %i is less than %i", old_count2, 1000))
-#   enriched <- train_orig
-# }
-# 
-# n <- length(unique(enriched %>% group_by(donor) %>% filter(max(Hb_deferral) == 1) %>% ungroup() %>% pull(donor)))
-# message(sprintf("%i donors have at least one deferral\n", n))
-
-# Drop donors whose last ferritin is not measured before the last blood donation after the truncation
-# if ("FERRITIN_LAST_DATE" %in% names(enriched)) {
-#   old_count <- nrow(enriched); old_count2 <- ndonor(enriched)
-#   enriched <- enriched %>% 
-#     group_by(donor) %>% 
-#     mutate(last_donation_date = max(dateonly)) %>% 
-#     ungroup() %>% 
-#     filter(FERRITIN_LAST_DATE < last_donation_date)  %>% 
-#     select(-last_donation_date)
-#   msg <-sprintf("Dropped %i / %i donations (%i / %i donors) due to FERRITIN_LAST_DATE not being before last blood donation\n", 
-#               old_count - nrow(enriched), old_count, old_count2 - ndonor(enriched), old_count2)
-#   message(msg)
-#   print(logger, msg)
-# }
-# sink(file=stderr(), type="output"); summary(enriched); sink()
-# if (debug) saveRDS(enriched, file="/tmp/enriched.rds")
-
-#enriched <- enriched %>% select(-FERRITIN_LAST_DATE)
-#rm(train_orig)
 
 message("and here")
 ```
@@ -278,18 +225,6 @@ message("and here")
 
 
 ```{r Process train and validate sets further}
-# variables <- c(
-#                "days_to_previous_fb", 
-#                "age", 
-#                "previous_Hb_def",
-#                year, #CHECK! 
-#                "warm_season", 
-#                "consecutive_deferrals", 
-#                "recent_donations",
-#                "recent_deferrals", 
-#                "hour", 
-#                "previous_Hb", 
-#                "Hb_first")
 
 variables <- params$predictive_variables
 
@@ -331,8 +266,6 @@ sink(file=stderr(), type="output"); summary(validate); sink()
 
 train_deferred <- train %>% filter(Hb_deferral == "Deferred")
 validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
-#cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
-#cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
 kbl(sizes) %>% kable_styling()
 rm(train_deferred)
 rm(validate_deferred)
@@ -344,8 +277,6 @@ rm(validate_deferred)
 ```{r Train SVM, message=FALSE}
 number_of_accepted  <- train %>% filter(Hb_deferral=="Accepted") %>% nrow()
 number_of_deferrals <- train %>% filter(Hb_deferral=="Deferred") %>% nrow()
-# stopifnot(number_of_deferrals > 0)
-# stopifnot(number_of_accepted > 0)
 if (number_of_accepted == 0 || number_of_deferrals == 0) {
   stop(sprintf("Not all classes are present in the train data:\nnumber of deferrals = %i, number of accepted = %i\n", number_of_deferrals,
                number_of_accepted), call.=FALSE)
@@ -353,28 +284,6 @@ if (number_of_accepted == 0 || number_of_deferrals == 0) {
 tic("Training svm")
 
 # Read or learn hyperparameters
-
-#message(params$hyperparameters)
-
-# if (TRUE) {
-#   quick <- TRUE
-#   if (quick) {
-#     svm_grid <- expand.grid(degree = c(3:5),
-#                             scale = c(0.1, 1),
-#                             C = c(1, 2))
-#   } else {
-#     svm_grid <- expand.grid(degree = c(3:5),
-#                             scale = c(0.001, 0.01, 0.1, 1),
-#                             C = seq(1,5,by=0.25))  
-#   }
-#   svm_hyperparameters <- learn_hyperparameters(train, "svmPoly", svm_grid, number_of_cores)
-# } else {
-#   hyperparameters <- read_hyperparameters(params$hyperparameters)
-#   svm_hyperparameters <- hyperparameters %>% filter(Model=="svm", Sex==params$sex) %>% pull(Value)
-#   svm_hyperparameters <- svm_hyperparameters[[1]]
-# }
-# 
-# message(svm_hyperparameters)
 
 
 
@@ -465,7 +374,6 @@ if (use_pdf) {
   res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
 } else {
   res <- compute_shap_values_fastshap(svmFit_roc, validate, variables, seed=global_random_seed) 
-  #res <- compute_shap_values(svmFit_roc$finalModel, train, validate, variables)
   saveRDS(res, shap_filename)
 }
 
@@ -478,8 +386,6 @@ if (!is.null(res)) {
   
   shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)
   shap_plot_rf2 <- plot_shap_values(res, variables_renamed)
-  #ive_rf <- shapper::shap(exp_rf, new_observation = validate2[1,], nsamples=50)
-  #plot(ive_rf)
   plot(shap_plot_rf)
   plot(shap_plot_rf2)
 }
@@ -488,11 +394,9 @@ if (!is.null(res)) {
 ```{r Create variable importances plot, eval=FALSE}
 message("test0")
 svmFit_rocImp <- caret::varImp(svmFit_roc, scale = FALSE)
-#plot(rrfFit_rocImp)
 
 message("test1")
-#rrfFit.varimp <- as_tibble(cbind(rownames(rrfFit_rocImp$importance), rrfFit_rocImp$importance))
-svm_variable_importances <- rownames_to_column(svmFit_rocImp$importance)  # Cleaner than above
+svm_variable_importances <- rownames_to_column(svmFit_rocImp$importance)
 message("test2")
 
 colnames(svm_variable_importances) <- c("Variable", "Importance")
@@ -509,16 +413,6 @@ message("test5")
 
 # Fix some pretty variables names
 
-# rf_variable_importances <- rf_variable_importances %>%
-#   mutate(Pretty = case_when(
-#     Variable == "previous_Hb_defTRUE" ~ "Previous donation deferred",
-#     Variable == "warm_seasonTRUE"     ~ "Warm season",
-#     Variable == "smokingTRUE"         ~ "Smoking",
-#     Variable == "RNF43_mutantTRUE"    ~ "RNF43 minor allele",
-#     Variable == "sexfemale"       ~ "Sex",
-#     Variable == "nb_donat"            ~ "Number of donations",
-#     TRUE                              ~ Pretty
-#   ))
 
 variables_renamed <- FALSE
 svm_variable_importances <- prettify_variables(svm_variable_importances, variables_renamed)
@@ -533,8 +427,6 @@ svm_variable_importances_plot <- svm_variable_importances %>%
   coord_flip() +
   xlab("Variable")
 
-#filename="../results/rrfFit_roc_importance.pdf"
-#ggsave(filename=filename, varimp.plot, width = 180,  height = 80,units="mm", dpi=600, scale=1.0)
 svm_variable_importances_plot
 ```
 
@@ -590,8 +482,6 @@ plot_metric(cp_validate, conf_lvl = 0.95)
 source("validate_stan_fit.R")
 id <- sprintf("svm-%s", params$sex)
 
-#message(nrow(validate))
-#message(class(prediction_probs))
 
 df <- tibble(
   id=id,
@@ -620,8 +510,6 @@ if (!is.null(params$prediction_table_file)) {
 
 number_of_deferrals <- validate %>% filter(Hb_deferral=="Accepted") %>% nrow()
 number_of_accepted <- validate %>% filter(Hb_deferral=="Deferred") %>% nrow()
-# stopifnot(number_of_deferrals > 0)
-# stopifnot(number_of_accepted > 0)
 if (number_of_accepted == 0 || number_of_deferrals == 0) {
   stop(sprintf("Not all classes are present in the validation data:\nnumber of deferrals = %i, number of accepted = %i\n", number_of_deferrals,
                number_of_accepted), call.=FALSE)
@@ -662,7 +550,6 @@ if (!is.null(params$summary_table_file)) {
 ```
 
 ```{r Show summary table, results="markup"}
-#cols <- c("Model"="Pretty", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L)", "RMSE (mmol / L)", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 cols <- c("Model"="Pretty", "Sex", "AUROC" = "AUROC value", "AUPR" = "AUPR value", "F1" = "F1 value")
 kbl(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3)) %>% kable_styling()
 ```

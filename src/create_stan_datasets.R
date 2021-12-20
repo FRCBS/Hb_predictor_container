@@ -163,15 +163,8 @@ create_stan_datasets <- function(data, datadir, dumpdir, #id, #hlen=NULL, hlen_e
   
 
   
-  #setwd("~/FRCBS/interval_prediction/src/")
   source(file = "helper_functions.R")
   
-  # Load the male and female datasets
-  #load("../data/split_data_full.RData")
-  #load("~/FRCBS/interval_prediction/data/full_data_preprocessed.rdata")
-  #data <- fulldata_preprocessed
-  
-  #set.seed(123)
   message(sprintf("Full dataset size: %i", ndonor(data)))
 
   temp <- data %>% 
@@ -182,41 +175,32 @@ create_stan_datasets <- function(data, datadir, dumpdir, #id, #hlen=NULL, hlen_e
 
   message(sprintf("%s dataset size: %i", sex, ndonor(data)))
 
-  # Take a sample
-  #small <- sample_set(data, sample_fraction)
-  #message(sprintf("%s dataset size after sample_fraction split: %i", sex, ndonor(small)))
-  small <- data
 
-#  stan_preprocessed_objects <- c()  
+
   Hb_index <- which(colnames(data)=="Hb")
   stopifnot(Hb_index == 1)
   if (compute_lmm) {
     stan_preprocessed_filename <- sprintf("%s/stan_preprocessed_datasets_%s_%s.rds", datadir, "lmm", sex)
-    stan.preprocessed.lmm <- stan_preprocess_new(drop_some_fields(small, sex) %>% select(-previous_Hb), 
+    stan.preprocessed.lmm <- stan_preprocess_new(drop_some_fields(data, sex) %>% select(-previous_Hb), 
                                                         Hb_index=Hb_index, #hlen=hlen, hlen_exactly=hlen_exactly, 
                                                         basic_variables=basic_variables, donor_variables = donor_variables, 
                                                  test_data = ! out_of_sample_predictions)
-    #stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.lmm")
     saveRDS(stan.preprocessed.lmm, stan_preprocessed_filename)
   }
   if (compute_dlmm) {
     stan_preprocessed_filename <- sprintf("%s/stan_preprocessed_datasets_%s_%s.rds", datadir, "dlmm", sex)
-    stan.preprocessed.dlmm <- stan_preprocess_icp_new(drop_some_fields(small, sex) %>% select(-Hb_first), 
+    stan.preprocessed.dlmm <- stan_preprocess_icp_new(drop_some_fields(data, sex) %>% select(-Hb_first), 
                                                              Hb_index=Hb_index, #hlen=hlen, hlen_exactly=hlen_exactly, 
                                                              basic_variables=basic_variables_dlmm, donor_variables = donor_variables,
                                                       test_data = ! out_of_sample_predictions)
     saveRDS(stan.preprocessed.dlmm, stan_preprocessed_filename)
-    #stan_preprocessed_objects <- c(stan_preprocessed_objects, "stan.preprocessed.dlmm")
   }
-  #stan_preprocessed_filename <- paste(rdatadir,"stan_preprocessed_datasets_", id, ".RData", sep = '')
-  #save(list=stan_preprocessed_objects, file = stan_preprocessed_filename)
-  
+
   # Create Stan lists
   if (compute_lmm) {
     stan_lists_filename <- sprintf("%s/stan_lists_%s_%s.rds", datadir, "lmm", sex)
     
     stan.lists.lmm <- subset_analyses_create_stan_list(stan.preprocessed.lmm, out_of_sample_predictions = out_of_sample_predictions)
-#    save(stan.lists.lmm, file = paste(rdatadir,"stan_lists_lmm_", id, ".RData", sep = ''))
     saveRDS(stan.lists.lmm, stan_lists_filename)
     rm(stan.lists.lmm)
   }
@@ -225,7 +209,6 @@ create_stan_datasets <- function(data, datadir, dumpdir, #id, #hlen=NULL, hlen_e
   if (compute_dlmm) {
     stan_lists_filename <- sprintf("%s/stan_lists_%s_%s.rds", datadir, "dlmm", sex)
     stan.lists.dlmm <- subset_analyses_create_stan_list(stan.preprocessed.dlmm, icpfix = TRUE, out_of_sample_predictions = out_of_sample_predictions)
-#    save(stan.lists.dlmm, file = paste(rdatadir,"stan_lists_dlmm_", id, ".RData", sep = ''))
     saveRDS(stan.lists.dlmm, stan_lists_filename)
     rm(stan.lists.dlmm)
   }
@@ -234,5 +217,5 @@ create_stan_datasets <- function(data, datadir, dumpdir, #id, #hlen=NULL, hlen_e
 
   
 
-  return(list(small.data=small))  
+  return(list(data=data))  
 }
