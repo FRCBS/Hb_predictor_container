@@ -1819,6 +1819,7 @@ predict_new <- function(model.list, n.samples = 1000, seed) {
   # theta: Slope term for first event donor-specific random effects
   # donor: donor IDs for each measurement
   df <- cbind(model.list$x, y = model.list$y, donor = model.list$donor)
+  # new_donbs matrix has row for each donation. The first columns is mean and the second is stddev
   new_donbs <- matrix(numeric(nrow(df) * 2), ncol = 2)
   
   model.list$sigma_b_mean <- mean(model.list$sigma_b)

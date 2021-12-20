@@ -545,7 +545,7 @@ compute_shap_values_shapr <- function(model, validate, variables, n=100, seed) {
 }
 
 # The nsim parameter seems to have linear effect on running time
-compute_shap_values_fastshap <- function(model, validate, variables, n=1000, seed, nsim=20) {
+compute_shap_values_fastshap <- function(model, validate, variables, n=1000, seed, nsim=100) {
   message("In function compute_shap_values_fastshap")
   set.seed(seed)
   
@@ -561,8 +561,10 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   }
   
   pfun_lmm <- function(object, newdata) {
+    #message(colnames(newdata))
+    #message(head(newdata$donb))
     #message(sprintf("In function pfun_lmm: rows=%i cols=%i", nrow(newdata), ncol(newdata)))
-    result <- as.vector(beta %*% t(as.matrix(newdata)))
+    result <- as.vector(beta %*% t(as.matrix(newdata %>% select(-donb))) + newdata %>% pull(donb))
     return(result)
   }
   
@@ -608,7 +610,7 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
           shap <- fastshap::explain(model, 
                                     X = as.data.frame(validate2), 
                                     #newdata = as.data.frame(validate), 
-                                    #feature_names = setdiff(v, "age"),
+                                    feature_names = setdiff(colnames(validate2), "donb"),
                                     pred_wrapper = pfun, 
                                     nsim = nsim)
         } else {

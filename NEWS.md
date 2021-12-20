@@ -1,3 +1,21 @@
+# Version 0.28 (2021-12-xx)
+
+* Reordered the operations in preprocessing. Preprocessing must be done again, because of this change.
+
+* Optimize the probability threshold that is used to compute the F1 score and the confusion matrix. The threshold 
+  is such that it maximizes the F1 score on the train data. Hopefully this will get rid of the NA F1 scores.
+  
+* Shap value computation of the linear mixed models now working. The results of female DLMM does not
+  look comparable with the regression coefficients, however.
+  
+* Reoptimized Finnish random forest hyperparameters (`mtry`, `nodesize`, `ntree`). Had to modify Caret to
+  allow extra hyperparameters.
+  
+* The id column from file `shap-value.csv` was removed. In addition, the rows in `shap-value.csv` and prediction.csv
+  are permuted. The shap values are computed from a sample of 1000 donors. In file `shap-value.csv` only the normalized
+  variables computed from the sample are shown. So, if there are more than 1000 donors in the test set, the individual data
+  should be messed up enough to prevent finding out the original data or ids.
+
 # Version 0.27 (2021-11-17)
 
 * The number of cores used in parallel computation can now be specified in the user interface.
