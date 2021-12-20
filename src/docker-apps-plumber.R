@@ -93,9 +93,9 @@ model_df <- tribble(
 
 FRCBS_hyperparameters <- tribble(
   ~Model,          ~Sex,     ~Value,
-  "rf",            "male",   list(mtry=4),
-  "rf",            "female", list(mtry=4),
-  "rf",            "both",   list(mtry=4),
+  "rf",            "male",   list(mtry=3, nodesize=3, ntree=500),
+  "rf",            "female", list(mtry=4, nodesize=5, ntree=500),
+  "rf",            "both",   list(mtry=NA, nodesize=NA, ntree=500),
   # "rf",            "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
   # "rf",            "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
   # "rf",            "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),

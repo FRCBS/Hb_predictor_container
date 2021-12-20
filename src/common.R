@@ -186,28 +186,37 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
   #Initialise parallellisation
   # Option outfile="" keeps stdout and stderr, otherwise they are thrown away
   # https://stackoverflow.com/questions/34870249/caret-train-not-outputting-progress
+  # For some reason this doesn't work inside a container
+  message("moi1")
+#  sink(file=stderr(), type="output");   # For some reason this caused problems, but it seems it is not needed after all!
+  message("moi1.1")
+#  cl <- parallel::makePSOCKcluster(cores)
   cl <- parallel::makePSOCKcluster(cores, outfile = "")
+  message("moi2")
   doParallel::registerDoParallel(cl)
+  message("moi3")
   
   
   #Define cross validation
   fitControl <- caret::trainControl(## 4-fold CV
     method = "repeatedcv",
-    number = 4, #how many is good?
+    number = 10, # folds
     ## repeated ten times
-    repeats = 1, #how many is good?
+    repeats = 10, #how many is good?
     verboseIter = TRUE,
     classProbs = TRUE,
     summaryFunction = twoClassSummary
     #savePredictions = TRUE
   )
+  message("moi4")
   
   if (method == "svmPoly") {
     fitControl$sampling <- "up"
   }
+  message("moi5")
   
   #Train
-  sink(file=stderr(), type="output");
+  message("moi6")
   rrfFit_roc_hyper <- caret::train(Hb_deferral ~ ., data = df, 
                                    method = method, 
                                    trControl = fitControl, 
@@ -222,10 +231,10 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
                                    #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
                                    #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
   )
-  sink()
   #save(rrfFit_roc_hyper, file=file)
   parallel::stopCluster(cl)
-  return(as.list(rrfFit_roc_hyper$bestTune))
+#  sink()
+  return(rrfFit_roc_hyper)
 }
 
 data_counts <- function(train, validate) {
@@ -336,7 +345,8 @@ gather_results <- function(df, Id, Model, Pretty, Sex, f1_threshold = 0.5) {
   result <- list()
   result$df <- df
   # Confusion matrix
-  result$confusion_matrix_plot <- create_confusion_matrix_plot(df$original_label, df$score_predicted_label)
+  result$confusion_matrix_plot <- create_confusion_matrix_plot(df$original_label, df$score_predicted_label) +
+    labs(title = "Optimal F1 score cutoff confusion matrix")
   # ROC
   result$roc_plot <- create_roc_new(df$original_label, df$score) #, boot.n=boot.n)
   
@@ -667,7 +677,7 @@ plot_shap_values <- function(df, variables_renamed) {
 
   shap_plot_rf <- res2 %>% 
     mutate(value = if_else(abs(value) <= 3, value, NA_real_)) %>% # mark outliers
-    ggplot(aes(Variable, attribution, color=value)) + 
+    ggplot(aes(fct_rev(Pretty), attribution, color=value)) + 
     #ggplot(aes(Variable, attribution)) + 
     geom_hline(yintercept = 0) +
     ggforce::geom_sina() + 

@@ -45,7 +45,6 @@ r-cran-plumber \
 r-cran-rocr \
 r-cran-furrr \
 r-cran-tictoc \
-r-cran-caret \
 r-cran-entropy \
 r-cran-ggmcmc \
 r-cran-ggthemes \
@@ -54,6 +53,7 @@ r-cran-ranger \
 r-cran-rjson \
 r-cran-kernlab \
 r-cran-doparallel
+#r-cran-caret  # Now installing from my GitHub repo
 
 RUN apt-get update -qq && apt-get -y --no-install-recommends install \
 r-cran-sn \
@@ -66,11 +66,12 @@ r-cran-ggforce \
 r-cran-stringi \
 r-cran-randomforest \
 r-cran-kableextra \
-r-cran-lobstr
+r-cran-lobstr \
+r-cran-devtools
 
 RUN apt-get -y --no-install-recommends install time
 
-# Python is needed for the shapper R package
+# Python is not needed since the shapper R package is not used anymore 
 #RUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev python3.8 python3-pip python3-setuptools python3-dev
 #RUN pip3 install --upgrade pip
 #RUN pip3 install shap

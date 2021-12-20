@@ -401,9 +401,12 @@ if (length(svm_hyperparameters) == 0) {   # Hyperparameters not available for th
   }
 
   set.seed(global_random_seed)
-  svm_hyperparameters <- learn_hyperparameters(train, "svmPoly", svm_grid, number_of_cores)
+  ret <- learn_hyperparameters(train, "svmPoly", svm_grid, number_of_cores)
+  svm_hyperparameters <- as.list(ret$bestTune)
   hyperparameters <- hyperparameters %>% add_row(Model="svm", Sex=params$sex, Value=list(svm_hyperparameters))
   write_hyperparameters(hyperparameters, params$hyperparameters)
+  hyper_fit_filename <- sprintf("/tmp/svm-hyper-fit-%s.rds", params$sex)
+  saveRDS(ret, hyper_fit_filename)
 } else {
   svm_hyperparameters <- svm_hyperparameters[[1]]
 }
