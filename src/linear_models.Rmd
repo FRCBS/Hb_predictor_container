@@ -111,7 +111,7 @@ suppressPackageStartupMessages(library(ggridges))
 suppressPackageStartupMessages(library(ROCR))
 suppressPackageStartupMessages(library(pROC))
 suppressPackageStartupMessages(library(furrr))
-suppressPackageStartupMessages(library(sn))
+#suppressPackageStartupMessages(library(sn))
 library(tidyselect)
 
 # This can measure time a chunk took to execute.
@@ -297,22 +297,22 @@ if (create_datasets_bool) {
     stan_preprocessed_validate_objects <- c()
     if (compute_dlmm) {
       stan_preprocessed_validate_filename <- sprintf("%s/stan_preprocessed_validate_datasets_%s_%s.rds", datadir, "dlmm", params$sex)
-      sl.val.dlmm <- stan_preprocess_icp_new(drop_some_fields(test, params$sex) %>% select(-Hb_first),  
+      stan.preprocessed.validate.dlmm <- stan_preprocess_icp_new(drop_some_fields(test, params$sex) %>% select(-Hb_first),  
                                              basic_variables=basic_variables_dlmm, 
                                              donor_variables = donor_variables, 
                                              test_data = FALSE,
                                              Hb_index=Hb_index)#, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
-      saveRDS(sl.val.dlmm, stan_preprocessed_validate_filename)
+      saveRDS(stan.preprocessed.validate.dlmm, stan_preprocessed_validate_filename)
       #stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.dlmm")
     }
     
     if (compute_lmm) {
       stan_preprocessed_validate_filename <- sprintf("%s/stan_preprocessed_validate_datasets_%s_%s.rds", datadir, "lmm", params$sex)
-      sl.val.lmm <- stan_preprocess_new(drop_some_fields(test, params$sex) %>% select(-previous_Hb),  
+      stan.preprocessed.validate.lmm <- stan_preprocess_new(drop_some_fields(test, params$sex) %>% select(-previous_Hb),  
                                         basic_variables=basic_variables, donor_variables = donor_variables, 
                                         test_data = FALSE,
                                         Hb_index=Hb_index)#, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
-      saveRDS(sl.val.lmm, stan_preprocessed_validate_filename)
+      saveRDS(stan.preprocessed.validate.lmm, stan_preprocessed_validate_filename)
 #      stan_preprocessed_validate_objects <- c(stan_preprocessed_validate_objects, "sl.val.lmm")
     }
   
@@ -455,15 +455,15 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   # Compute predictions on validation data
   if (out_of_sample_predictions) {
     if(Model=="lmm") {
-      sl.val <- sl.val.lmm
+      stan.preprocessed.validate <- stan.preprocessed.validate.lmm
     } else {
-      sl.val <- sl.val.dlmm
+      stan.preprocessed.validate <- stan.preprocessed.validate.dlmm
     }
     oos_prediction_filename <- sprintf("%s/oos_prediction_%s_%s.rds", datadir, Sex, Model)
     if (skip_train) {
       results <- readRDS(oos_prediction_filename)
     } else {
-      pred.list <- create_model_list(fit, type = Model, sl.val)
+      pred.list <- create_model_list(fit, type = Model, stan.preprocessed.validate)
       saveRDS(pred.list, sprintf("%s/pred_list_%s_%s.rds", datadir, Sex, Model))   # Only for debugging, remove me
       #pred.list$type <- Model
       #pred.list$threshold <- normalize_vector(model.params$threshold, sl.val$par_means[["Hb"]], sl.val$par_sds[["Hb"]])     # Added by Jarkko
@@ -474,9 +474,9 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
     
     prediction_matrix <- results$prediction_matrix
     if (Sex == "both") {
-      test_donor_sex <- sl.val$x_train$sex[results$last_events]
+      test_donor_sex <- stan.preprocessed.validate$x_train$sex[results$last_events]
     }
-    sl.val$y_test <- sl.val$y_train[results$last_events]
+    stan.preprocessed.validate$y_test <- stan.preprocessed.validate$y_train[results$last_events]
   } else {
     prediction_matrix <- rstan::extract(fit, pars = c("y_pred"))$y_pred
     if (Sex == "both") {
@@ -528,7 +528,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
     cat(msg)
     message(msg)
 
-    df <- create_result_dataframe(sl.val, prediction_matrix, Hb_cutoff, metric="mean", f1_threshold=f1_threshold)  
+    df <- create_result_dataframe(stan.preprocessed.validate, prediction_matrix, Hb_cutoff, metric="mean", f1_threshold=f1_threshold)  
   } else {
     df <- create_result_dataframe(stan.preprocessed, prediction_matrix, Hb_cutoff, metric="mean")
   }
@@ -553,7 +553,8 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   if (use_pdf) {     
     res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
   } else {
-    res <- compute_shap_values_fastshap(fit, pred.list$x, variables, seed=global_random_seed)
+    last_donations <- pred.list$x[results$last_events,]  # Compute shap values using last donations only, like in other methods
+    res <- compute_shap_values_fastshap(fit, last_donations, variables, seed=global_random_seed)
     #res <- compute_shap_values_shapper(rrfFit_roc$finalModel, train, validate, variables)
     saveRDS(res, shap_filename)
   }

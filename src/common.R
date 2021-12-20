@@ -545,7 +545,7 @@ compute_shap_values_shapr <- function(model, validate, variables, n=100, seed) {
 }
 
 # The nsim parameter seems to have linear effect on running time
-compute_shap_values_fastshap <- function(model, validate, variables, n=1000, seed, nsim=10) {
+compute_shap_values_fastshap <- function(model, validate, variables, n=1000, seed, nsim=20) {
   message("In function compute_shap_values_fastshap")
   set.seed(seed)
   
@@ -555,10 +555,13 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   validate2 <- validate  %>% slice_sample(n=n) %>% select(-any_of(c("Hb_deferral", "Hb")))
 #  }
 
-  pfun_lmm <- function(object, newdata) {
-    message(sprintf("In function pfun_lmm: rows=%i cols=%i", nrow(newdata), ncol(newdata)))
-    t <- as_tibble(rownames_to_column(as.data.frame(rstan::get_posterior_mean(object))))
+  if ("stanfit" %in% class(model)) {
+    t <- as_tibble(rownames_to_column(as.data.frame(rstan::get_posterior_mean(model))))
     beta <- t %>% filter(str_detect(rowname, r"(^beta\[\d+\])")) %>% pull(`mean-all chains`) #select(rowname, mean=`mean-all chains`)
+  }
+  
+  pfun_lmm <- function(object, newdata) {
+    #message(sprintf("In function pfun_lmm: rows=%i cols=%i", nrow(newdata), ncol(newdata)))
     result <- as.vector(beta %*% t(as.matrix(newdata)))
     return(result)
   }
