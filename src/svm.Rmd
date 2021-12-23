@@ -302,6 +302,11 @@ if (length(svm_hyperparameters) == 0) {   # Hyperparameters not available for th
       C = seq(1,5,by=0.25)
     )
   } else {
+    # svm_grid <-  expand.grid(
+    #   degree = c(3:5),
+    #   scale = c(0.001, 0.01, 0.1, 1),
+    #   C = seq(1,5,by=0.25)
+    # )
     svm_grid <-  expand.grid(
       degree = c(3:5),
       scale = c(0.001, 0.01, 0.1, 1),
@@ -310,7 +315,12 @@ if (length(svm_hyperparameters) == 0) {   # Hyperparameters not available for th
   }
 
   set.seed(global_random_seed)
-  ret <- learn_hyperparameters(train, "svmPoly", svm_grid, number_of_cores)
+  ret <- learn_hyperparameters(train, "svmPoly", 
+                               search_grid=svm_grid, 
+                               #search_grid=NULL,
+                               number_of_cores#,
+                               #tuneLength = 5
+                               )
   svm_hyperparameters <- as.list(ret$bestTune)
   hyperparameters <- hyperparameters %>% add_row(Model="svm", Sex=params$sex, Value=list(svm_hyperparameters))
   write_hyperparameters(hyperparameters, params$hyperparameters)

@@ -688,7 +688,7 @@ plot_shap_values <- function(df, variables_renamed) {
     ggforce::geom_sina() + 
     coord_flip() + 
     scale_color_gradient(low="blue", high="red", na.value="black") + 
-    labs(y="Attribution", color="Variable value")
+    labs(x="Variable", y="Attribution", color="Variable value")
   # shap_plot_rf <- res2 %>% ggplot(aes(x=reorder(Pretty, attribution), y=attribution)) +
   #   geom_col(alpha=0.7) + 
   #   coord_flip() + 
