@@ -283,6 +283,7 @@ if (create_datasets_bool) {
                                         test_data = FALSE,
                                         Hb_index=Hb_index)#, hlen=params$hlen, hlen_exactly=params$hlen_exactly)
       saveRDS(stan.preprocessed.validate.lmm, stan_preprocessed_validate_filename)
+    }
   }
 }
 

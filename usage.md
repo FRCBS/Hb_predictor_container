@@ -86,7 +86,13 @@ If it works, download the preprocessed data (`preprocessed.rds`) for later use.
 * Sample size: 10000
 * Minimum donations: 5
 
-Try with at least baseline, random forest, and support vector machine algorithms. If it works, download the `results-0.28.zip` file (version number of the container is part of filename), which contains all results. These results should not contain any individual level data, but it is better to verify that before spreading the file. Send the `summary.csv` file to Marieke (and Jarkko).
+Try with at least baseline, random forest, and support vector machine algorithms. If it works, download the `results-0.28.zip` file (version number of the container is part of filename), which contains all results. 
+
+## Contents of the resulting zip file
+
+The `prediction.csv` file contains original Hb values (in g/L units) and sex of individuals, but no id and the row order is permuted. The `shap-value.csv` file contains the standardized explanatory variables with no id for a random sample of 1000 individuals. Different variables and individuals are on separate rows, and the order of the rows in the file is random. If the number of individuals in the test set is larger than the sample size 1000, then it should be impossible to recover the original, unstandardized variable values, even if one knew the mean and standard deviation of the variables in the original test set.
+
+Verify that no (scrambled) individual level data is included before distributing a file.
 
 ## Mart's help picture
 

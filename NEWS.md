@@ -1,12 +1,11 @@
-# Version 0.28 (2021-12-xx)
+# Version 0.28 (2022-01-04)
 
 * Reordered the operations in preprocessing. Preprocessing must be done again, because of this change.
 
 * Optimize the probability threshold that is used to compute the F1 score and the confusion matrix. The threshold 
   is such that it maximizes the F1 score on the train data. Hopefully this will get rid of the NA F1 scores.
   
-* Shap value computation of the linear mixed models now working. The results of female DLMM does not
-  look comparable with the regression coefficients, however.
+* Shap value computation of the linear mixed models now working.
   
 * Reoptimized Finnish random forest hyperparameters (`mtry`, `nodesize`, `ntree`). Had to modify Caret to
   allow extra hyperparameters.

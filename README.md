@@ -2,7 +2,7 @@
 
 Hemoglobin predictor wrapped in a Docker container. Download
 the docker image with command `docker pull toivoja/hb-predictor`.
-A specific version (0.23) can be downloaded with `docker pull toivoja/hb-predictor:0.23`.
+A specific version (for example 0.23) can be downloaded with `docker pull toivoja/hb-predictor:0.23`.
 
 ## Running the container
 
