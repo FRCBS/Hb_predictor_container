@@ -99,9 +99,12 @@ FRCBS_hyperparameters <- tribble(
   # "rf",            "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
   # "rf",            "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
   # "rf",            "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
-  "svm",           "male",   list(degree=3, scale=0.1, C=5),
-  "svm",           "female", list(degree=3, scale=0.1, C=5),
-  "svm",           "both",   list(degree=3, scale=0.1, C=5)
+  # "svm",           "male",   list(degree=3, scale=0.1, C=5),
+  # "svm",           "female", list(degree=3, scale=0.1, C=5),
+  # "svm",           "both",   list(degree=3, scale=0.1, C=5)
+  "svm",           "male",   list(sigma=0.01, C=0.1),
+  "svm",           "female", list(scale=0.0001, C=100),
+  "svm",           "both",   list(scale=NA, C=NA)
 )
 
 Sanquin_hyperparameters <- FRCBS_hyperparameters

@@ -307,15 +307,20 @@ if (length(svm_hyperparameters) == 0) {   # Hyperparameters not available for th
     #   scale = c(0.001, 0.01, 0.1, 1),
     #   C = seq(1,5,by=0.25)
     # )
+    # svm_grid <-  expand.grid(
+    #   #degree = c(3:5),
+    #   sigma = c(0.001, 0.01, 0.1, 1),
+    #   C = c(0.1, 1, 10, 100)
+    # )
     svm_grid <-  expand.grid(
-      degree = c(3:5),
-      scale = c(0.001, 0.01, 0.1, 1),
-      C = seq(1,5,by=0.25)
+      #degree = c(3:5),
+      C = c(0.01, 0.1, 1, 10, 100, 1000),
+      sigma = c(0.0001, 0.001, 0.01, 0.1)
     )
   }
 
   set.seed(global_random_seed)
-  ret <- learn_hyperparameters(train, "svmPoly", 
+  ret <- learn_hyperparameters(train, "svmRadial", 
                                search_grid=svm_grid, 
                                #search_grid=NULL,
                                number_of_cores#,
@@ -354,7 +359,7 @@ if (use_pdf) {
   set.seed(global_random_seed)
   svmFit_roc <- caret::train(Hb_deferral ~ ., data = as.data.frame(train), 
                              #svmFit_roc <- caret::train(x = train %>% select(-Hb_deferral), y = train %>% pull(Hb_deferral),
-                             method = "svmPoly", 
+                             method = "svmRadial", 
                              trControl = caret::trainControl(method="none", 
                                                              classProbs = TRUE,
                                                              sampling = "up",

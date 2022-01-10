@@ -210,7 +210,7 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
   )
   message("moi4")
   
-  if (method == "svmPoly") {
+  if (method %in% c("svmPoly", "svmRadial")) {
     fitControl$sampling <- "up"
   }
   message("moi5")
