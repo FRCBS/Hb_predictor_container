@@ -12,6 +12,7 @@ params:
   summary_table_file: NULL
   effect_size_table_file: NULL
   prediction_table_file: NULL
+  shap_value_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
   predictive_variables: NULL
@@ -310,7 +311,8 @@ if (out_of_sample_predictions) {
 summary_rows <- list()  # This is used to construct the error table in the end
                    # It has columns Model, MAE, RMSE
 effect_size_rows <- list() # This is for the effect sizes
-prediction_rows <- list() # This is for the effect sizes
+prediction_rows <- list() # This is for the predictions
+shap_rows <- list() # This is for the shap values
 ```
 
 
@@ -508,25 +510,23 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   
   shap_filename <- sprintf("/tmp/shap_values_%s_%s.rds", Model, Sex)
   if (use_pdf) {     
-    res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
+    shap <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
   } else {
     last_donations <- pred.list$x[results$last_events,]  # Compute shap values using last donations only, like in other methods
     last_donations <- last_donations %>% mutate(donb = results$new_donbs[,1])
-    res <- compute_shap_values_fastshap(fit, last_donations, variables, seed=global_random_seed)
+    shap <- compute_shap_values_fastshap(fit, last_donations, variables, seed=global_random_seed) 
+    shap <- shap %>% mutate(Id=Id)
     #res <- compute_shap_values_shapper(rrfFit_roc$finalModel, train, validate, variables)
-    saveRDS(res, shap_filename)
+    saveRDS(shap, shap_filename)
   }
   
-  if (!is.null(res)) {
+  if (!is.null(shap)) {
     
-    if (!is.null(params$shap_value_table_file)) {
-      write_csv(res, params$shap_value_table_file)   # Pass the table to the web app as well
-    }
     
     variables_renamed <- FALSE
     
-    shap_plot_rf <- plot_summary_shap_values(res, variables_renamed)
-    shap_plot_rf2 <- plot_shap_values(res, variables_renamed)
+    shap_plot_rf <- plot_summary_shap_values(shap, variables_renamed)
+    shap_plot_rf2 <- plot_shap_values(shap, variables_renamed)
     plot(shap_plot_rf)
     plot(shap_plot_rf2)
   }
@@ -544,7 +544,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   e <- val$posterior.plot$cis %>% mutate(Id=Id)
   
   saveRDS(val, file = sprintf("%s/raw_result_%s_%s_%s.rds", rawresultdir, Sex, Model, fit_id))
-  return(list(summary=t, effect_size=e, prediction=d, val=val, cp=cp))#, cp_validate=cp_validate))
+  return(list(summary=t, effect_size=e, prediction=d, shap=shap, val=val, cp=cp))#, cp_validate=cp_validate))
 }
 
 ```
@@ -561,6 +561,7 @@ res <- run_linear_model(Id=id, Model = "lmm", Pretty="Linear mixed model", Sex=p
 summary_rows[[length(summary_rows)+1]] <- res$summary
 effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction
+shap_rows[[length(shap_rows)+1]] <- res$shap
 
 val <- res$val
 message("moi1")
@@ -598,6 +599,7 @@ res <- run_linear_model(Id=id, Model = "dlmm", Pretty="Dynamic linear mixed mode
 summary_rows[[length(summary_rows)+1]] <- res$summary
 effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction
+shap_rows[[length(shap_rows)+1]] <- res$shap
 
 val <- res$val
 val$posterior.plot$plot
@@ -622,6 +624,14 @@ if (!is.null(params$effect_size_table_file)) {
 prediction_table <- bind_rows(prediction_rows)
 if (!is.null(params$prediction_table_file)) {
     write_csv(prediction_table, params$prediction_table_file)   # Pass the table to the web app as well
+}
+
+```
+
+```{r}
+shap_table <- bind_rows(shap_rows)
+if (!is.null(params$shap_value_table_file)) {
+  write_csv(shap_table, params$shap_value_table_file)   # Pass the table to the web app as well
 }
 
 ```

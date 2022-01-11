@@ -103,7 +103,7 @@ FRCBS_hyperparameters <- tribble(
   # "svm",           "female", list(degree=3, scale=0.1, C=5),
   # "svm",           "both",   list(degree=3, scale=0.1, C=5)
   "svm",           "male",   list(sigma=0.01, C=0.1),
-  "svm",           "female", list(scale=0.0001, C=100),
+  "svm",           "female", list(sigma=0.0001, C=100),
   "svm",           "both",   list(scale=NA, C=NA)
 )
 
@@ -591,7 +591,7 @@ hb_predictor3 <- function(ws) {
                                      sprintf("/tmp/variable-importance-%s-%s.csv", m, sex))
       myparams["effect_size_table_file"] <- effect_size_filename
       
-      if (m %in% c("rf", "svm")) {
+      if (m %in% c("rf", "svm", "lmm", "dlmm", "both")) {
         shap_value_filename <- sprintf("/tmp/shap-value-%s-%s.csv", m, sex)
         if (file.exists(shap_value_filename))
           file.remove(shap_value_filename)
@@ -679,7 +679,7 @@ hb_predictor3 <- function(ws) {
         variable_importance_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
       }
       
-      if (m %in% c("rf", "svm") && file.exists(shap_value_filename)) {
+      if (m %in% c("rf", "svm", "lmm", "dlmm", "both") && file.exists(shap_value_filename)) {
         shap_value_tables[[paste(m, sex, sep="-")]] <- read_csv(shap_value_filename)
       }
     } # end for sexes
@@ -718,7 +718,7 @@ hb_predictor3 <- function(ws) {
   variable_importance_table <- bind_rows(variable_importance_tables, .id="Id")
   write_excel_csv(variable_importance_table, "../output/variable-importance.csv")
   
-  shap_value_table <- bind_rows(shap_value_tables, .id="Id")
+  shap_value_table <- bind_rows(shap_value_tables)
   write_excel_csv(shap_value_table, "../output/shap-value.csv")
 
   prediction_table <- bind_rows(prediction_tables)
