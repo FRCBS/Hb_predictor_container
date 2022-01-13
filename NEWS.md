@@ -1,3 +1,9 @@
+# Version 0.29 (2022-01-12)
+
+* The shap values of linear models are now really exported to the shap-value.csv file.
+
+* SVM is now using radial kernel instead of polynomial. Also, the Finnish hyperparameters have been optimized again.
+
 # Version 0.28 (2022-01-04)
 
 * Reordered the operations in preprocessing. Preprocessing must be done again, because of this change.
