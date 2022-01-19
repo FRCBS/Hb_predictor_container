@@ -538,6 +538,7 @@ hb_predictor3 <- function(ws) {
   variable_importance_tables <- list()
   prediction_tables <- list()
   shap_value_tables <- list()
+  sizes_tables <- list()
   #details_df <- tibble(id=character(0), pretty=character(0), sex=character(0), html=character(0), pdf=character(0))
   details_dfs <- list()
   
@@ -591,10 +592,13 @@ hb_predictor3 <- function(ws) {
                                      sprintf("/tmp/variable-importance-%s-%s.csv", m, sex))
       myparams["effect_size_table_file"] <- effect_size_filename
       
-      if (m %in% c("rf", "svm", "lmm", "dlmm", "both")) {
+      # Shap values are handled separately since computation of shap values can be turned off from the UI
+      if (m %in% c("rf", "svm", "lmm", "dlmm", "both")) {  # baseline model does not produce shap values
         shap_value_filename <- sprintf("/tmp/shap-value-%s-%s.csv", m, sex)
         if (file.exists(shap_value_filename))
           file.remove(shap_value_filename)
+        if (file.exists(sizes_filename))
+          file.remove(sizes_filename)
         if (file.exists(effect_size_filename))
           file.remove(effect_size_filename)
       } else {
@@ -603,6 +607,9 @@ hb_predictor3 <- function(ws) {
                                
       myparams["shap_value_table_file"] <- shap_value_filename
 
+      sizes_filename <- sprintf("/tmp/sizes-%s-%s.csv", m, sex)
+      myparams["sizes_table_file"] <- sizes_filename
+      
       prediction_filename <- sprintf("/tmp/prediction-%s-%s.csv", m, sex)
       myparams["prediction_table_file"] <- prediction_filename
       
@@ -682,6 +689,8 @@ hb_predictor3 <- function(ws) {
       if (m %in% c("rf", "svm", "lmm", "dlmm", "both") && file.exists(shap_value_filename)) {
         shap_value_tables[[paste(m, sex, sep="-")]] <- read_csv(shap_value_filename)
       }
+      
+      sizes_tables[[paste(m, sex, sep="-")]] <- read_csv(sizes_filename)
     } # end for sexes
   } # end for models
   
@@ -721,6 +730,9 @@ hb_predictor3 <- function(ws) {
   shap_value_table <- bind_rows(shap_value_tables)
   write_excel_csv(shap_value_table, "../output/shap-value.csv")
 
+  sizes_table <- bind_rows(sizes_tables)
+  write_excel_csv(sizes_table, "../output/sizes.csv")
+  
   prediction_table <- bind_rows(prediction_tables)
   prediction_table <- prediction_table %>% slice_sample(prop = 1.0)   # Permute the rows
   write_excel_csv(prediction_table, "../output/prediction.csv")
@@ -732,7 +744,7 @@ hb_predictor3 <- function(ws) {
   message("here5")
   
   # Create a zip package containing all results
-  files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
+  files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "sizes.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
              "exclusions.txt", "hyperparameters.json", "input_parameters.json")
   files <- c(files, basename(result_page_files))
   system(sprintf("cd ../output; zip %s %s", zip_file, paste(files, collapse=" ")))
@@ -792,6 +804,7 @@ hb_predictor <- function(req){
           <li id="effect-size"> <a href="/output/effect-size.csv" target="_blank">Effect size table</a> (CSV)</li>
           <li id="variable-importance"> <a href="/output/variable-importance.csv" target="_blank">Variable importance table</a> (CSV)</li>
           <li id="shap-value"> <a href="/output/shap-value.csv" target="_blank">Shap value table</a> (CSV)</li>
+          <li id="sizes"> <a href="/output/sizes.csv" target="_blank">Dataset sizes table</a> (CSV)</li>
           <li id="prediction"> <a href="/output/prediction.csv" target="_blank">Prediction data</a> (CSV)</li>
           <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
           <li id="exclusions"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>

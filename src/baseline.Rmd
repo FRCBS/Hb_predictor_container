@@ -13,6 +13,7 @@ params:
   effect_size_table_file: NULL
   shap_value_table_file: NULL
   prediction_table_file: NULL
+  sizes_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
   predictive_variables: NULL
@@ -251,6 +252,12 @@ sink(file=stderr(), type="output"); summary(validate); sink()
 train_deferred <- train %>% filter(Hb_deferral == "Deferred")
 validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
 kbl(sizes) %>% kable_styling()
+Id <- sprintf("%s-%s", params$model, params$sex)
+if (!is.null(params$sizes_table_file)) {     
+  sizes <- sizes %>% mutate(Id=Id)
+  write_csv(sizes, params$sizes_table_file)   # Pass the table to the web app as well
+} 
+
 rm(train_deferred)
 rm(validate_deferred)
 ```
@@ -375,10 +382,10 @@ if (!is.null(res)) {
 
 
 ```{r Baseline results, results="hide"}
-id <- sprintf("bl-%s", params$sex)
+#id <- sprintf("bl-%s", params$sex)
 
 
-df <- tibble(id=id,
+df <- tibble(id=Id,
              model="bl",
              sex = validate$sex)
 
@@ -391,7 +398,7 @@ if (!is.null(params$prediction_table_file)) {
 
 
 # Create the plots
-results_baseline <- gather_results(df, Id=id, Model = "bl", Pretty="Baseline", Sex=params$sex)
+results_baseline <- gather_results(df, Id=Id, Model = "bl", Pretty="Baseline", Sex=params$sex)
 
 # Show the plots
 results_baseline$confusion_matrix_plot
