@@ -205,14 +205,15 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
     repeats = 10, #how many is good?
     verboseIter = TRUE,
     classProbs = TRUE,
+    sampling = "smote",
     summaryFunction = twoClassSummary
     #savePredictions = TRUE
   )
   message("moi4")
   
-  if (method %in% c("svmPoly", "svmRadial")) {
-    fitControl$sampling <- "up"
-  }
+#  if (method %in% c("svmPoly", "svmRadial")) {
+#    fitControl$sampling <- "smote"
+#  }
   message("moi5")
   
   #Train

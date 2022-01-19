@@ -364,7 +364,7 @@ if (use_pdf) {
   rrfFit_roc <- readRDS(fit_filename)
 } else {
   set.seed(global_random_seed)
-  n <- as.integer(sum(train$Hb_deferral == "Accepted") / 2)  # oversample to the count of the most common class
+  n <- as.integer(sum(train$Hb_deferral == "Accepted"))  # oversample to the count of the most common class
 
   # If formula is given as the first parameter, then the variables get recoded and renamed:
   # https://stackoverflow.com/questions/30097730/error-when-using-predict-on-a-randomforest-object-trained-with-carets-train
@@ -380,7 +380,7 @@ if (use_pdf) {
                                           # https://stats.stackexchange.com/questions/45705/sampling-with-replacement-in-r-randomforest
                              replace=TRUE,
                              #nodesize=34,
-                             trControl = caret::trainControl(method="none", classProbs = TRUE), 
+                             trControl = caret::trainControl(method="none", classProbs = TRUE, sampling="smote"), 
                              verbose = FALSE, 
                              ## Now specify the exact models 
                              ## to evaluate:
