@@ -79,7 +79,7 @@ knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, results = "hide"
 #knitr::opts_chunk$set(echo=TRUE, message=TRUE)
 #options(warn = 1)
 
-if (knitr::opts_chunk$get("dev") == "pdf") {
+if (!is.null(knitr::opts_chunk$get("dev")) && knitr::opts_chunk$get("dev") == "pdf") {
   knitr::opts_chunk$set(dev="cairo_pdf")
   knitr::opts_current$set(dev="cairo_pdf")
 }
@@ -97,7 +97,6 @@ mode <- params$mode
 
 
 
-number_of_cores <- set_cores_options(params$cores)
 
 
 
@@ -105,6 +104,8 @@ source("helper_functions.R")
 source("validate_stan_fit.R")
 source("enrich_deferrals_rf.R")
 source("common.R")
+
+number_of_cores <- set_cores_options(params$cores)
 
 logger <- new_logger(prefix=sprintf("SVM %s:", params$sex), file="../output/exclusions.txt", silent=use_pdf)
 ```
@@ -362,7 +363,7 @@ if (use_pdf) {
                              method = "svmRadial", 
                              trControl = caret::trainControl(method="none", 
                                                              classProbs = TRUE,
-                                                             sampling = "up",
+                                                             sampling = "smote",
                                                              summaryFunction = twoClassSummary), 
                              verbose = FALSE, 
                              tuneGrid = data.frame(svm_hyperparameters),

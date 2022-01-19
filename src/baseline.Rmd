@@ -266,7 +266,7 @@ logistic_regression <- function(data) {
 train <- caret::upSample(x = train, y = train$Hb_deferral) %>% as_tibble() %>% select(-Class)
 
 
-fit_filename <- sprintf("%s/baseline-fit-%s-%s.rds", datadir, params$model, params$sex)
+fit_filename <- sprintf("/tmp/baseline-fit-%s.rds", params$sex)
 if (skip_train) {
   fit <- readRDS(fit_filename)  
 } else {
