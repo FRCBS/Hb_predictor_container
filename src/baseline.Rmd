@@ -110,13 +110,6 @@ datadir = "../data/rdata/"
 
 rawresultdir = "../data/raw_results/"   # I store plot objects and tables in this directory
 
-# Id for a run. For example files in rawresultdir use this id as part of their name. 
-# Probably I should add a possibility to download raw results from the web interface.
-if (is.null(params$id)) {
-  id <- paste(params$date, params$extra_id, sep="_") 
-} else {
-  id <- params$id
-}
 
 source("helper_functions.R")
 source("validate_stan_fit.R")
@@ -363,6 +356,7 @@ if (use_pdf) {
   res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
 } else {
   res <- compute_shap_values_fastshap(fit, validate, variables, seed=global_random_seed) 
+  res <- res %>% mutate(Id=Id)
   saveRDS(res, shap_filename)
 }
 

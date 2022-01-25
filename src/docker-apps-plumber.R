@@ -576,6 +576,7 @@ hb_predictor3 <- function(ws) {
     #sexess <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
     sexes <- if (stratify_by_sex)  c("male", "female") else c("both")
     for (sex in sexes) {
+      id <- paste(m, sex, sep="-")
       cat(sprintf("Running sex %s\n", sex))
       ws$send(rjson::toJSON(list(type="status", status=sprintf("Running %s %s", ifelse(sex=="both", "", sex), pretty))))
       myparams["sex"] <- sex
@@ -584,28 +585,13 @@ hb_predictor3 <- function(ws) {
                                        sex == "female" ~ female_donation_specific_filename
       )
       
-      temp_filename <- sprintf("/tmp/summary-%s-%s.csv", m, sex)
-      myparams["summary_table_file"] <- temp_filename
+      summary_filename <- sprintf("/tmp/summary-%s-%s.csv", m, sex)
+      myparams["summary_table_file"] <- summary_filename
       
       effect_size_filename <- ifelse(is_linear_model,
                                      sprintf("/tmp/effect-size-%s-%s.csv", m, sex),
                                      sprintf("/tmp/variable-importance-%s-%s.csv", m, sex))
       myparams["effect_size_table_file"] <- effect_size_filename
-      
-      # Shap values are handled separately since computation of shap values can be turned off from the UI
-      if (m %in% c("rf", "svm", "lmm", "dlmm", "both")) {  # baseline model does not produce shap values
-        shap_value_filename <- sprintf("/tmp/shap-value-%s-%s.csv", m, sex)
-        if (file.exists(shap_value_filename))
-          file.remove(shap_value_filename)
-        if (file.exists(sizes_filename))
-          file.remove(sizes_filename)
-        if (file.exists(effect_size_filename))
-          file.remove(effect_size_filename)
-      } else {
-        shap_value_filename <- NULL
-      }
-                               
-      myparams["shap_value_table_file"] <- shap_value_filename
 
       sizes_filename <- sprintf("/tmp/sizes-%s-%s.csv", m, sex)
       myparams["sizes_table_file"] <- sizes_filename
@@ -613,8 +599,22 @@ hb_predictor3 <- function(ws) {
       prediction_filename <- sprintf("/tmp/prediction-%s-%s.csv", m, sex)
       myparams["prediction_table_file"] <- prediction_filename
       
-      #     effect_size_filename <- sprintf("/tmp/effect-size-%s.csv", sex)
-      #     myparams["effect_size_table_file"] <- effect_size_filename
+      shap_value_filename <- sprintf("/tmp/shap-value-%s-%s.csv", m, sex)
+      myparams["shap_value_table_file"] <- shap_value_filename
+
+      # Remove possible old results to avoid confusion if an algorithm errors out
+      if (file.exists(summary_filename))
+        file.remove(summary_filename)
+      if (file.exists(shap_value_filename))
+        file.remove(shap_value_filename)
+      if (file.exists(sizes_filename))
+        file.remove(sizes_filename)
+      if (file.exists(effect_size_filename))
+        file.remove(effect_size_filename)
+      if (file.exists(prediction_filename))
+        file.remove(prediction_filename)
+      
+
       
       now <- lubridate::now()
       error_messages <- tryCatch(
@@ -642,7 +642,7 @@ hb_predictor3 <- function(ws) {
       )
       tm <- lubridate::now() - now
       message(sprintf("%s-%s took %f %s", m, sex, as.numeric(tm), units(tm)))
-      timing <- timing %>% add_row(id=sprintf("%s-%s", m, sex), model=str_to_sentence(pretty), sex=sex, time=as.numeric(tm), unit=units(tm))
+      timing <- timing %>% add_row(id=id, model=str_to_sentence(pretty), sex=sex, time=as.numeric(tm), unit=units(tm))
       ws$send(rjson::toJSON(list(type="timing", timing_table_string = create_timing_table(timing))))
       gc(full=TRUE)
       
@@ -655,16 +655,16 @@ hb_predictor3 <- function(ws) {
       
       message("x1")
       
-      s <- read_csv(temp_filename)
+      s <- read_csv(summary_filename)
       message("test1")
-      summary_tables[[paste(m, sex, sep="-")]] <- s
+      summary_tables[[id]] <- s
       message("test2")
       ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
       
       message("x2")
 
       p <- read_csv(prediction_filename)
-      prediction_tables[[paste(m, sex, sep="-")]] <- p
+      prediction_tables[[id]] <- p
       
       message("x3")
       
@@ -681,16 +681,16 @@ hb_predictor3 <- function(ws) {
       message("x4")
       
       if (is_linear_model) {
-        effect_size_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
+        effect_size_tables[[id]] <- read_csv(effect_size_filename)
       } else if (! m %in% c("dt", "bl") && file.exists(effect_size_filename)) {
-        variable_importance_tables[[paste(m, sex, sep="-")]] <- read_csv(effect_size_filename)
+        variable_importance_tables[[id]] <- read_csv(effect_size_filename)
       }
       
-      if (m %in% c("rf", "svm", "lmm", "dlmm", "both") && file.exists(shap_value_filename)) {
-        shap_value_tables[[paste(m, sex, sep="-")]] <- read_csv(shap_value_filename)
+      if (m %in% c("bl", "rf", "svm", "lmm", "dlmm", "both") && file.exists(shap_value_filename)) {
+        shap_value_tables[[id]] <- read_csv(shap_value_filename)
       }
       
-      sizes_tables[[paste(m, sex, sep="-")]] <- read_csv(sizes_filename)
+      sizes_tables[[id]] <- read_csv(sizes_filename)
     } # end for sexes
   } # end for models
   
@@ -721,16 +721,16 @@ hb_predictor3 <- function(ws) {
   
   message("here3")
   
-  effect_size_table <- bind_rows(effect_size_tables)
+  effect_size_table <- bind_rows(effect_size_tables) %>% relocate(Id)
   write_excel_csv(effect_size_table, "../output/effect-size.csv")
   
   variable_importance_table <- bind_rows(variable_importance_tables, .id="Id")
   write_excel_csv(variable_importance_table, "../output/variable-importance.csv")
   
-  shap_value_table <- bind_rows(shap_value_tables)
+  shap_value_table <- bind_rows(shap_value_tables) %>% relocate(Id)
   write_excel_csv(shap_value_table, "../output/shap-value.csv")
 
-  sizes_table <- bind_rows(sizes_tables)
+  sizes_table <- bind_rows(sizes_tables) %>% relocate(Id)
   write_excel_csv(sizes_table, "../output/sizes.csv")
   
   prediction_table <- bind_rows(prediction_tables)

@@ -248,7 +248,7 @@ train <- additional_preprocess(train_orig, c(variables, "label"), logger=logger2
 
 logger2$prefix <- paste(logger$prefix, "test:")
 validate <- additional_preprocess(test, c(variables, "Hb", "sex"), logger=logger2) # We want to include Hb and sex to the prediction result table
-write_csv(validate, "../output/validate.csv")
+#write_csv(validate, "../output/validate.csv")
 rm(logger2)
 
 ```
