@@ -721,16 +721,24 @@ hb_predictor3 <- function(ws) {
   
   message("here3")
   
-  effect_size_table <- bind_rows(effect_size_tables) %>% relocate(Id)
+  effect_size_table <- bind_rows(effect_size_tables) 
+  if ("Id" %in% colnames(effect_size_table))
+    effect_size_table <- effect_size_table%>% relocate("Id")
   write_excel_csv(effect_size_table, "../output/effect-size.csv")
   
   variable_importance_table <- bind_rows(variable_importance_tables, .id="Id")
+  if ("Id" %in% colnames(variable_importance_table))
+    variable_importance_table <- variable_importance_table%>% relocate("Id")
   write_excel_csv(variable_importance_table, "../output/variable-importance.csv")
   
-  shap_value_table <- bind_rows(shap_value_tables) %>% relocate(Id)
+  shap_value_table <- bind_rows(shap_value_tables)
+  if ("Id" %in% colnames(shap_value_table))
+    shap_value_table <- shap_value_table%>% relocate("Id")
   write_excel_csv(shap_value_table, "../output/shap-value.csv")
 
-  sizes_table <- bind_rows(sizes_tables) %>% relocate(Id)
+  sizes_table <- bind_rows(sizes_tables)
+  if ("Id" %in% colnames(sizes_table))
+    sizes_table <- sizes_table%>% relocate("Id")
   write_excel_csv(sizes_table, "../output/sizes.csv")
   
   prediction_table <- bind_rows(prediction_tables)
