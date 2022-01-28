@@ -459,20 +459,33 @@ svm_variable_importances_plot
 ```{r Predict deferral classes and probabilities}
 
 
-# Predicted labels
-prediction_train_labels    <- predict(svmFit_roc, newdata = train)
-prediction_validate_labels <- predict(svmFit_roc, newdata = validate)
 
-# Predicted probabilities
 if (use_decision_value_with_svm) {
+  # Predicted probabilities
   # These dataframes contain only column Deferred
+  message("j1")
   prediction_train_probs    <- as.data.frame(my_predict(svmFit_roc, newdata = train, type="decision"))  %>% set_colnames("Deferred")
+  message("j2")
   prediction_validate_probs <- as.data.frame(my_predict(svmFit_roc, newdata = validate, type="decision")) %>% set_colnames("Deferred")
+  # Predicted labels
+  message("j3")
+  prediction_train_labels    <- my_predict(svmFit_roc, newdata = train, type="response")
+  message("j4")
+  prediction_validate_labels <- my_predict(svmFit_roc, newdata = validate, type="response")
 } else {
+  # Predicted probabilities
   # These dataframes contain columns Deferred and Accepted
+  message("j5")
   prediction_train_probs    <- as.data.frame(predict(svmFit_roc, newdata = train, type="prob"))
+  message("j6")
   prediction_validate_probs <- as.data.frame(predict(svmFit_roc, newdata = validate, type="prob"))
+  # Predicted labels
+  message("j7")
+  prediction_train_labels    <- predict(svmFit_roc, newdata = train)
+  message("j8")
+  prediction_validate_labels <- predict(svmFit_roc, newdata = validate)
 }
+message("j8")
 
 if (any(is.na(prediction_validate_probs$Deferred) | 
         ("Accepted" %in% colnames(prediction_validate_probs) & is.na(prediction_validate_probs$Accepted)))) {
