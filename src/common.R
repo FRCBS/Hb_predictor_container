@@ -545,6 +545,19 @@ compute_shap_values_shapr <- function(model, validate, variables, n=100, seed) {
   return(res)
 }
 
+# Caret's predict method only allows type to be "prob" or "raw.
+# We will dig out the ksvm fit object from Caret's fit object and
+# call its predict method directly.
+my_predict <- function(fit, newdata, type="response") {
+  stopifnot("train" %in% class(fit) && "ksvm" %in% class(fit$finalModel))
+  newdata <- predict(fit$preProcess, newdata)  # Preprocess the data the same way Caret does
+  newdata <- newdata %>% select(-any_of(c("sex", "Hb", "Hb_deferral"))) 
+  res <- predict(fit$finalModel, newdata=newdata, type=type) # Call underlying object's predict method
+  return(res)
+}
+
+use_decision_value_with_svm <- TRUE
+
 # The nsim parameter seems to have linear effect on running time
 compute_shap_values_fastshap <- function(model, validate, variables, n=1000, seed, nsim=100) {
   message("In function compute_shap_values_fastshap")
@@ -573,10 +586,16 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
     predict(object, newdata = newdata, type="prob")[,2]
   }
   
+  # Not used currently as this doesn't perform preprocessing on newdata
   pfun_ksvm <- function(object, newdata) {
     predict(object, newdata = newdata, type="probabilities")[,2]
   }
 
+  # This uses decision values instead of probabilities
+  pfun_ksvm_decision <- function(object, newdata) {
+    my_predict(object, newdata = newdata, type="decision")[,1]
+  }
+  
   # This is Caret's wrapper model
   pfun_train <- function(object, newdata) {
     predict(object, newdata = newdata, type="prob")[,2]
@@ -588,10 +607,14 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   } else if ("ksvm" %in% class(model)) {
     pfun <- pfun_ksvm
   } else if ("train" %in% class(model)) {
-    pfun <- pfun_train
+    if (use_decision_value_with_svm && "ksvm" %in% class(model$finalModel)) {
+      pfun <- pfun_ksvm_decision
+    } else pfun <- pfun_train
   } else if ("stanfit" %in% class(model)) {
     pfun <- pfun_lmm
   }
+  
+  #print(pfun)
   
   result_code <- tryCatch(
     error = function(cnd) {

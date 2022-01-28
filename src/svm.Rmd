@@ -462,11 +462,20 @@ svm_variable_importances_plot
 # Predicted labels
 prediction_train_labels    <- predict(svmFit_roc, newdata = train)
 prediction_validate_labels <- predict(svmFit_roc, newdata = validate)
-# Predicted probabilities
-prediction_train_probs    <- as.data.frame(predict(svmFit_roc, newdata = train, type="prob"))
-prediction_validate_probs <- as.data.frame(predict(svmFit_roc, newdata = validate, type="prob"))
 
-if (any(is.na(prediction_validate_probs$Deferred) | is.na(prediction_validate_probs$Accepted))) {
+# Predicted probabilities
+if (use_decision_value_with_svm) {
+  # These dataframes contain only column Deferred
+  prediction_train_probs    <- as.data.frame(my_predict(svmFit_roc, newdata = train, type="decision"))  %>% set_colnames("Deferred")
+  prediction_validate_probs <- as.data.frame(my_predict(svmFit_roc, newdata = validate, type="decision")) %>% set_colnames("Deferred")
+} else {
+  # These dataframes contain columns Deferred and Accepted
+  prediction_train_probs    <- as.data.frame(predict(svmFit_roc, newdata = train, type="prob"))
+  prediction_validate_probs <- as.data.frame(predict(svmFit_roc, newdata = validate, type="prob"))
+}
+
+if (any(is.na(prediction_validate_probs$Deferred) | 
+        ("Accepted" %in% colnames(prediction_validate_probs) & is.na(prediction_validate_probs$Accepted)))) {
   stop("Predict function failed. You could try rerunning with a different seed")
 }
 
