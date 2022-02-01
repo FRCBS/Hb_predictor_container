@@ -332,7 +332,7 @@ if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for thi
   }
     
   set.seed(global_random_seed)
-  n <- sum(train$Hb_deferral == "Accepted") / 2  # oversample to the count of the most common class
+  n <- sum(train$Hb_deferral == "Accepted")   # oversample to the count of the most common class
   ret <- learn_hyperparameters(df = train, method = "rf", search_grid = rf_grid, cores = number_of_cores,
                                               strata=train$Hb_deferral,
                                               sampsize=n,

@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.29-testing"
+container_version="0.30-testing"
 cat(container_version, file = "../output/version.txt")
 zip_file <- sprintf("results-%s.zip", container_version)
 
@@ -756,6 +756,10 @@ hb_predictor3 <- function(ws) {
              "exclusions.txt", "hyperparameters.json", "input_parameters.json")
   files <- c(files, basename(result_page_files))
   system(sprintf("cd ../output; zip %s %s", zip_file, paste(files, collapse=" ")))
+
+  # Another zip file that contains all fitted models and train/validate data
+  cmd <- sprintf("cd /tmp; zip tmp_rds.zip *.rds")
+  system(cmd)
   
   message("here6")
   message("Ready")

@@ -1,3 +1,17 @@
+# Version 0.30 (2022-02-xx)
+
+* Tried to fix the output problem of LMMs in windows.
+
+* Use SMOTE sampling instead of upsampling in RF and SVM to handle class imbalance.
+
+* Export dataset sizes to sizes.cvs file.
+
+* Use SVM's raw decision values instead of probabilities, because Platt scaling randomly fails. 
+
+* To ease debugging one can download (most of) the fitted models and their train/validate input datas with
+  `docker cp nameoftherunningcontainer: /tmp/tmp_rds.zip .`
+  Note that these container private data.
+
 # Version 0.29 (2022-01-12)
 
 * The shap values of linear models are now really exported to the shap-value.csv file.
