@@ -5,6 +5,7 @@ suppressPackageStartupMessages(library(shapr))
 suppressPackageStartupMessages(library(fastshap))
 suppressPackageStartupMessages(library(ggforce))
 suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(ranger))
 
 descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
                                 "year", "warm_season", "consecutive_deferrals", "recent_donations",
@@ -586,6 +587,10 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
     predict(object, newdata = newdata, type="prob")[,2]
   }
   
+  pfun_ranger <- function(object, newdata) {
+    predict(object, data = newdata, type="response")$predictions[,"Deferred"]
+  }
+
   # Not used currently as this doesn't perform preprocessing on newdata
   pfun_ksvm <- function(object, newdata) {
     predict(object, newdata = newdata, type="probabilities")[,2]
@@ -606,6 +611,8 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
     pfun <- pfun_randomForest
   } else if ("ksvm" %in% class(model)) {
     pfun <- pfun_ksvm
+  } else if ("ranger" %in% class(model)) {
+    pfun <- pfun_ranger
   } else if ("train" %in% class(model)) {
     if (use_decision_value_with_svm && "ksvm" %in% class(model$finalModel)) {
       pfun <- pfun_ksvm_decision

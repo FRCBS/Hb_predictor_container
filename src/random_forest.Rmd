@@ -306,37 +306,61 @@ hyperparameters <- read_hyperparameters(params$hyperparameters)
 message("here3")
 rf_hyperparameters <- hyperparameters %>% filter(Model=="rf", Sex==params$sex) %>% pull(Value)
 message("here4")
+rf_method <- "ranger"  # This uses ranger::ranger
+#rf_method <- "rf"     # This uses randomForest::randomForest
+if (rf_method == "ranger") {
+  strata <- NULL
+  sampsize <- NULL
+} else {
+  strata <- train$Hb_deferral
+  sampsize <- sum(train$Hb_deferral == "Accepted")   # oversample to the count of the most common class
+}
+
 if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for this model yet
+  #https://stats.stackexchange.com/questions/158583/what-does-node-size-refer-to-in-the-random-forest/
+  #max.depth =c(1:10) # this is not available
   #Define search grid
   quick <- FALSE
   if (quick) {
     # Small grid for testing purposes
+    mtry = c(3:5)     
+    min.node.size = seq(30,40)
+    num.trees = 500
+    splitrule=c("extratrees","hellinger")
+  } else {
+    # 2022-02-03:
+    mtry <- c(3)
+    min.node.size <- seq(1, 501, 50)
+    splitrule=c("gini", "extratrees","hellinger")
+    # 2022-02-01:
+    # mtry <- c(3:8)
+    # min.node.size <- seq(1, 101, 10)
+    # splitrule=c("gini", "extratrees","hellinger")
+    num.trees <- 500
+  }
+  if (rf_method == "ranger") {
     rf_grid <-  expand.grid(
-      mtry = c(3:5),      
-      num.trees = 500
-
-      #splitrule=c("extratrees","hellinger"),
-      #min.node.size = seq(30,40)
+      mtry = mtry,
+      min.node.size = min.node.size,
+      num.trees = num.trees,
+      splitrule=splitrule
     )
   } else {
     rf_grid <-  expand.grid(
-      mtry = c(3:8),
-      nodesize = seq(1, 39, 2),  # Minimum node size
-      ntree = 500
-      #splitrule=c("gini", "extratrees","hellinger"),
-      #min.node.size = seq(3,39,3) #what kind of range is needed?
-      #min.node.size = seq(1, 60, 5)
-      #https://stats.stackexchange.com/questions/158583/what-does-node-size-refer-to-in-the-random-forest/
-      #max.depth =c(1:10) # this is not available
+      mtry = mtry,
+      nodesize = min.node.size,  # Minimum node size
+      ntree = num.trees
     )
   }
-    
+  
   set.seed(global_random_seed)
-  n <- sum(train$Hb_deferral == "Accepted")   # oversample to the count of the most common class
-  ret <- learn_hyperparameters(df = train, method = "rf", search_grid = rf_grid, cores = number_of_cores,
-                                              strata=train$Hb_deferral,
-                                              sampsize=n,
-                                              replace=TRUE)
+  ret <- learn_hyperparameters(df = train, 
+                               method = rf_method,
+                               search_grid = rf_grid, 
+                               cores = number_of_cores,
+                               strata=strata,
+                               sampsize=sampsize,
+                               replace=TRUE)
   rf_hyperparameters <- as.list(ret$bestTune)
   hyperparameters <- hyperparameters %>% add_row(Model="rf", Sex=params$sex, Value=list(rf_hyperparameters))
   write_hyperparameters(hyperparameters, params$hyperparameters)
@@ -351,8 +375,8 @@ train <- train %>% select(-label)   # Not needed anymore
 
 message("here6")
 
-train    <- train    %>% mutate(across(intersect(c("warm_season", "previous_Hb_def"), names(train)), as.integer))   ## POISTA, vain testausta varten 
-validate <- validate %>% mutate(across(intersect(c("warm_season", "previous_Hb_def"), names(validate)), as.integer))   ## POISTA, vain testatusta varten 
+train    <- train    %>% mutate(across(any_of(c("warm_season", "previous_Hb_def")), as.integer))   ## POISTA, vain testausta varten 
+validate <- validate %>% mutate(across(any_of(c("warm_season", "previous_Hb_def")), as.integer))   ## POISTA, vain testatusta varten 
 message("here7")
 
 saveRDS(train, file=sprintf("/tmp/rf-train-%s.rds", params$sex))
@@ -364,17 +388,17 @@ if (use_pdf) {
   rrfFit_roc <- readRDS(fit_filename)
 } else {
   set.seed(global_random_seed)
-  n <- as.integer(sum(train$Hb_deferral == "Accepted"))  # oversample to the count of the most common class
+  #n <- as.integer(sum(train$Hb_deferral == "Accepted"))  # oversample to the count of the most common class
 
   # If formula is given as the first parameter, then the variables get recoded and renamed:
   # https://stackoverflow.com/questions/30097730/error-when-using-predict-on-a-randomforest-object-trained-with-carets-train
   #rrfFit_roc <- caret::train(Hb_deferral ~ ., data = train, 
   message("here9")
   rrfFit_roc <- caret::train(x = as.data.frame(train %>% select(-Hb_deferral)), y = train %>% pull(Hb_deferral),
-                             method = "rf", 
-                             #method = "ranger", 
-                             strata=train$Hb_deferral,
-                             sampsize=n,  # I start to think that this doesn't do stratified sampling.
+                             method = rf_method, 
+                             strata=strata,
+                             sampsize=sampsize,  
+                             # I start to think that this doesn't do stratified sampling.
                                           # For it 'samplesize=(n, n)' should be used, but the algorithm
                                           # doesn't allow oversampling, event if replace==TRUE. See
                                           # https://stats.stackexchange.com/questions/45705/sampling-with-replacement-in-r-randomforest
@@ -389,7 +413,7 @@ if (use_pdf) {
                              #tuneGrid = tibble(mtry=3, splitrule="gini", min.node.size=10),
                              #metric="ROC",
                              #should we use Kappa or ROC?
-                             importance = TRUE
+                             importance = if (rf_method == "rf") TRUE else "permutation"
                              #https://stackoverflow.com/questions/18578861/variable-importance-using-the-caret-package-error-randomforest-algorithm
                              #should we use , ’impurity’, ’impurity_corrected’, ’permutation’ ?
   )
