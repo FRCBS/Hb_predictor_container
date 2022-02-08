@@ -329,11 +329,12 @@ if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for thi
     splitrule=c("extratrees","hellinger")
   } else {
     # 2022-02-03:
-    mtry <- c(3)
-    min.node.size <- seq(1, 501, 50)
+    #mtry <- c(3)
+    mtry <- c(3:8)
+    #min.node.size <- seq(1, 501, 50)
+    min.node.size <- seq(1, 5001, 250)
     splitrule=c("gini", "extratrees","hellinger")
     # 2022-02-01:
-    # mtry <- c(3:8)
     # min.node.size <- seq(1, 101, 10)
     # splitrule=c("gini", "extratrees","hellinger")
     num.trees <- 500
