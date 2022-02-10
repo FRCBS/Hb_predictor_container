@@ -10,7 +10,7 @@ A specific version (for example 0.23) can be downloaded with `docker pull toivoj
 
 You can run the final image using
 
-```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor```  
+```docker container run -it --rm -p 127.0.0.1:8080:8080 toivoja/hb-predictor```  
 
 Then go to the following address in the browser:
 

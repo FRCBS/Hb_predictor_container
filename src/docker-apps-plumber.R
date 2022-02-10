@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.30-testing"
+container_version="0.30"
 cat(container_version, file = "../output/version.txt")
 zip_file <- sprintf("results-%s.zip", container_version)
 
@@ -93,17 +93,17 @@ model_df <- tribble(
 
 FRCBS_hyperparameters <- tribble(
   ~Model,          ~Sex,     ~Value,
-  "rf",            "male",   list(mtry=3, nodesize=3, ntree=500),
-  "rf",            "female", list(mtry=4, nodesize=5, ntree=500),
-  "rf",            "both",   list(mtry=NA, nodesize=NA, ntree=500),
+  "rf",            "male",   list(mtry=3, min.node.size=501, num.trees=500, splitrule="extratrees"),
+  "rf",            "female", list(mtry=4, min.node.size=751, num.trees=500, splitrule="extratrees"),
+  "rf",            "both",   list(mtry=NA, min.node.size=NA, num.trees=500, splitrule=NA),
   # "rf",            "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
   # "rf",            "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
   # "rf",            "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
   # "svm",           "male",   list(degree=3, scale=0.1, C=5),
   # "svm",           "female", list(degree=3, scale=0.1, C=5),
   # "svm",           "both",   list(degree=3, scale=0.1, C=5)
-  "svm",           "male",   list(sigma=0.01, C=0.1),
-  "svm",           "female", list(sigma=0.0001, C=100),
+  "svm",           "male",   list(sigma=0.0001, C=100),
+  "svm",           "female", list(sigma=0.0001, C=10),
   "svm",           "both",   list(scale=NA, C=NA)
 )
 

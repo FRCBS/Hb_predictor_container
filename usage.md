@@ -5,8 +5,9 @@
 Download
 the docker image with command `docker pull toivoja/hb-predictor`.
 A specific version (for example 0.23) can be downloaded with `docker pull toivoja/hb-predictor:0.23`.
+Start the container with the following command:
 
-```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor```  
+```docker container run -it --rm -p 127.0.0.1:8080:8080 toivoja/hb-predictor```  
 
 Then go to the following address in the browser:
 
@@ -15,7 +16,7 @@ http://localhost:8080/hb-predictor
 Stop the computation (and the running container) by pressing control-c.
 
 If you want to run a specific version of the container, use the form
-```docker container run -it --rm -p 8080:8080 toivoja/hb-predictor:0.23```  
+```docker container run -it --rm -p 127.0.0.1:8080:8080 toivoja/hb-predictor:0.23```  
 The version of the container is shown in red in the top right corner of the web page.
 
 The input data to the container is two dataframes: one for donors and the other for donations.

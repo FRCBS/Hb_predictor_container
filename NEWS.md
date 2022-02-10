@@ -1,4 +1,8 @@
-# Version 0.30 (2022-02-xx)
+# Version 0.30 (2022-02-10)
+
+* The Finnish hyperparameters have now been reoptimized.
+
+* Now using package `ranger` instead of `randomForest` for random forests.
 
 * Tried to fix the output problem of LMMs in windows.
 
