@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.30"
+container_version="0.31"
 cat(container_version, file = "../output/version.txt")
 zip_file <- sprintf("results-%s.zip", container_version)
 
@@ -36,6 +36,13 @@ is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) 
 
 global_random_seed <- default_seed
 hlen_exactly <- FALSE
+
+# Show the sizes of all objects in the global environment
+get_global_object_sizes <- function() {
+  s <- lobstr::obj_sizes(!!!as.list(rlang::global_env()))
+  t <- tibble(object=names(s), bytes=as.numeric(s), isfunction=map_lgl(object, ~ is.function(get(.x))))
+  return(arrange(t, isfunction, desc(bytes)))
+}
 
 # Show metadata about an uploaded file
 get_info <- function(x) {
@@ -120,16 +127,26 @@ empty_hyperparameters <- tibble(Model="dummy", Sex="dummy", Value=list(list()))
 #' @serializer json
 hb_predictor2 <- function(req){
   cat("In hb_predictor2 function\n")
+  
+  ###################################
+  #
+  # Information about the environment
+  #
+  ###################################
+  
   cat(sprintf("Container version is %s\n", container_version))
   if (Sys.getenv("TZ") == "") {
     Sys.setenv("TZ"="Europe/Helsinki")
   }
+  
   # How much memory is available/used
   system("free -h")
   
   # How many cores are available
   cat(sprintf("Number of available cores: %i\n", parallel::detectCores()))
 
+  print(sessionInfo())
+  
   ################################################
   #  
   # Parse uploaded files and other form parameters
@@ -765,6 +782,8 @@ hb_predictor3 <- function(ws) {
   message("Ready")
   
   ws$send(rjson::toJSON(list(type="status", status="Ready")))
+  
+  print(get_global_object_sizes())
   
   details_df <- bind_rows(details_dfs)
   return(list(type="final", summary_table=as.character(summary_table_string), details_df = purrr::transpose(details_df)))

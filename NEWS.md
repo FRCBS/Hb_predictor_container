@@ -1,3 +1,7 @@
+# Version 0.31 (2022-03-03)
+
+* Reduced the memory usage dramatically in the LMM model.
+
 # Version 0.30 (2022-02-10)
 
 * The Finnish hyperparameters have now been reoptimized.

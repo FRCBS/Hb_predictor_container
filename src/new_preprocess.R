@@ -3,7 +3,7 @@ suppressPackageStartupMessages(library(tidyverse, quietly = TRUE))
 suppressPackageStartupMessages(library(lubridate, quietly = TRUE))
 suppressPackageStartupMessages(library(tictoc, quietly = TRUE))
 
-source("helper_functions.R")  # For hours_to_numeric
+#source("helper_functions.R")  # For hours_to_numeric
 source("common.R") # For new_logger
 
 compute_donations_counts <- FALSE
@@ -697,16 +697,13 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
     folds <- createFolds(1:nrow(donors), k = cores, list = TRUE, returnTrain = FALSE)
     options(future.globals.maxSize = 1.5e9)  # This is the maximum amount of data that can be passed to workers.
     future::plan(multicore, workers = cores)  # Multicore does not work with Rstudio. Multisession causes problems with logging
-    data <- furrr::future_map2_dfr(folds, loggers, 
-                                   function(indices, logger) helper(donations, donors[indices,], logger), 
-                                   .options =  furrr_options(seed=TRUE)
-                                   )
+    data <- furrr::future_map2_dfr(folds, loggers,
+                                   function(indices, logger) {
+				     helper(donations, donors[indices,], logger)},
+                                    .options = furrr_options(seed=TRUE)
+                                  )
   }
   toc()
-  # tic()
-  # data <- decorate_data(data, southern_hemisphere, logger)
-  # toc()
-  # toc()
   return(data)
 }
 

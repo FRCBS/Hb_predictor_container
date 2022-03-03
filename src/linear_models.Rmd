@@ -399,9 +399,10 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   #cat("1\n")
   message("1")
   sprintf("%s/stan_preprocessed_validate_datasets_%s_%s.rds", datadir, "dlmm", Sex)
-  stan_fit_file <- sprintf("%s/model_%s_%s.rds", stanfitpath, Model, Sex)
+  #stan_fit_file <- sprintf("%s/model_%s_%s.rds", stanfitpath, Model, Sex)
+  stan_fit_filename <- sprintf("/tmp/%s-fit-%s.rds", Model, Sex)
   if (skip_train == TRUE) {
-    fit <- readRDS(stan_fit_file)
+    fit <- readRDS(stan_fit_filename)
   } else {
     #sink(file=stderr(), type="output")  # Let's see if this brings the progress bars visible
     fit <- stan(file = stan_model, 
@@ -413,8 +414,9 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
                 seed = global_random_seed,
                 control = list(max_treedepth = 12))
     #sink()
-    saveRDS(fit, file = stan_fit_file)
+    saveRDS(fit, file = stan_fit_filename)
   }
+  gc()
   message("2")
   rhats <- bayesplot::rhat(fit)
   message(sprintf("Maximum rhat is %f for %s %s\n", max(rhats), Sex, Model))
@@ -563,6 +565,7 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
 id <- sprintf("lmm-%s", params$sex)
 res <- run_linear_model(Id=id, Model = "lmm", Pretty="Linear mixed model", Sex=params$sex, stan_model_file_lmm, 
                         stan_parameters = stan_parameters, pretty_variables = pretty_variables)
+gc()
 summary_rows[[length(summary_rows)+1]] <- res$summary
 effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction
@@ -601,6 +604,7 @@ message("moi8")
 id <- sprintf("dlmm-%s", params$sex)
 res <- run_linear_model(Id=id, Model = "dlmm", Pretty="Dynamic linear mixed model", Sex=params$sex, stan_model_file_dlmm, 
                         stan_parameters = stan_parameters_dlmm, pretty_variables = pretty_variables_dlmm)
+gc()
 summary_rows[[length(summary_rows)+1]] <- res$summary
 effect_size_rows[[length(effect_size_rows)+1]] <- res$effect_size
 prediction_rows[[length(prediction_rows)+1]] <- res$prediction
@@ -664,6 +668,21 @@ cols <- c("Model"="Pretty", "Sex", "MAE (g / L)", "RMSE (g / L)", "MAE (mmol / L
 kbl(summary_table %>% select(!!!cols), digits=3, format.args = list(digits=3)) %>% kable_styling()
 ```
 
+```{r Print the sizes of global objects, echo=FALSE}
+get_global_object_sizes <- function(e = rlang::global_env()) {
+  s <- lobstr::obj_sizes(!!!as.list(e), env=rlang::global_env())
+  t <- tibble(object=names(s), bytes=as.numeric(s), isfunction=map_lgl(object, ~ is.function(get(.x))))
+  return(arrange(t, isfunction, desc(bytes)))
+}
+
+# What is the current environment
+message(capture.output(print(environment())))
+
+msg <- capture.output(print(get_global_object_sizes(environment()), n=Inf))
+message(paste(msg, collapse="\n"))
+#msg <- capture.output(lobstr::obj_sizes(!!!as.list(rlang::global_env())))
+#message(paste(msg, collapse="\n"))
+```
 
 
 

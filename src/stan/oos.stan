@@ -34,8 +34,8 @@ model {
     Hb ~ normal(Q_star * beta_tilde + donb[donor], sigmaeps);   
 }
 generated quantities {
-    vector[N] log_lik;
-
-    for (n in 1:N) log_lik[n] = normal_lpdf(Hb[n] | Q_star[n, ] * beta_tilde + donb[donor[n]], sigmaeps);
+    // vector[N] log_lik;
+    // 
+    // for (n in 1:N) log_lik[n] = normal_lpdf(Hb[n] | Q_star[n, ] * beta_tilde + donb[donor[n]], sigmaeps);
 }
 
