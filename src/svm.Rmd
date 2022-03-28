@@ -14,6 +14,7 @@ params:
   shap_value_table_file: NULL
   prediction_table_file: NULL
   sizes_table_file: NULL  
+  deferral_age_table_file: NULL
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
   predictive_variables: NULL
@@ -198,6 +199,15 @@ res[[2]]
 res[[3]]
 ```
 
+```{r Deferral rate by age}
+deferral_age_rates <- compute_deferral_by_age(data)
+visualise_deferral_by_age(deferral_age_rates)
+Id <- sprintf("%s-%s", params$model, params$sex)
+if (!is.null(params$deferral_age_table_file)) {     
+  deferral_age_rates <- deferral_age_rates %>% mutate(Id=Id)
+  write_csv(deferral_age_rates, params$deferral_age_table_file)   # Pass the table to the web app as well
+} 
+```
 
 
 ```{r Partition and enrich, echo=FALSE}

@@ -577,6 +577,7 @@ hb_predictor3 <- function(ws) {
   prediction_tables <- list()
   shap_value_tables <- list()
   sizes_tables <- list()
+  deferral_age_tables <- list()
   #details_df <- tibble(id=character(0), pretty=character(0), sex=character(0), html=character(0), pdf=character(0))
   details_dfs <- list()
   
@@ -639,6 +640,9 @@ hb_predictor3 <- function(ws) {
       sizes_filename <- sprintf("/tmp/sizes-%s-%s.csv", m, sex)
       myparams["sizes_table_file"] <- sizes_filename
       
+      deferral_age_filename <- sprintf("/tmp/deferral-age-%s-%s.csv", m, sex)
+      myparams["deferral_age_table_file"] <- deferral_age_filename
+
       prediction_filename <- sprintf("/tmp/prediction-%s-%s.csv", m, sex)
       myparams["prediction_table_file"] <- prediction_filename
       
@@ -734,6 +738,8 @@ hb_predictor3 <- function(ws) {
       }
       
       sizes_tables[[id]] <- read_csv(sizes_filename)
+
+      deferral_age_tables[[id]] <- read_csv(deferral_age_filename)
     } # end for sexes
   } # end for models
   
@@ -784,6 +790,11 @@ hb_predictor3 <- function(ws) {
     sizes_table <- sizes_table%>% relocate("Id")
   write_excel_csv(sizes_table, "../output/sizes.csv")
   
+  deferral_age_table <- bind_rows(deferral_age_tables)
+  if ("Id" %in% colnames(deferral_age_table))
+    deferral_age_table <- deferral_age_table%>% relocate("Id")
+  write_excel_csv(deferral_age_table, "../output/deferral-age.csv")
+  
   prediction_table <- bind_rows(prediction_tables)
   prediction_table <- prediction_table %>% slice_sample(prop = 1.0)   # Permute the rows
   write_excel_csv(prediction_table, "../output/prediction.csv")
@@ -795,7 +806,7 @@ hb_predictor3 <- function(ws) {
   message("here5")
   
   # Create a zip package containing all results
-  files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "sizes.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
+  files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "sizes.csv", "deferral-age.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
              "exclusions.txt", "hyperparameters.json", "input_parameters.json")
   files <- c(files, basename(result_page_files))
   system(sprintf("cd ../output; zip %s %s", zip_file, paste(files, collapse=" ")))
@@ -862,6 +873,7 @@ hb_predictor <- function(req){
           <li id="variable-importance"> <a href="/output/variable-importance.csv" target="_blank">Variable importance table</a> (CSV)</li>
           <li id="shap-value"> <a href="/output/shap-value.csv" target="_blank">Shap value table</a> (CSV)</li>
           <li id="sizes"> <a href="/output/sizes.csv" target="_blank">Dataset sizes table</a> (CSV)</li>
+          <li id="deferral-age"> <a href="/output/deferral-age.csv" target="_blank">Deferral by age table</a> (CSV)</li>
           <li id="prediction"> <a href="/output/prediction.csv" target="_blank">Prediction data</a> (CSV)</li>
           <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
           <li id="exclusions"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>

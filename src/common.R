@@ -157,6 +157,21 @@ time_series_length_plotter <- function(df, color) {
   g
 }
 
+compute_deferral_by_age <- function(donation) {
+  rates <- donation %>% 
+    mutate(age_class = cut(age, breaks=c(18, seq(25, 75, 5)), right = FALSE)) %>%
+    group_by(age_class) %>%
+    summarise(deferral_rate = 100*sum(Hb_deferral) / n()) %>%
+    ungroup()
+  rates
+}
+
+visualise_deferral_by_age <- function(rates) {
+  rates %>% ggplot(aes(x=age_class, y=deferral_rate, group=1)) +
+    geom_line() +
+    geom_point() + labs(x="Age class", y="Donation deferral rate (%)")
+}
+
 read_hyperparameters <- function(filename) {
   if (str_detect(filename, "\\.json$")) {
     df <- as_tibble(rjson::fromJSON(file=filename)) 
