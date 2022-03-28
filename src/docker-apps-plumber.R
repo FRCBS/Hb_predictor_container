@@ -114,7 +114,25 @@ FRCBS_hyperparameters <- tribble(
   "svm",           "both",   list(scale=NA, C=NA)
 )
 
-Sanquin_hyperparameters <- FRCBS_hyperparameters
+
+
+#Sanquin_hyperparameters <- FRCBS_hyperparameters
+Sanquin_hyperparameters <- tribble(
+  ~Model,          ~Sex,     ~Value,
+  "rf",            "male",   list(mtry=5, min.node.size=2751, num.trees=500, splitrule="extratrees"),
+  "rf",            "female", list(mtry=3, min.node.size=251, num.trees=500, splitrule="extratrees"),
+  "rf",            "both",   list(mtry=NA, min.node.size=NA, num.trees=500, splitrule=NA),
+  "svm",           "male",   list(sigma=0.01, C=0.01),
+  "svm",           "female", list(sigma=0.001, C=1),
+  "svm",           "both",   list(scale=NA, C=NA)
+)
+
+# Unpatched caret does not allow num.trees hyperparameter so we remove it here
+drop_num_trees <- function(hyperparameters) {
+  hyperparameters %>% mutate(Value = map(Value, function(L) L[setdiff(names(L), "num.trees")]))
+}
+FRCBS_hyperparameters   <- drop_num_trees(FRCBS_hyperparameters)
+Sanquin_hyperparameters <- drop_num_trees(Sanquin_hyperparameters)
 
 #learn_hyperparameters <- tibble(Model=character(0), Sex=character(0), Value=list())
 # If empty tibble, we cannot save it to json
