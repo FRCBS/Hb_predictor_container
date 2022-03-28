@@ -239,6 +239,8 @@ hb_predictor3 <- function(ws) {
     error_messages <- c(error_messages, "The Hb unit must be either gperl, gperdl, or mmolperl")
   if ("hlen" %in% names(post) && is.na(as.integer(post$hlen)))
     error_messages <- c(error_messages, "The minimum number of donations must be an integer larger or equal to 2")
+  if ("stratify_by_sex" %in% names(post) && ! post$stratify_by_sex %in% c("pooled", "stratified", "male", "female"))
+    error_messages <- c(error_messages, "The stratify_by_sex option must be either pooled, stratified, male or female")
   if ("hyperparameters" %in% names(post) && ! post$hyperparameters %in% c("finnish", "dutch", "upload", "learn"))
     error_messages <- c(error_messages, "The hyperparameter option must be either finnish, dutch, upload, or learn")
   if ("mode" %in% names(post) && ! post$mode %in% c("initial", "final"))
@@ -280,7 +282,8 @@ hb_predictor3 <- function(ws) {
   allow_extra_variables <- "allow_extra_variables" %in% names(post)
   cat(sprintf("The parameter allow_extra_variables is %s\n", as.character(allow_extra_variables)))
 
-  stratify_by_sex <- "stratify-by-sex" %in% names(post)
+  #stratify_by_sex <- "stratify-by-sex" %in% names(post)
+  stratify_by_sex <- ifelse ("stratify_by_sex" %in% names(post), post$stratify_by_sex, "stratified")
   cat(sprintf("The parameter stratify_by_sex is %s\n", as.character(stratify_by_sex)))
   
   southern_hemisphere <- "southern-hemisphere" %in% names(post)
@@ -422,7 +425,7 @@ hb_predictor3 <- function(ws) {
     print(logger, msg)
     
     if (sf != 1.0) {
-      fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex, sf, seed=global_random_seed, 
+      fulldata_preprocessed <- stratified_sample(fulldata_preprocessed, stratify_by_sex != "pooled", sf, seed=global_random_seed, 
                                                  donor_field = "donor", sex_field = "sex")
     }
     
@@ -440,7 +443,7 @@ hb_predictor3 <- function(ws) {
       donors <- read_donors(donors_o$tempfile)
       donors <- split_set3(donors, seed=42)  # label the donors to either train, validate, or test
       if (sf != 1.0) {
-        donors <- stratified_sample(donors, stratify_by_sex, sf, seed=global_random_seed)
+        donors <- stratified_sample(donors, stratify_by_sex != "pooled", sf, seed=global_random_seed)
         donations <- semi_join(donations, donors, by="KEY_DONOR")
       }
       fulldata_preprocessed <- preprocess(donations, donors,
@@ -451,7 +454,7 @@ hb_predictor3 <- function(ws) {
       donors <- read_sanquin_donors(donors_o$tempfile)
       donors <- split_set3(donors, seed=42)  # label the donors to either train, validate, or test
       if (sf != 1.0) {
-        donors <- stratified_sample(donors, stratify_by_sex, sf, seed=global_random_seed)
+        donors <- stratified_sample(donors, stratify_by_sex != "pooled", sf, seed=global_random_seed)
         donations <- semi_join(donations, donors, by="KEY_DONOR")
       }
       fulldata_preprocessed <- sanquin_preprocess(donations, donors,
@@ -503,7 +506,7 @@ hb_predictor3 <- function(ws) {
   cat("Distribution of time series length\n")
   print(fulldata_preprocessed %>% count(donor, name="Length") %>% count(Length, name="Count"))
   
-  if (stratify_by_sex) {
+  if (stratify_by_sex != "pooled") {
     male_donation_specific_filename   <- "../output/male_preprocessed.rds"
     female_donation_specific_filename <- "../output/female_preprocessed.rds"
     both_donation_specific_filename <- NA_character_
@@ -540,7 +543,7 @@ hb_predictor3 <- function(ws) {
   for (parameter_name in names(post)) {
     if (str_starts(parameter_name, "dv_")) predictive_variables <- append(predictive_variables, str_remove(parameter_name, "^dv_")) 
   }
-  if (stratify_by_sex) {
+  if (stratify_by_sex != "pooled") {
     predictive_variables <- setdiff(predictive_variables, "sex")
   }
   print(predictive_variables)
@@ -609,7 +612,12 @@ hb_predictor3 <- function(ws) {
     pretty <- model_df %>% filter(model==m) %>% pull(pretty)
     rmd <- model_df %>% filter(model==m) %>% pull(rmd)
     #sexess <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
-    sexes <- if (stratify_by_sex)  c("male", "female") else c("both")
+    sexes <- if (stratify_by_sex=="pooled") {
+      "both"
+    } else if (stratify_by_sex == "stratified") { 
+      c("male", "female") 
+    } else 
+      stratify_by_sex  # either "male" or "female" 
     for (sex in sexes) {
       id <- paste(m, sex, sep="-")
       cat(sprintf("Running sex %s\n", sex))
@@ -968,11 +976,18 @@ hb_predictor <- function(req){
             <input type="checkbox" value="on", id="allow_extra_variables" name="allow_extra_variables" />
             </td>
         </tr>
-        <tr id="stratify_by_sex_row"><td>Stratify by sex</td>
+        
+        <tr id="stratify_by_sex_row"><td>Sex</td>
             <td>
-            <input type="checkbox" value="on", id="stratify-by-sex" name="stratify-by-sex" checked />
+            <!-- <input type="checkbox" value="on", id="stratify-by-sex" name="stratify-by-sex" checked /> -->
+            <select id="stratify-by-sex" name="stratify_by_sex">
+            <option value="pooled" label="Pooled">Pooled</option>
+            <option value="stratified" label="Stratified" selected>Stratified</option>
+            <option value="male" label="Male">Male</option>
+            <option value="female" label="Female">Female</option>
             </td>
         </tr>
+        
         <tr id="southern_hemisphere_row"><td>Southern hemisphere</td>
             <td>
             <input type="checkbox" value="on", id="southern-hemisphere" name="southern-hemisphere" />
