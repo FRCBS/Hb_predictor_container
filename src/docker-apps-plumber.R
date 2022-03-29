@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="0.31"
+container_version="pre0.33"
 cat(container_version, file = "../output/version.txt")
 zip_file <- sprintf("results-%s.zip", container_version)
 
@@ -666,6 +666,12 @@ hb_predictor3 <- function(ws) {
         file.remove(prediction_filename)
       
 
+      extract_error <- function(cnd) {
+        if ("rlang_error" %in% class(cnd)) {
+          format(cnd)
+        } else
+          cnd$message
+      }
       
       now <- lubridate::now()
       error_messages <- tryCatch(
@@ -681,12 +687,16 @@ hb_predictor3 <- function(ws) {
               params = myparams)
             NULL
           }, 
-          warning = function(w) ws$send(rjson::toJSON(list(type="warning", 
-                                                           warning_messages=c(sprintf("Warning in %s %s call \n", sex, pretty),
-                                                                              w$message))))
+          warning = function(w) {
+            warning_messages <- c(sprintf("Warning in %s %s call \n", sex, pretty),
+                                  extract_error(w))
+            cat(paste0(warning_messages))
+            ws$send(rjson::toJSON(list(type="warning", 
+                                       warning_messages=map_chr(warning_messages, crayon::strip_style))))
+          }
         ),
         error = function(cnd) {
-          error_messages <- c(sprintf("Error in %s %s call \n", sex, pretty), cnd$message)
+          error_messages <- c(sprintf("Error in %s %s call \n", sex, pretty), extract_error(cnd))
           #rlang::last_error()
           return(error_messages)
         }
@@ -700,7 +710,8 @@ hb_predictor3 <- function(ws) {
       if (!is.null(error_messages)) {
         cat(paste0(error_messages))
         cat("\n")
-        ws$send(rjson::toJSON(list(type="error", error_messages=error_messages)))
+        # Remove ANSI escape codes
+        ws$send(rjson::toJSON(list(type="error", error_messages=map_chr(error_messages, crayon::strip_style))))
         next  # break
       }
       

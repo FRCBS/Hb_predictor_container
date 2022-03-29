@@ -395,7 +395,7 @@ gather_results <- function(df, Id, Model, Pretty, Sex, f1_threshold = 0.5) {
   # Precision-Recall
   ret <- tryCatch(
     error =  function(cnd) {
-      warning(paste("Could not compute precision-recall curve, possibly the deferral score is constant", cnd))
+      warning(paste("Could not compute precision-recall curve, possibly the deferral score is constant", cnd, sep="\n"))
       return(-1)      
     },
     {
@@ -609,11 +609,9 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   message("In function compute_shap_values_fastshap")
   set.seed(seed)
   
-  # if ("sex" %in% colnames(validate)) {
-  #   validate2 <- validate  %>% slice_sample(n=n) %>% select(-c(Hb_deferral, Hb, sex))
-  # } else {
+  n <- min(n, nrow(validate))
+  
   validate2 <- validate  %>% slice_sample(n=n) %>% select(-any_of(c("Hb_deferral", "Hb")))
-#  }
 
   if ("stanfit" %in% class(model)) {
     t <- as_tibble(rownames_to_column(as.data.frame(rstan::get_posterior_mean(model))))

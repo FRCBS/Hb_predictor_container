@@ -329,7 +329,7 @@ document.onreadystatechange = function() {
 	    if (typeof(data.error_messages) == "string")
 		data.error_messages = [data.error_messages];
             for (i=0; i < data.error_messages.length; ++i) {
-		el.innerHTML += "<p>" + data.error_messages[i] + "</p>";
+		el.innerHTML += "<pre>" + data.error_messages[i] + "</pre>";
             }
             document.getElementById("submit").disabled = false;
             return;
@@ -343,7 +343,8 @@ document.onreadystatechange = function() {
             if (typeof(data.warning_messages) == "string")
 		data.warning_messages = [data.warning_messages];
 	    for (i=0; i < data.warning_messages.length; ++i) {
-		el.innerHTML += "<p>" + data.warning_messages[i] + "</p>";
+		
+		el.innerHTML += "<pre>" + data.warning_messages[i].replace("<error/rlang_error>\n", "") + "</pre>";
             }
             document.getElementById("submit").disabled = false;
             return;

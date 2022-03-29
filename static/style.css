@@ -87,16 +87,25 @@ fieldset {
 }
 
 #error_messages {
-  max-width: 40em;
+    max-width: 50em;
+    color: red;
 }
 
-#error_messages p {
-  color: red;
+#error_messages pre {
+    color: red;
+    background-color: white;
+    border: 0px;
 }
 
+#warning_messages {
+    max-width: 50em;
+    color: gold;
+}
 
-#warning_messages p {
-  color: gold;
+#warning_messages pre {
+    color: gold;
+    background-color: white;
+    border: 0px;
 }
 
 #spinner-container {
