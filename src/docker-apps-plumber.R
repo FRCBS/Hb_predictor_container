@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="pre0.33"
+container_version="pre0.32"
 cat(container_version, file = "../output/version.txt")
 zip_file <- sprintf("results-%s.zip", container_version)
 
