@@ -15,6 +15,7 @@ params:
   prediction_table_file: NULL
   sizes_table_file: NULL
   deferral_age_table_file: NULL
+  donation_specific_histograms: "/tmp/donation_histogram.csv"
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
   predictive_variables: NULL
@@ -183,6 +184,11 @@ if (!is.null(params$deferral_age_table_file)) {
   deferral_age_rates <- deferral_age_rates %>% mutate(Id=Id)
   write_csv(deferral_age_rates, params$deferral_age_table_file)   # Pass the table to the web app as well
 } 
+```
+
+```{r}
+# Create histogram dataframes of each variables, and store them into a file.
+create_histograms(data, descript, params$donation_specific_histograms, id=Id)
 ```
 
 

@@ -90,13 +90,37 @@ summary_plotter <- function(df, variable_descriptions, color, breaks=waiver(), n
     keep(is.numeric) %>%
 #    keep(function(c) is.numeric(c) | is.factor(c)) %>%
     to_pretty(variable_descriptions) %>%
-    gather() %>%
-    mutate(key = factor(key, levels=variable_descriptions$Pretty))  %>% # Don't sort alphabetically
+    #gather() %>%
+    pivot_longer(cols=everything()) %>%
+    mutate(name = factor(name, levels=variable_descriptions$Pretty))  %>% # Don't sort alphabetically
     ggplot(aes(value)) +
-    facet_wrap(~ key, scales = "free", ncol=ncol) +
+    facet_wrap(~ name, scales = "free", ncol=ncol) +
     geom_histogram(fill = color) +
     scale_x_continuous(breaks=breaks)
   return(g)
+}
+
+# Splits data into bins, and return bin sizes. If the number of items in a bin is less than five,
+# then the size of that bin is set to zero.
+create_histograms <- function(df, variable_descriptions, filename=NULL, id=NULL) {
+  tmp <- df %>%
+    drop_na() %>%
+    mutate(across(where(is.logical), as.integer)) %>%
+    keep(is.numeric) %>% 
+    to_pretty(variable_descriptions) %>% 
+    pivot_longer(cols=everything())
+  
+  res <- tmp %>% 
+    group_by(name) %>%
+    mutate(value = cut(value, breaks=30)) %>%
+    ungroup() %>%
+    count(name, value) %>% 
+    mutate(n=ifelse(n < 5, 0, n))
+  if (! is.null(id))
+    res <- res %>% mutate(id=id)
+  if (! is.null(filename))
+    write_csv(res, filename)
+  res
 }
 
 double_summary_plotter <- function(male_df, female_df, variable_descriptions, geom = "freqpoly", breaks=waiver(), ncol=NULL) {
@@ -416,13 +440,10 @@ create_summary_plots <- function(data, donor_specific_variables, sex, donation_d
               #            label=unique(label))
               label=as.integer(unique(label)))
   
-  
+  #############################
   # Donation specific variables
-  pboth <- data %>%
-    filter(first_event == FALSE) %>%
-    select(all_of(donation_description$Variable))
-
-  # Replace last space for a newline character
+  #############################
+  # Replace last space for a newline character. This is for splitting a long variable name into multiple lines
   replace_last <- function(s) {
     stringi::stri_reverse(str_replace(stringi::stri_reverse(s), " ", "\n"))
   }
@@ -431,10 +452,16 @@ create_summary_plots <- function(data, donor_specific_variables, sex, donation_d
     mutate(Pretty = case_when(Variable %in% c("previous_Hb_def", "consecutive_deferrals", "recent_donations") ~ replace_last(Pretty), 
                               Variable=="days_to_previous_fb" ~ "Days to previous\nfull blood\ndonation", 
                               TRUE ~ Pretty))
-  pboth <- summary_plotter(pboth, dd, color, breaks=scales::extended_breaks(n=4), ncol=3)
-  pboth
+  donation_specific <- data %>%
+    filter(first_event == FALSE) %>%
+    select(all_of(donation_description$Variable))
+
+  donation_specific <- summary_plotter(donation_specific, dd, color, breaks=scales::extended_breaks(n=4), ncol=3)
+  #pboth
   
+  ##########################
   # Donor specific variables
+  ##########################
   temp_donor_specific <- at_least_one_deferral
   #tr <- tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
   if (!is.null(donor_specific_variables)) {
@@ -444,16 +471,19 @@ create_summary_plots <- function(data, donor_specific_variables, sex, donation_d
   
   message(sprintf("Column names are: %s\n", paste(names(temp_donor_specific), collapse=" ")))
   
-  pdata2 <- temp_donor_specific %>%
+  donor_specific <- temp_donor_specific %>%
     filter(donor %in% temp_donors)
-  pdata2 <- summary_plotter(pdata2, 
+  donor_specific <- summary_plotter(donor_specific, 
                             donor_description,
                             color)
-  pdata2
+  #pdata2
   
+  #####################
   # Time series lengths
+  #####################
   lengths <- time_series_length_plotter(data, color)
-  return(list(pboth, pdata2, lengths))
+  
+  return(list(donation_specific, donor_specific, lengths))
 }
 
 prettify_variables <- function(df, variables_renamed) {

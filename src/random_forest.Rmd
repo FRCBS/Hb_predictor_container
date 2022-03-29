@@ -18,6 +18,8 @@ params:
   shap_value_table_file: NULL
   sizes_table_file: NULL
   deferral_age_table_file: NULL
+  donation_specific_histograms: "/tmp/donation_histogram.csv"
+  donor_specific_histograms: "/tmp/donor_histogram.csv"
   Hb_cutoff_male: 135
   Hb_cutoff_female: 125
   predictive_variables: NULL
@@ -110,6 +112,8 @@ source("validate_stan_fit.R")
 source("enrich_deferrals_rf.R")
 source("common.R")
 
+Id <- sprintf("%s-%s", params$model, params$sex)
+
 number_of_cores <- set_cores_options(params$cores)
 
 logger <- new_logger(prefix=sprintf("RF %s:", params$sex), file="../output/exclusions.txt", silent=use_pdf)
@@ -201,10 +205,15 @@ res[[2]]
 res[[3]]
 ```
 
+```{r}
+# Create histogram dataframes of each variables, and store them into a file.
+create_histograms(data, descript, params$donation_specific_histograms, id=Id)
+#create_histograms(donor_specific_variables, donor_descript, params$donor_specific_histograms, id=Id)
+```
+
 ```{r Deferral rate by age}
 deferral_age_rates <- compute_deferral_by_age(data)
 visualise_deferral_by_age(deferral_age_rates)
-Id <- sprintf("%s-%s", params$model, params$sex)
 if (!is.null(params$deferral_age_table_file)) {     
   deferral_age_rates <- deferral_age_rates %>% mutate(Id=Id)
   write_csv(deferral_age_rates, params$deferral_age_table_file)   # Pass the table to the web app as well
@@ -285,7 +294,7 @@ validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
 #cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
 #cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
 kbl(sizes) %>% kable_styling()
-Id <- sprintf("%s-%s", params$model, params$sex)
+#Id <- sprintf("%s-%s", params$model, params$sex)
 if (!is.null(params$sizes_table_file)) {     
   sizes <- sizes %>% mutate(Id=Id)
   write_csv(sizes, params$sizes_table_file)   # Pass the table to the web app as well
