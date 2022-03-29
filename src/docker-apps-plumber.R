@@ -1020,7 +1020,7 @@ hb_predictor <- function(req){
         </tr>
 
         <tr><td>Mode</td>                <td>
-        <select id="mode" name="mode" disabled>
+        <select id="mode" name="mode" >
           <option value="initial" label="Initial" selected>Initial</option>
           <option value="final" label="Final">Final</option>
         </select>
