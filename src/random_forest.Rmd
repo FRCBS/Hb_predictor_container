@@ -362,14 +362,14 @@ if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for thi
     rf_grid <-  expand.grid(
       mtry = mtry,
       min.node.size = min.node.size,
-      num.trees = num.trees,
+      #num.trees = num.trees,
       splitrule=splitrule
     )
   } else {
     rf_grid <-  expand.grid(
       mtry = mtry,
-      nodesize = min.node.size,  # Minimum node size
-      ntree = num.trees
+      nodesize = min.node.size  # Minimum node size
+      #ntree = num.trees
     )
   }
   
@@ -378,8 +378,8 @@ if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for thi
                                method = rf_method,
                                search_grid = rf_grid, 
                                cores = number_of_cores,
-                               strata=strata,
-                               sampsize=sampsize,
+                               #strata=strata,
+                               #sampsize=sampsize,
                                replace=TRUE)
   rf_hyperparameters <- as.list(ret$bestTune)
   hyperparameters <- hyperparameters %>% add_row(Model="rf", Sex=params$sex, Value=list(rf_hyperparameters))
@@ -416,8 +416,8 @@ if (use_pdf) {
   message("here9")
   rrfFit_roc <- caret::train(x = as.data.frame(train %>% select(-Hb_deferral)), y = train %>% pull(Hb_deferral),
                              method = rf_method, 
-                             strata=strata,
-                             sampsize=sampsize,  
+                             #strata=strata,
+                             #sampsize=sampsize,  
                              # I start to think that this doesn't do stratified sampling.
                                           # For it 'samplesize=(n, n)' should be used, but the algorithm
                                           # doesn't allow oversampling, event if replace==TRUE. See
