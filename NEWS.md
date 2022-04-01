@@ -1,11 +1,12 @@
 # Version 0.32 (2022-04-01)
 
 * Handling of sex in the user interface is now either pooled, stratified, male or female. Basically, the last two
-  are new options and allow running only one sex.
+  are new options and allow running only one sex. As a temporary solution, since hyperparameters for pooled mode
+  have not been optimized, the average of male and female parameters are used.
   
 * Visualize the dependence of deferral on the age group.
 
-* Added Dutch hyperparameter values
+* Added Dutch hyperparameter values.
 
 * Histograms of donation specific variables are stored into a dataframe on a file. Bins with
   less than five points are set to count zero.
