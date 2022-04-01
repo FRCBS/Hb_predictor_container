@@ -4,7 +4,7 @@
 # Start in src directory with
 # Rscript docker-server-plumber.R
 
-container_version="pre0.32"
+container_version="0.32"
 cat(container_version, file = "../output/version.txt")
 zip_file <- sprintf("results-%s.zip", container_version)
 
@@ -102,7 +102,7 @@ FRCBS_hyperparameters <- tribble(
   ~Model,          ~Sex,     ~Value,
   "rf",            "male",   list(mtry=3, min.node.size=501, num.trees=500, splitrule="extratrees"),
   "rf",            "female", list(mtry=4, min.node.size=751, num.trees=500, splitrule="extratrees"),
-  "rf",            "both",   list(mtry=NA, min.node.size=NA, num.trees=500, splitrule=NA),
+  "rf",            "both",   list(mtry=3, min.node.size=626, num.trees=500, splitrule="extratrees"),   # average of male and female
   # "rf",            "male",   list(mtry=4, splitrule="hellinger", min.node.size=34),
   # "rf",            "female", list(mtry=4, splitrule="hellinger", min.node.size=34),
   # "rf",            "both",   list(mtry=4, splitrule="hellinger", min.node.size=34),
@@ -111,7 +111,7 @@ FRCBS_hyperparameters <- tribble(
   # "svm",           "both",   list(degree=3, scale=0.1, C=5)
   "svm",           "male",   list(sigma=0.0001, C=100),
   "svm",           "female", list(sigma=0.0001, C=10),
-  "svm",           "both",   list(scale=NA, C=NA)
+  "svm",           "both",   list(scale=0.0001, C=55)   # average of male and female
 )
 
 
@@ -121,10 +121,10 @@ Sanquin_hyperparameters <- tribble(
   ~Model,          ~Sex,     ~Value,
   "rf",            "male",   list(mtry=5, min.node.size=2751, num.trees=500, splitrule="extratrees"),
   "rf",            "female", list(mtry=3, min.node.size=251, num.trees=500, splitrule="extratrees"),
-  "rf",            "both",   list(mtry=NA, min.node.size=NA, num.trees=500, splitrule=NA),
+  "rf",            "both",   list(mtry=4, min.node.size=1501, num.trees=500, splitrule="extratrees"),   # average of male and female
   "svm",           "male",   list(sigma=0.01, C=0.01),
   "svm",           "female", list(sigma=0.001, C=1),
-  "svm",           "both",   list(scale=NA, C=NA)
+  "svm",           "both",   list(scale=0.0055, C=0.505)   # average of male and female
 )
 
 # Unpatched caret does not allow num.trees hyperparameter so we remove it here

@@ -1,4 +1,4 @@
-# Version 0.32 (2022-03-??)
+# Version 0.32 (2022-04-01)
 
 * Handling of sex in the user interface is now either pooled, stratified, male or female. Basically, the last two
   are new options and allow running only one sex.
@@ -10,7 +10,7 @@
 * Histograms of donation specific variables are stored into a dataframe on a file. Bins with
   less than five points are set to count zero.
   
-* "Final mode"" is enabled.
+* "Final mode" is enabled.
 
 # Version 0.31 (2022-03-03)
 
