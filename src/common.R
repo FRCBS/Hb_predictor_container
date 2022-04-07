@@ -181,19 +181,37 @@ time_series_length_plotter <- function(df, color) {
   g
 }
 
-compute_deferral_by_age <- function(donation) {
-  rates <- donation %>% 
+data_counts <- function(data) {
+  helper <- function(df, key) {
+    dd <- sum(df %>% group_by(donor) %>% summarise(deferred=max(Hb_deferral)) %>% pull(deferred))
+    dld <- sum(df %>% group_by(donor) %>% slice_max(order_by = dateonly, n=1) %>% ungroup() %>% pull(Hb_deferral))
+    t <- tibble(Donations=nrow(df), Donors=n_distinct(df$donor), Deferrals=sum(df$Hb_deferral), 
+                `Deferred donors`=dd, `Deferred last donations`=dld)
+  }
+  # sizes <- bind_rows(helper(train), helper(validate)) %>%
+  #   mutate(Dataset = c("train", "validate")) %>%
+  #   relocate(Dataset)
+  sizes <- data %>% 
     mutate(age_class = cut(age, breaks=c(18, seq(25, 75, 5)), right = FALSE)) %>%
-    group_by(age_class) %>%
-    summarise(deferral_rate = 100*sum(Hb_deferral) / n()) %>%
-    ungroup()
-  rates
+    group_by(label, age_class) %>% group_modify(helper)
+  return(sizes)
 }
 
-visualise_deferral_by_age <- function(rates) {
-  rates %>% ggplot(aes(x=age_class, y=deferral_rate, group=1)) +
+# compute_deferral_by_age <- function(donation) {
+#   rates <- donation %>% 
+#     mutate(age_class = cut(age, breaks=c(18, seq(25, 75, 5)), right = FALSE)) %>%
+#     group_by(age_class) %>%
+#     summarise(deferral_rate = 100*sum(Hb_deferral) / n()) %>%
+#     ungroup()
+#   rates
+# }
+
+visualise_deferral_by_age <- function(sizes) {
+  rates <- sizes %>% mutate(deferral_rate = 100 * `Deferred last donations` / Donors)
+  rates %>% ggplot(aes(x=age_class, y=deferral_rate, color=label, group=label)) +
     geom_line() +
-    geom_point() + labs(x="Age class", y="Donation deferral rate (%)")
+    geom_point() + labs(x="Age class", y="Last donation deferral rate (%)") +
+    labs(color="Data")
 }
 
 read_hyperparameters <- function(filename) {
@@ -278,23 +296,13 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
   return(rrfFit_roc_hyper)
 }
 
-data_counts <- function(train, validate) {
-  helper <- function(df) {
-    dd <- sum(df %>% group_by(donor) %>% summarise(deferred=max(Hb_deferral)) %>% pull(deferred))
-    dld <- sum(df %>% group_by(donor) %>% slice_max(order_by = dateonly, n=1) %>% ungroup() %>% pull(Hb_deferral))
-    t <- tibble(Donations=nrow(df), Donors=n_distinct(df$donor), Deferrals=sum(df$Hb_deferral), 
-                `Deferred donors`=dd, `Deferred last donations`=dld)
-  }
-  sizes <- bind_rows(helper(train), helper(validate)) %>%
-    mutate(Dataset = c("train", "validate")) %>%
-    relocate(Dataset)
-  return(sizes)
-}
 
 # This is currently used by the RF and SVM models.
 # These should be dropped or incorporated into the main preprocessing.
 # Note that this also contains Finnish specific donation intervals 62 and 92
 additional_preprocess <- function(data, variables, logger) {
+  
+  # This really should be done in the preprocessing
   old_count <- nrow(data); old_count2 <- ndonor(data)
   data <- data %>% group_by(donor) %>%
     dplyr::filter(n()>1) %>%  #Take out the ones with only one event 

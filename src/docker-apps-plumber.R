@@ -754,7 +754,7 @@ hb_predictor3 <- function(ws) {
       
       sizes_tables[[id]] <- read_csv(sizes_filename)
 
-      deferral_age_tables[[id]] <- read_csv(deferral_age_filename)
+      #deferral_age_tables[[id]] <- read_csv(deferral_age_filename)
       
       histogram_tables[[id]] <- read_csv(histogram_filename)
       
@@ -808,10 +808,10 @@ hb_predictor3 <- function(ws) {
     sizes_table <- sizes_table%>% relocate("Id")
   write_excel_csv(sizes_table, "../output/sizes.csv")
   
-  deferral_age_table <- bind_rows(deferral_age_tables)
-  if ("Id" %in% colnames(deferral_age_table))
-    deferral_age_table <- deferral_age_table%>% relocate("Id")
-  write_excel_csv(deferral_age_table, "../output/deferral-age.csv")
+  # deferral_age_table <- bind_rows(deferral_age_tables)
+  # if ("Id" %in% colnames(deferral_age_table))
+  #   deferral_age_table <- deferral_age_table%>% relocate("Id")
+  # write_excel_csv(deferral_age_table, "../output/deferral-age.csv")
   
   histogram_table <- bind_rows(histogram_tables)
   if ("Id" %in% colnames(histogram_table))
@@ -829,7 +829,7 @@ hb_predictor3 <- function(ws) {
   message("here5")
   
   # Create a zip package containing all results
-  files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "sizes.csv", "deferral-age.csv", "histogram.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
+  files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "sizes.csv", "histogram.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
              "exclusions.txt", "hyperparameters.json", "input_parameters.json")
   files <- c(files, basename(result_page_files))
   system(sprintf("cd ../output; zip %s %s", zip_file, paste(files, collapse=" ")))
@@ -896,7 +896,7 @@ hb_predictor <- function(req){
           <li id="variable-importance"> <a href="/output/variable-importance.csv" target="_blank">Variable importance table</a> (CSV)</li>
           <li id="shap-value"> <a href="/output/shap-value.csv" target="_blank">Shap value table</a> (CSV)</li>
           <li id="sizes"> <a href="/output/sizes.csv" target="_blank">Dataset sizes table</a> (CSV)</li>
-          <li id="deferral-age"> <a href="/output/deferral-age.csv" target="_blank">Deferral by age table</a> (CSV)</li>
+          <!-- <li id="deferral-age"> <a href="/output/deferral-age.csv" target="_blank">Deferral by age table</a> (CSV)</li> -->
           <li id="histogram"> <a href="/output/histogram.csv" target="_blank">Histogram table</a> (CSV)</li>
           <li id="prediction"> <a href="/output/prediction.csv" target="_blank">Prediction data</a> (CSV)</li>
           <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>

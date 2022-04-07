@@ -176,13 +176,16 @@ res[[2]]
 res[[3]]
 ```
 
-```{r Deferral rate by age}
-deferral_age_rates <- compute_deferral_by_age(data)
-visualise_deferral_by_age(deferral_age_rates)
+```{r Data sizes by age group, results="asis", echo=FALSE}
+sizes <- data_counts(data)
+#deferral_age_rates <- compute_deferral_by_age(data)
+visualise_deferral_by_age(sizes)
+kbl(sizes %>% group_by(label) %>% summarise(across(-age_class, sum))) %>% 
+  kable_styling()
 Id <- sprintf("%s-%s", params$model, params$sex)
-if (!is.null(params$deferral_age_table_file)) {     
-  deferral_age_rates <- deferral_age_rates %>% mutate(Id=Id)
-  write_csv(deferral_age_rates, params$deferral_age_table_file)   # Pass the table to the web app as well
+if (!is.null(params$sizes_table_file)) {     
+  sizes <- sizes %>% mutate(Id=Id)
+  write_csv(sizes, params$sizes_table_file)   # Pass the table to the web app as well
 } 
 ```
 
@@ -226,7 +229,6 @@ if (!is.null(donor_variables)) {
   variables <- c(variables, donor_variables)
 }
 
-sizes <- data_counts(train=train_orig, validate=test)
 
   
 #Train
@@ -259,17 +261,16 @@ message(msg)
 sink(file=stderr(), type="output"); summary(validate); sink()
 
 
-train_deferred <- train %>% filter(Hb_deferral == "Deferred")
-validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
-kbl(sizes) %>% kable_styling()
-Id <- sprintf("%s-%s", params$model, params$sex)
-if (!is.null(params$sizes_table_file)) {     
-  sizes <- sizes %>% mutate(Id=Id)
-  write_csv(sizes, params$sizes_table_file)   # Pass the table to the web app as well
-} 
+#train_deferred <- train %>% filter(Hb_deferral == "Deferred")
+#validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
+# Id <- sprintf("%s-%s", params$model, params$sex)
+# if (!is.null(params$sizes_table_file)) {     
+#   sizes <- sizes %>% mutate(Id=Id)
+#   write_csv(sizes, params$sizes_table_file)   # Pass the table to the web app as well
+# } 
 
-rm(train_deferred)
-rm(validate_deferred)
+#rm(train_deferred)
+#rm(validate_deferred)
 ```
 
 ```{r Fit baseline model, results="asis", echo=FALSE}
@@ -280,10 +281,14 @@ logistic_regression <- function(data) {
   return(glm.fit)  
 }
 
+saveRDS(train, file=sprintf("/tmp/bl-train-%s.rds", params$sex))
+saveRDS(validate, file=sprintf("/tmp/bl-validate-%s.rds", params$sex))
+
+# Upsample deferrals so that deferral rate is 50%
 train <- caret::upSample(x = train, y = train$Hb_deferral) %>% as_tibble() %>% select(-Class)
 
 
-fit_filename <- sprintf("/tmp/baseline-fit-%s.rds", params$sex)
+fit_filename <- sprintf("/tmp/bl-fit-%s.rds", params$sex)
 if (skip_train) {
   fit <- readRDS(fit_filename)  
 } else {
@@ -426,6 +431,11 @@ summary_table <- results_baseline$summary
 
 
 ```{r Plot logistic regressions, results="asis", echo=FALSE}
+# Returns the threshold for previous Hb that corresponds to the deferral probability threshold.
+# Parameters:
+# * threshold: in the range [0,1]
+# Return value:
+# * vector of length 1, in the hemoglobin range
 get_inverse <- function(fit, threshold) {
   df <- tibble(previous_Hb = 100:200)
   
@@ -435,11 +445,12 @@ get_inverse <- function(fit, threshold) {
   return(previous_Hb)
 }
 
+# Plots the fitted logistic curve
 plot_logistic_regression <- function(df, title, previous_Hb) {
   g <- df %>% 
-    ggplot(aes(x=previous_Hb, y=score)) + 
+    ggplot(aes(x=previous_Hb, y=score)) +   # Logistic curve
     geom_line() +
-    geom_point(mapping=aes(x=previous_Hb, y=original_label)) +
+    geom_point(mapping=aes(x=previous_Hb, y=original_label)) +  # Original points
     geom_vline(xintercept = previous_Hb) +
     labs(y="Probability", title=title)
   return(g)
@@ -447,7 +458,7 @@ plot_logistic_regression <- function(df, title, previous_Hb) {
 previous_Hb <- get_inverse(fit, f1_threshold)
 cat(sprintf("The previous_Hb value %.2f corresponds approximately to the threshold value %.2f\n", previous_Hb, f1_threshold))
 enriched_g <- plot_logistic_regression(enriched_result, "enriched data", previous_Hb)
-test_g <- plot_logistic_regression(test_result, "test data", previous_Hb)
+test_g <- plot_logistic_regression(test_result, "prediction data", previous_Hb)
 ```
 
 ```{r}

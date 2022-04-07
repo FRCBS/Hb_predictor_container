@@ -211,13 +211,22 @@ create_histograms(data, descript, params$donation_specific_histograms, id=Id)
 #create_histograms(donor_specific_variables, donor_descript, params$donor_specific_histograms, id=Id)
 ```
 
-```{r Deferral rate by age}
-deferral_age_rates <- compute_deferral_by_age(data)
-visualise_deferral_by_age(deferral_age_rates)
-if (!is.null(params$deferral_age_table_file)) {     
-  deferral_age_rates <- deferral_age_rates %>% mutate(Id=Id)
-  write_csv(deferral_age_rates, params$deferral_age_table_file)   # Pass the table to the web app as well
-} 
+```{r Data sizes rate by age, results="asis", echo=FALSE}
+sizes <- data_counts(data)
+visualise_deferral_by_age(sizes)
+kbl(sizes %>% group_by(label) %>% summarise(across(-age_class, sum))) %>% 
+  kable_styling()
+Id <- sprintf("%s-%s", params$model, params$sex)
+if (!is.null(params$sizes_table_file)) {     
+  sizes <- sizes %>% mutate(Id=Id)
+  write_csv(sizes, params$sizes_table_file)   # Pass the table to the web app as well
+}
+# deferral_age_rates <- compute_deferral_by_age(data)
+# visualise_deferral_by_age(deferral_age_rates)
+# if (!is.null(params$deferral_age_table_file)) {     
+#   deferral_age_rates <- deferral_age_rates %>% mutate(Id=Id)
+#   write_csv(deferral_age_rates, params$deferral_age_table_file)   # Pass the table to the web app as well
+# } 
 ```
 
 
@@ -260,7 +269,7 @@ if (!is.null(donor_variables)) {
   variables <- c(variables, donor_variables)
 }
 
-sizes <- data_counts(train=train_orig, validate=test)
+#sizes <- data_counts(train=train_orig, validate=test)
   
 #Train
 
@@ -289,19 +298,19 @@ message(msg)
 sink(file=stderr(), type="output"); summary(validate); sink()
 
 
-train_deferred <- train %>% filter(Hb_deferral == "Deferred")
-validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
-#cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
-#cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
-kbl(sizes) %>% kable_styling()
-#Id <- sprintf("%s-%s", params$model, params$sex)
-if (!is.null(params$sizes_table_file)) {     
-  sizes <- sizes %>% mutate(Id=Id)
-  write_csv(sizes, params$sizes_table_file)   # Pass the table to the web app as well
-} 
-
-rm(train_deferred)
-rm(validate_deferred)
+# train_deferred <- train %>% filter(Hb_deferral == "Deferred")
+# validate_deferred <- validate %>% filter(Hb_deferral == "Deferred")
+# #cat(sprintf("The train set contains %i deferrals from %i donors.", nrow(train_deferred), nrow(train_deferred)))
+# #cat(sprintf("The validate set contains %i deferrals from %i donors.", nrow(validate_deferred), nrow(validate_deferred)))
+# kbl(sizes) %>% kable_styling()
+# #Id <- sprintf("%s-%s", params$model, params$sex)
+# if (!is.null(params$sizes_table_file)) {     
+#   sizes <- sizes %>% mutate(Id=Id)
+#   write_csv(sizes, params$sizes_table_file)   # Pass the table to the web app as well
+# } 
+# 
+# rm(train_deferred)
+# rm(validate_deferred)
 saveRDS(train, file=sprintf("/tmp/train1-rf-%s.rds", params$sex))
 saveRDS(validate, file=sprintf("/tmp/validate1-rf-%s.rds", params$sex))
 ```
