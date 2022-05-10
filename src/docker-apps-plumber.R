@@ -227,10 +227,15 @@ hb_predictor3 <- function(ws) {
   if (! input_format %in% c("FRCBS", "Sanquin", "Preprocessed"))
     error_messages <- c(error_messages, "The input format should be either FRCBS, Sanquin, or Preprocessed")
 
-  if (!("donations_file_upload" %in% names(post)) && input_format != "Preprocessed")
-    error_messages <- c(error_messages, "You did not upload the donations file!")
-  if (!("donors_file_upload" %in% names(post)) && input_format != "Preprocessed")
-    error_messages <- c(error_messages, "You did not upload the donors file!")
+  if (input_format != "Preprocessed") {
+    if (!("donations_file_upload" %in% names(post)) || post$donations_file_upload$filename == "")
+      error_messages <- c(error_messages, "You did not upload the donations file!")
+    if (!("donors_file_upload" %in% names(post)) || post$donors_file_upload$filename == "")
+      error_messages <- c(error_messages, "You did not upload the donors file!")
+  } else {
+    if (!("preprocessed_file_upload" %in% names(post)) || post$preprocessed_file_upload$filename == "")
+      error_messages <- c(error_messages, "You did not upload the preprocessed file!")
+  }
   if ("Hb_cutoff_male" %in% names(post) && as.numeric(post$Hb_cutoff_male) <= 0)
     error_messages <- c(error_messages, "The Hb cutoff must be a positive number")
   if ("Hb_cutoff_female" %in% names(post) && as.numeric(post$Hb_cutoff_female) <= 0)
@@ -241,6 +246,8 @@ hb_predictor3 <- function(ws) {
     error_messages <- c(error_messages, "The minimum number of donations must be an integer larger or equal to 2")
   if ("stratify_by_sex" %in% names(post) && ! post$stratify_by_sex %in% c("pooled", "stratified", "male", "female"))
     error_messages <- c(error_messages, "The stratify_by_sex option must be either pooled, stratified, male or female")
+  if ("imbalance" %in% names(post) && ! post$imbalance %in% c("none", "smote"))
+    error_messages <- c(error_messages, "The imbalance handling option has to be either none or smore")
   if ("hyperparameters" %in% names(post) && ! post$hyperparameters %in% c("finnish", "dutch", "upload", "learn"))
     error_messages <- c(error_messages, "The hyperparameter option must be either finnish, dutch, upload, or learn")
   if ("mode" %in% names(post) && ! post$mode %in% c("initial", "final"))
