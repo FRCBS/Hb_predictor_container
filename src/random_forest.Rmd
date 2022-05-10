@@ -9,6 +9,7 @@ params:
   model: "rf"
   mode: "initial"
   sex: "both"
+  imbalance: NULL
   id: NULL
   date: "2020-07-08"
   extra_id: NULL
@@ -387,6 +388,7 @@ if (length(rf_hyperparameters) == 0) {   # Hyperparameters not available for thi
                                method = rf_method,
                                search_grid = rf_grid, 
                                cores = number_of_cores,
+                               sampling = params$imbalance,
                                #strata=strata,
                                #sampsize=sampsize,
                                replace=TRUE)
@@ -433,7 +435,7 @@ if (use_pdf) {
                                           # https://stats.stackexchange.com/questions/45705/sampling-with-replacement-in-r-randomforest
                              replace=TRUE,
                              #nodesize=34,
-                             trControl = caret::trainControl(method="none", classProbs = TRUE, sampling="smote"), 
+                             trControl = caret::trainControl(method="none", classProbs = TRUE, sampling=params$imbalance), 
                              verbose = FALSE, 
                              ## Now specify the exact models 
                              ## to evaluate:

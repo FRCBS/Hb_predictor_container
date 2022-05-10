@@ -31,6 +31,7 @@ default_Hb_cutoff_male   <- 135
 default_Hb_cutoff_female <- 125
 default_Hb_input_unit <- "gperl"
 default_mode <- "initial"
+default_imbalance <- "smote"
 
 is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
 
@@ -292,6 +293,11 @@ hb_predictor3 <- function(ws) {
   #stratify_by_sex <- "stratify-by-sex" %in% names(post)
   stratify_by_sex <- ifelse ("stratify_by_sex" %in% names(post), post$stratify_by_sex, "stratified")
   cat(sprintf("The parameter stratify_by_sex is %s\n", as.character(stratify_by_sex)))
+
+  imbalance <- ifelse ("imbalance" %in% names(post), post$imbalance, default_imbalance)
+  if (imbalance=="none")
+    imbalance <- NULL
+  cat(sprintf("The parameter imbalance is %s\n", as.character(imbalance)))
   
   southern_hemisphere <- "southern-hemisphere" %in% names(post)
   cat(sprintf("The parameter southern_hemisphere is %s\n", as.character(southern_hemisphere)))
@@ -570,6 +576,7 @@ hb_predictor3 <- function(ws) {
   }
   
   myparams$mode <- ifelse("mode" %in% names(post), post$mode, default_mode)
+  myparams$imbalance <- imbalance
   
   # This debugging information will be sent to the browser NOT DONE CURRENTLY! FIX THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   myparams_string <- paste( map_chr(names(myparams), function (name) sprintf("<li>%s=%s</li>", name, myparams[name])), 
@@ -1028,6 +1035,16 @@ hb_predictor <- function(req){
             <option value="stratified" label="Stratified" selected>Stratified</option>
             <option value="male" label="Male">Male</option>
             <option value="female" label="Female">Female</option>
+            </select>
+            </td>
+        </tr>
+
+        <tr id="imbalance_row"><td>Imbalance handling</td>
+            <td>
+            <select id="imbalance" name="imbalance">
+            <option value="none" label="None">None</option>
+            <option value="smote" label="SMOTE" selected>SMOTE</option>
+            </select>
             </td>
         </tr>
         

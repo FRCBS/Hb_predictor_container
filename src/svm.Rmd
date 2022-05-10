@@ -6,6 +6,7 @@ params:
   model: "svm"
   mode: "initial"
   sex: "both"
+  imbalance: NULL
   id: NULL
   date: "2020-07-08"
   extra_id: NULL
@@ -54,7 +55,7 @@ suppressPackageStartupMessages(library(furrr))
 #suppressPackageStartupMessages(library(sn))
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(kernlab))    # For the SVM model
-suppressPackageStartupMessages(library(shapr))
+#suppressPackageStartupMessages(library(shapr))
 #set.seed(123)
 
 
@@ -357,7 +358,8 @@ if (length(svm_hyperparameters) == 0) {   # Hyperparameters not available for th
   ret <- learn_hyperparameters(train, "svmRadial", 
                                search_grid=svm_grid, 
                                #search_grid=NULL,
-                               number_of_cores#,
+                               number_of_cores,
+                               params$imbalance
                                #tuneLength = 5
                                )
   svm_hyperparameters <- as.list(ret$bestTune)
@@ -396,7 +398,7 @@ if (use_pdf) {
                              method = "svmRadial", 
                              trControl = caret::trainControl(method="none", 
                                                              classProbs = TRUE,
-                                                             sampling = "smote",
+                                                             sampling = params$imbalance,
                                                              summaryFunction = twoClassSummary), 
                              verbose = FALSE, 
                              tuneGrid = data.frame(svm_hyperparameters),

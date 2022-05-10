@@ -1,7 +1,7 @@
 # Variables that are in use
 suppressPackageStartupMessages(library(parallel))
 suppressPackageStartupMessages(library(doParallel))
-suppressPackageStartupMessages(library(shapr))
+#suppressPackageStartupMessages(library(shapr))
 suppressPackageStartupMessages(library(fastshap))
 suppressPackageStartupMessages(library(ggforce))
 suppressPackageStartupMessages(library(tidyverse))
@@ -232,7 +232,7 @@ write_hyperparameters <- function(hyperparameters, filename, json=TRUE) {
   }
 }
 
-learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
+learn_hyperparameters <- function(df, method, search_grid, cores, sampling, ...) {
   message("In function learn_hyperparameters")
   df <- df %>% filter(label=="train") %>% select(-label) # Drop donors that belong to the original validate set
   #file <- "../output/learned_hyperparameters.Rdata"
@@ -263,7 +263,7 @@ learn_hyperparameters <- function(df, method, search_grid, cores, ...) {
     repeats = 10, #how many is good?
     verboseIter = TRUE,
     classProbs = TRUE,
-    sampling = "smote",
+    sampling = sampling,
     summaryFunction = twoClassSummary
     #savePredictions = TRUE
   )
@@ -555,49 +555,49 @@ get_model_specs.train <- function(x){
   return(feature_list)
 }
 
-compute_shap_values_shapr <- function(model, validate, variables, n=100, seed) {
-  message("In function compute_shap_values_shapr")
-  set.seed(seed)
-  
-  # if ("sex" %in% variables) {
-  #   validate2 <- validate %>% select(-c(Hb))
-  # } else {
-  #   validate2 <- validate %>% select(-c(Hb, sex))
-  # }
-  #validate2 <- as.data.frame(validate2)
-  #validate2 <- validate %>% mutate(previous_Hb_def = as.integer(previous_Hb_def))
-  validate2 <- validate  %>% slice_sample(n=n)
-  p0 <- mean(validate$Hb_deferral == "Deferred")
-  
-  result_code <- tryCatch(
-    error = function(cnd) {
-      msg <- paste("\nComputation of shap values failed:", cnd$message, 
-                   sep="\n")
-      warning(msg)
-      NULL
-    },
-    {
-      explainer <- shapr::shapr(validate2, model, n_combinations = 1000)
-      explanation <- shapr::explain(validate2, explainer, approach = "empirical", prediction_zero = p0)
-    }
-  )
-  if (is.null(result_code)) {
-    return(NULL)
-  }
-  #explanation$dt
-  n <- nrow(explanation$dt)
-  res1 <- as_tibble(explanation$dt) %>% select(-none) %>% mutate(id=1:n)
-  res2 <- as_tibble(explanation$x_test) %>% mutate(id=1:n)
-  res1 <- pivot_longer(res1, cols=!id) %>%
-    select(Variable=name, id, attribution=value)
-  res2 <- pivot_longer(res2, cols=!id) %>%
-    select(Variable=name, id, value=value)
-  res <- inner_join(res1, res2, by=c("Variable", "id")) %>%
-    group_by(Variable) %>%
-    mutate(value=scale(value)[,1]) %>%
-    ungroup()
-  return(res)
-}
+# compute_shap_values_shapr <- function(model, validate, variables, n=100, seed) {
+#   message("In function compute_shap_values_shapr")
+#   set.seed(seed)
+#   
+#   # if ("sex" %in% variables) {
+#   #   validate2 <- validate %>% select(-c(Hb))
+#   # } else {
+#   #   validate2 <- validate %>% select(-c(Hb, sex))
+#   # }
+#   #validate2 <- as.data.frame(validate2)
+#   #validate2 <- validate %>% mutate(previous_Hb_def = as.integer(previous_Hb_def))
+#   validate2 <- validate  %>% slice_sample(n=n)
+#   p0 <- mean(validate$Hb_deferral == "Deferred")
+#   
+#   result_code <- tryCatch(
+#     error = function(cnd) {
+#       msg <- paste("\nComputation of shap values failed:", cnd$message, 
+#                    sep="\n")
+#       warning(msg)
+#       NULL
+#     },
+#     {
+#       explainer <- shapr::shapr(validate2, model, n_combinations = 1000)
+#       explanation <- shapr::explain(validate2, explainer, approach = "empirical", prediction_zero = p0)
+#     }
+#   )
+#   if (is.null(result_code)) {
+#     return(NULL)
+#   }
+#   #explanation$dt
+#   n <- nrow(explanation$dt)
+#   res1 <- as_tibble(explanation$dt) %>% select(-none) %>% mutate(id=1:n)
+#   res2 <- as_tibble(explanation$x_test) %>% mutate(id=1:n)
+#   res1 <- pivot_longer(res1, cols=!id) %>%
+#     select(Variable=name, id, attribution=value)
+#   res2 <- pivot_longer(res2, cols=!id) %>%
+#     select(Variable=name, id, value=value)
+#   res <- inner_join(res1, res2, by=c("Variable", "id")) %>%
+#     group_by(Variable) %>%
+#     mutate(value=scale(value)[,1]) %>%
+#     ungroup()
+#   return(res)
+# }
 
 # Caret's predict method only allows type to be "prob" or "raw.
 # We will dig out the ksvm fit object from Caret's fit object and
