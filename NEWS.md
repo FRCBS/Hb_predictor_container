@@ -1,3 +1,13 @@
+# Version 0.33 (2022-05-24)
+
+* Variable summary tables are now exported.
+
+* Better error message if an input file is missing.
+
+* Added imbalance option that allows selecting between no upsampling or SMOTE.
+
+* Print (and export) dataset count statistics by age groups
+
 # Version 0.32 (2022-04-01)
 
 * Handling of sex in the user interface is now either pooled, stratified, male or female. Basically, the last two
