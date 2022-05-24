@@ -15,6 +15,7 @@ params:
   shap_value_table_file: NULL
   prediction_table_file: NULL
   sizes_table_file: NULL
+  variable_summary_table_file: NULL
   deferral_age_table_file: NULL
   donation_specific_histograms: "/tmp/donation_histogram.csv"
   Hb_cutoff_male: 135
@@ -176,6 +177,18 @@ res[[2]]
 ```{r}
 res[[3]]
 ```
+
+```{r Variable summary table}
+variable_summary_table <- create_variable_summary_table(data)
+kbl(variable_summary_table) %>% 
+  kable_styling()
+Id <- sprintf("%s-%s", params$model, params$sex)
+if (!is.null(params$variable_summary_table_file)) {     
+  variable_summary_table <- variable_summary_table %>% mutate(Id=Id)
+  write_csv(variable_summary_table, params$variable_summary_table_file)   # Pass the table to the web app as well
+} 
+```
+
 
 ```{r Data sizes by age group, results="asis", echo=FALSE}
 sizes <- data_counts(data)

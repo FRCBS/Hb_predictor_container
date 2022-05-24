@@ -494,6 +494,31 @@ create_summary_plots <- function(data, donor_specific_variables, sex, donation_d
   return(list(donation_specific, donor_specific, lengths))
 }
 
+create_variable_summary_table <- function(df) {
+  df2 <- df %>% 
+    mutate(warm_season = as.logical(warm_season),
+           across(where(is.integer), as.double)) %>%
+    select(-any_of(c("dateonly", "nb_donat_progesa", "nb_donat_outside", "year")))
+  numeric <- df2 %>% select(where(is.double))
+  bool <- df2 %>% select(where(is.logical))
+  fct <- df2 %>% select(where(is.factor)) %>% select(sex)
+  
+  numeric2 <- numeric %>%
+    pivot_longer(cols = everything()) %>% 
+    group_by(name) %>%
+    summarise(mean=mean(value, na.rm=TRUE), sd=sd(value, na.rm=TRUE), median=median(value, na.rm=TRUE), 
+              q1=quantile(value, 0.25, na.rm=TRUE), q3=quantile(value, 0.75, na.rm=TRUE)) %>%
+    mutate(type="numeric")
+
+   bool2 <- bool %>% pivot_longer(cols = everything()) %>% count(name, value) %>%
+     mutate(value=as.character(value), type="boolean")
+   
+   fct2 <- fct %>% pivot_longer(cols = everything()) %>% count(name, value) %>%
+     mutate(value=as.character(value), type="factor")
+   
+   bind_rows(numeric2, bool2, fct2) %>% relocate(name, type, value, n)
+}
+
 prettify_variables <- function(df, variables_renamed) {
   if (variables_renamed) {
     df <- df %>%
