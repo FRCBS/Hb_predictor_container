@@ -1,6 +1,7 @@
-# Version 0.33 (2022-05-24)
+# Version 0.33 (2022-05-25)
 
-* Variable summary tables are now exported.
+* Variable summary tables are now exported. The table includes counts, counts of NA values, min, max,
+  mean, median, 1st quartile and 3rd quartile.
 
 * Better error message if an input file is missing.
 

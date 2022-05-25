@@ -507,16 +507,21 @@ create_variable_summary_table <- function(df) {
     pivot_longer(cols = everything()) %>% 
     group_by(name) %>%
     summarise(mean=mean(value, na.rm=TRUE), sd=sd(value, na.rm=TRUE), median=median(value, na.rm=TRUE), 
-              q1=quantile(value, 0.25, na.rm=TRUE), q3=quantile(value, 0.75, na.rm=TRUE)) %>%
+              q1=quantile(value, 0.25, na.rm=TRUE), q3=quantile(value, 0.75, na.rm=TRUE),
+              min=min(value, na.rm=TRUE), max=max(value, na.rm=TRUE),
+              "NA"=sum(is.na(value))) %>%
     mutate(type="numeric")
 
    bool2 <- bool %>% pivot_longer(cols = everything()) %>% count(name, value) %>%
-     mutate(value=as.character(value), type="boolean")
+     mutate(value=as.character(value), type="boolean", "NA"=0)
    
    fct2 <- fct %>% pivot_longer(cols = everything()) %>% count(name, value) %>%
-     mutate(value=as.character(value), type="factor")
+     mutate(value=as.character(value), type="factor", "NA"=0)
    
-   bind_rows(numeric2, bool2, fct2) %>% relocate(name, type, value, n)
+   res <- bind_rows(numeric2, bool2, fct2) %>% relocate(name, type, value, n)
+   saveRDS(res, "/tmp/s.rds")
+   res <- res %>% mutate(`NA` = ifelse(is.na(value) & type!="numeric", n, `NA`))
+   res
 }
 
 prettify_variables <- function(df, variables_renamed) {
