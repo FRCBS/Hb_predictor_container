@@ -1,9 +1,7 @@
 var old_unit = "gperl";
 var interval_id;
+var running = false;
 
-//websocket_address = "ws://127.0.0.1:8080/";   // Learn this somehow automatically from the current page. Then the port number does not need to be fixed.
-// window.location.href should give this information
-// Ehkä window.location.href.replace("https", "ws")
 
 function convert_hb_unit(from, to, hb) {
     hb = parseFloat(hb);
@@ -43,6 +41,7 @@ function set_hb_unit(unit_string) {
     unit.dispatchEvent(new Event('change', { 'bubbles': true }));  // trigger the change event
 }
 
+// Some parts of the UI are shown only under certain conditions.
 function show_and_enable(e) {
     e.style.display = "table-row";
     e.querySelector("input").disabled = false;
@@ -68,11 +67,6 @@ function handle_input_format(e) {
 	show_and_enable(e3);
 	hide_and_disable(e4);
 	hide_and_disable(e5);
-	// e1.style.display = "table-row";
-	// e2.style.display = "table-row";
-	// e3.style.display = "table-row";
-	// e4.style.display = "none";
-	// e5.style.display = "none";
     } else if (value == "Sanquin") {
 	set_hb_unit("gperdl");
 	show_and_enable(e1);
@@ -80,15 +74,7 @@ function handle_input_format(e) {
 	hide_and_disable(e3);
 	hide_and_disable(e4);
 	hide_and_disable(e5);
-	//show_and_enable(e5);
 
-	// e1.style.display = "table-row";
-	// e2.style.display = "table-row";
-	// e3.style.display = "none";
-	// e3.querySelector("input").disabled = true;
-	// e4.style.display = "none";
-	// e4.querySelector("input").disabled = true;
-	// e5.style.display = "table-row";
     } else {
 	set_hb_unit("gperl");
 	hide_and_disable(e1);
@@ -96,11 +82,6 @@ function handle_input_format(e) {
 	hide_and_disable(e3);
 	show_and_enable(e4);
 	hide_and_disable(e5);
-	// e1.style.display = "none";
-	// e2.style.display = "none";
-	// e3.style.display = "none";
-	// e4.style.display = "table-row";
-	// e5.style.display = "none";
     }
     
     console.log("Fieldset clicked: " + value);
@@ -113,12 +94,22 @@ function handle_hyperparameters(e) {
     e1 = document.getElementById("hyperparameter_file_row");
     if (value == "upload") {
 	show_and_enable(e1);
-	//e1.style.display = "table-row";
     } else {
 	hide_and_disable(e1);
-	//e1.style.display = "none";
     }
     console.log("Hyperparameter select clicked: " + value);
+}
+
+
+function handle_keypress(e) {
+    console.log("In handle_keypress");
+    //`You pressed ${e.key}`
+    console.log("Key " + e.key + " was pressed");
+    s = document.getElementById("submit")
+    // If Esc was pressed, make the submit button active again.
+    if (e.key == "Escape" && ! running) {
+	s.disabled = false;
+    }
 }
 
 document.onreadystatechange = function() {
@@ -131,6 +122,10 @@ document.onreadystatechange = function() {
     //Linear mixed model
     //</label>
     if (document.readyState == "complete") {
+	
+	////////////////////////////////////////////
+	// Show tick boxes for predictive variables.
+	////////////////////////////////////////////
 	
 	// Predictive variables
 	dvs = ["days_to_previous_fb", "age", "previous_Hb_def", "year",                 
@@ -154,6 +149,10 @@ document.onreadystatechange = function() {
 	    el.appendChild(l);
 	}
 	
+	//////////////////////
+	// Set event handlers.
+	//////////////////////
+	
 	console.log("Setting handleButtonPress");
 	document.getElementById("submit").onclick = handleButtonPress;
 	document.getElementById("FRCBS").onchange = handle_input_format;
@@ -161,6 +160,9 @@ document.onreadystatechange = function() {
 	document.getElementById("Preprocessed").onchange = handle_input_format;
 	document.getElementById("unit").onchange = handle_hb_unit;
 	document.getElementById("hyperparameters").onchange = handle_hyperparameters;
+
+	window.addEventListener('keydown', handle_keypress, false);
+	
 	el = document.getElementById("unit");
 	el.value="gperdl"; // Because Sanquin is the default input format, set this to its unit
 	el.dispatchEvent(new Event('change', { 'bubbles': true }));  // trigger the change event
@@ -180,7 +182,7 @@ document.onreadystatechange = function() {
     // This handles button press on the submit button
     function handleButtonPress(e) {
 	console.log("In handleButtonPress");
-	e.preventDefault();
+	e.preventDefault();   // Prevent the default event handler
 	var form = document.getElementById("form");
 	var progress = document.getElementById("progress");
 	var formData = new FormData(form);
@@ -198,7 +200,10 @@ document.onreadystatechange = function() {
 	  };
 	*/
 
-
+	/////////////////////////
+	// Clear previous results
+	/////////////////////////
+	
 	var el = document.getElementById("error_messages");
 	el.innerHTML="";
 	var el = document.getElementById("warning_messages");
@@ -222,6 +227,7 @@ document.onreadystatechange = function() {
 	httpRequest.setRequestHeader("Accept", "application/json");
 	httpRequest.send(formData);
 	console.log("Timeout is " + httpRequest.timeout);
+	running = true;
 	document.getElementById("submit").disabled = true;
 	document.getElementById("finish-time-container").style.display = "none";
 	//document.getElementsByClassName("lds-spinner")[0].removeAttribute("hidden");
@@ -299,6 +305,7 @@ document.onreadystatechange = function() {
 	    
 	} else if (httpRequest.readyState == 4 && httpRequest.status != 200) {                            // FAIL
 	    console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
+	    running = false;
 	    stop_waiting(interval_id);
 	    //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
 	    //clearInterval(interval_id);  // stop the timer
@@ -352,6 +359,10 @@ document.onreadystatechange = function() {
 	
     }
 
+    /////////////////////////////
+    // Process websocket messages
+    /////////////////////////////
+    
     function process_json_result(data) {
 	
 	if (data.type == "final") {
@@ -359,6 +370,7 @@ document.onreadystatechange = function() {
 	    //document.getElementsByClassName("lds-spinner")[0].setAttribute("hidden", "hidden");
 	    //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
 	    //clearInterval(interval_id);  // stop the timer
+	    running = false;
 	    stop_waiting(interval_id);
 	    document.getElementById("finish-time-container").style.display = "block";
 	    document.getElementById("finish-time").innerHTML = new Date().toString();//.substr(0, 19);
@@ -414,21 +426,22 @@ document.onreadystatechange = function() {
 	    document.getElementById("results-container").removeAttribute("hidden");  
 	}
     }
-    
-    function handleResponse() {
-	console.log("In handleResponse, readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
-	if (httpRequest.readyState == 4 && httpRequest.status == 200) {                                   // SUCCESS
-	    var data = JSON.parse(httpRequest.responseText);
-	    process_json_result(data);
-	} else if (httpRequest.readyState == 4 && httpRequest.status != 200) {                            // FAIL
-	    console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
-	    //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
-	    //clearInterval(interval_id);  // stop the timer
-	    stop_waiting(interval_id);
-	    el = document.getElementById("error_messages");
-	    el.innerHTML = "<p>Server error!  readyState: " + httpRequest.readyState + " status: " + httpRequest.status + "</p>  ";
-	}
-    }
+
+    // This is not used anymore.
+    // function handleResponse() {
+    // 	console.log("In handleResponse, readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
+    // 	if (httpRequest.readyState == 4 && httpRequest.status == 200) {                                   // SUCCESS
+    // 	    var data = JSON.parse(httpRequest.responseText);
+    // 	    process_json_result(data);
+    // 	} else if (httpRequest.readyState == 4 && httpRequest.status != 200) {                            // FAIL
+    // 	    console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
+    // 	    //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
+    // 	    //clearInterval(interval_id);  // stop the timer
+    // 	    stop_waiting(interval_id);
+    // 	    el = document.getElementById("error_messages");
+    // 	    el.innerHTML = "<p>Server error!  readyState: " + httpRequest.readyState + " status: " + httpRequest.status + "</p>  ";
+    // 	}
+    // }
     
     function stop_waiting(interval_id) {
 	document.getElementsByClassName("lds-spinner")[0].style.display = "none";
