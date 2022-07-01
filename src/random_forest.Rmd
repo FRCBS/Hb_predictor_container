@@ -447,7 +447,7 @@ if (use_pdf) {
                                           # https://stats.stackexchange.com/questions/45705/sampling-with-replacement-in-r-randomforest
                              replace=TRUE,
                              #nodesize=34,
-                             trControl = caret::trainControl(method="none", classProbs = TRUE, sampling=params$imbalance), 
+                             trControl = caret::trainControl(method="none", classProbs = TRUE, sampling=params$imbalance, returnData = FALSE), 
                              verbose = FALSE, 
                              ## Now specify the exact models 
                              ## to evaluate:

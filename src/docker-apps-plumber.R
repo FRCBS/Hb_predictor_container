@@ -870,7 +870,7 @@ hb_predictor3 <- function(ws) {
     files <- sprintf("/tmp/%s-fit-%s.rds", e$Var1, e$Var2)
     files <- files[file.exists(files)]
     if (length(files) > 0) {
-      cmd <- sprintf("cd ../output; zip svm-and-rf-models.zip %s", paste(files, collapse=" "))
+      cmd <- sprintf("cd ../output; zip -j svm-and-rf-models.zip %s", paste(files, collapse=" "))
       system(cmd)
       model_zip_file_created <- TRUE
     } else {

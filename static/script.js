@@ -1,7 +1,7 @@
 var old_unit = "gperl";
 var interval_id;
 var running = false;
-
+var computed = [];
 
 function convert_hb_unit(from, to, hb) {
     hb = parseFloat(hb);
@@ -216,6 +216,7 @@ document.onreadystatechange = function() {
 	}	
 	document.getElementById("results-container").hidden = true;
 	document.getElementById("download_results_container").hidden = true;
+	computed = [];
 	
 	httpRequest.onreadystatechange = handleResponseForUpload;
 	//httpRequest.onreadystatechange = handleResponse;
@@ -380,7 +381,14 @@ document.onreadystatechange = function() {
 	    console.log("Type of data is " + typeof(data))
 	    add_error_messages(data)
 	    add_warning_messages(data)
-	    
+
+	    // Show the link to the zip file containing rf and svm models
+	    function svm_or_rf(s) { return s.startsWith("rf") || s.startsWith("svm"); }
+	    if (computed.filter(svm_or_rf).length > 0) {   // Were any svm or rf models computed?
+		document.getElementById("download_rf_svm_models").style.display = "";
+	    } else {
+		document.getElementById("download_rf_svm_models").style.display = "none";
+	    }
 	    
 	    if (!document.getElementById("random-forest").checked) {
 		document.getElementById("variable-importance").style.display = "none";
@@ -410,6 +418,9 @@ document.onreadystatechange = function() {
 	} else if (data.type == "summary") {
 	    // Show summary table
 	    document.getElementById("table_container").innerHTML = data.summary_table_string;
+	} else if (data.type == "computed") {
+	    console.log("Computed " + data.id);
+	    computed.push(data.id);
 	} else if (data.type == "timing") {
 	    // Show timing table
 	    document.getElementById("timing_table_container").innerHTML = data.timing_table_string;
