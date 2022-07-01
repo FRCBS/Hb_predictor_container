@@ -640,7 +640,7 @@ hb_predictor3 <- function(ws) {
       cat(sprintf("Running sex %s\n", sex))
       ws$send(rjson::toJSON(list(type="status", status=sprintf("Running %s %s", ifelse(sex=="both", "", sex), pretty))))
       myparams["sex"] <- sex
-      myparams$input_file <- case_when(sex=="both" ~ both_donation_specific_filename,
+      myparams$input_file <- case_when(sex == "both" ~ both_donation_specific_filename,
                                        sex == "male" ~ male_donation_specific_filename,
                                        sex == "female" ~ female_donation_specific_filename
       )
@@ -730,7 +730,7 @@ hb_predictor3 <- function(ws) {
         cat("\n")
         # Remove ANSI escape codes
         ws$send(rjson::toJSON(list(type="error", error_messages=map_chr(error_messages, crayon::strip_style))))
-        next  # break
+        next  # break to the next model-sex pair
       }
       
       message("x1")
@@ -741,6 +741,8 @@ hb_predictor3 <- function(ws) {
       message("test2")
       ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
       
+      ws$send(rjson::toJSON(list(type="computed", id=id)))
+
       message("x2")
 
       p <- read_csv(prediction_filename)
@@ -862,6 +864,20 @@ hb_predictor3 <- function(ws) {
   cmd <- sprintf("cd /tmp; zip tmp_rds.zip *.rds")
   system(cmd)
   
+  # Third zip file that contains the fitted RF and SVM models without original data
+  if (length(intersect(models, c("svm", "rf"))) > 0 ) {
+    e <- expand.grid(c("svm", "rf"), c("male", "female", "both"))
+    files <- sprintf("/tmp/%s-fit-%s.rds", e$Var1, e$Var2)
+    files <- files[file.exists(files)]
+    if (length(files) > 0) {
+      cmd <- sprintf("cd ../output; zip svm-and-rf-models.zip %s", paste(files, collapse=" "))
+      system(cmd)
+      model_zip_file_created <- TRUE
+    } else {
+      model_zip_file_created <- FALSE
+    }
+  }
+  
   message("here6")
   message("Ready")
   
@@ -928,6 +944,7 @@ hb_predictor <- function(req){
           <li id="exclusions"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>
           <li id="preprocessed"> <a href="/output/preprocessed.rds" target="_blank">Preprocessed data</a> (R binary)</li>
           <li id="download_all_results"> <a href="/output/%s" target="_blank">All results</a> (ZIP)</li>
+          <li id="download_rf_svm_models"> <a href="/output/svm-and-rf-models.zip" target="_blank">RF and SVM models</a> (ZIP)</li>
           <!--
             <li id="train"> <a href="/output/train.csv" target="_blank">Train</a> </li>
             <li id="validate"> <a href="/output/validate.csv" target="_blank">Validate</a> </li>
