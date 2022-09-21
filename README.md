@@ -25,20 +25,12 @@ http://localhost:8080/hb-predictor
 
 Kill the server (and the server) by pressing control-c.
 
+For further instructions, see the [usage page](usage.md).
+
 ### Running from command line
 
-Note, this section contains obsolete information! The option to do
-the analyses from command line are not currently supported. Use the browser user interface instead.
-
-docker container run -i --rm -v /whicheverfolderinputisin:/input toivoja/hb-predictor src/hb-predictor.sh date=2020-07-15 gender=female sample_fraction=0.002 method=icp-fix hlen=1 input_file=/input/inputfilename.rdata
-
-Options:
-
-- gender is either 'male', 'female', or 'both'
-- method is either 'no-fix', 'icp-fix', or 'both'
-- The input file can be specified with input_file option
-
-The results will be stored to file `results.tar.gz`.
+The option to do
+the analyses from command line are not currently supported anymore. 
 
 ## Creating the docker image from source
 
