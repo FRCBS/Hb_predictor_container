@@ -451,8 +451,12 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
     group_by(donor) %>%
     mutate(previous_Hb_def = lag(Hb_deferral, default = NA),
            Hb_first = Hb[first_event == T],
-           previous_Hb = lag(Hb, default=0)
-           ) %>%
+           previous_Hb = lag(Hb, default=0),    # This is zero instead of NA, so that it is not filtered out too early in the DLMM model
+           previous_Hb2 = lag(Hb, n=2, default=NA),
+           previous_Hb3 = lag(Hb, n=3, default=NA),
+           previous_Hb4 = lag(Hb, n=4, default=NA),
+           previous_Hb5 = lag(Hb, n=5, default=NA)
+    ) %>%
     fill(previous_Hb) %>% # fills NA with previous non-NA
     mutate(consecutive_deferrals = consecutive_deferrals_f(Hb_deferral)) %>%
     ungroup()
@@ -502,6 +506,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   
 
   if (restrict_time_window) {
+    # Drop donors who haven't go any donations in the last year of the five-year window [time_window_start,time_window_end]
     any_donations_during_last_year <- function(dateonly, time_window_end) {
       year_ago <- time_window_end - lubridate::dyears(1)
       return(any(year_ago <= dateonly & dateonly <= time_window_end))
@@ -560,6 +565,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   variables <- c("don_id", "donor", "Hb", "dateonly", "previous_Hb_def", "days_to_previous_fb", "donat_phleb", "sex", "age",
                  "Hb_deferral", "nb_donat_progesa", "nb_donat_outside",
                  "first_event", "previous_Hb", "year", "warm_season", "Hb_first", "hour", "consecutive_deferrals", "recent_donations",
+                 "previous_Hb2", "previous_Hb3", "previous_Hb4", "previous_Hb5", 
                  "recent_deferrals")
   # Keep label column, if it is in the input
   variables <- c(variables, intersect(names(data), "label"))

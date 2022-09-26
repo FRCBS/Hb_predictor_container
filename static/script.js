@@ -130,7 +130,8 @@ document.onreadystatechange = function() {
 	// Predictive variables
 	dvs = ["days_to_previous_fb", "age", "previous_Hb_def", "year",                 
 	       "warm_season", "consecutive_deferrals", "recent_donations", "recent_deferrals",     
-	       "hour", "previous_Hb", "Hb_first", "sex", "nb_donat"]  ;
+	       "hour", "previous_Hb", "previous_Hb2", "previous_Hb3", "previous_Hb4", "previous_Hb5",
+	       "Hb_first", "sex", "nb_donat"]  ;
 	el = document.getElementById("predictive-variables");
 	for (i=0; i < dvs.length; ++i) {
 	    l = document.createElement('label');
@@ -138,10 +139,11 @@ document.onreadystatechange = function() {
 	    inp = document.createElement('input');
 	    inp.setAttribute("type", "checkbox");
 	    inp.setAttribute("value", "on");
-	    if (dvs[i] != "nb_donat" && dvs[i] != "year") 
-		inp.checked = true;
-	    else
+	    if (["nb_donat", "year", "previous_Hb2", "previous_Hb3",
+		 "previous_Hb4", "previous_Hb5"].includes(dvs[i])) 
 		inp.checked = false;
+	    else
+		inp.checked = true;
 	    inp.setAttribute("id", "id_"+dvs[i]);
 	    inp.setAttribute("name", "dv_"+dvs[i]);
 	    l.appendChild(inp);

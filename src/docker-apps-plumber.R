@@ -454,6 +454,7 @@ hb_predictor3 <- function(ws) {
     if (input_format == "FRCBS") {
       donations <- read_donations(donations_o$tempfile)
       donors <- read_donors(donors_o$tempfile)
+      donors <- donors %>% drop_na(KEY_DONOR_SEX) # Strangely, this wasn't a problem before.
       donors <- split_set3(donors, seed=42)  # label the donors to either train, validate, or test
       if (sf != 1.0) {
         donors <- stratified_sample(donors, stratify_by_sex != "pooled", sf, seed=global_random_seed)

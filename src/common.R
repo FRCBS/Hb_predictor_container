@@ -10,14 +10,17 @@ suppressPackageStartupMessages(library(ranger))
 descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "previous_Hb_def", 
                                 "year", "warm_season", "consecutive_deferrals", "recent_donations",
                                 "recent_deferrals", "hour", 
-                                "previous_Hb", "Hb_first", "Hb_deferral", "sex"), 
+                                "previous_Hb", "previous_Hb2", "previous_Hb3", "previous_Hb4", "previous_Hb5", 
+                                "Hb_first", "Hb_deferral", "sex"), 
                    Pretty = c("Donor ID", "Hemoglobin", "Days to previous full blood donation", "Age", "Previous event low hemoglobin", 
                               "Year", "Warm season", "Consecutive deferrals", "Recent donations", 
                               "Recent low hemoglobins", "Hour", 
-                              "Previous Hb", "First Hb", "Low hemoglobin", "Sex"),
+                              "Previous Hb", "Previous Hb 2", "Previous Hb 3", "Previous Hb 4", "Previous Hb 5", 
+                              "First Hb", "Low hemoglobin", "Sex"),
                    Type = c("Factor", "numeric", "numeric (int)", "numeric", "boolean",
                             "numeric (int)", "boolean", "numeric (int)", "numeric (int)", "numeric (int)", "numeric",
-                            "numeric", "numeric", "boolean", "Factor"),
+                            "numeric", "numeric", "numeric", "numeric", "numeric", 
+                            "numeric", "boolean", "Factor"),
                    Explanation = c("Donor identifier",
                                    "Amount of Hemoglobin",
                                    "Time (in days) between Hb measurement and previous full blood donation event",
@@ -30,6 +33,10 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
                                    "Number of low hemoglobins in the last two years",
                                    "Time of day when donation was given as hours (e.g. 13:45 = 13.75)",
                                    "Hb value at previous measurement (dynamic linear mixed model)",
+                                   "Hb value two attemps ago",
+                                   "Hb value three attemps ago",
+                                   "Hb value four attemps ago",
+                                   "Hb value five attemps ago",
                                    "Hb value at first donation of this donor (linear mixed model)",
                                    "Hemoglobin below deferral threshold",
                                    "Sex of the donor")
@@ -92,6 +99,7 @@ summary_plotter <- function(df, variable_descriptions, color, breaks=waiver(), n
     to_pretty(variable_descriptions) %>%
     #gather() %>%
     pivot_longer(cols=everything()) %>%
+    filter(!(str_detect(name, "^Previous Hb [2-5]") & is.na(value))) %>%   # Drop these explicitly so they won't cause a warning
     mutate(name = factor(name, levels=variable_descriptions$Pretty))  %>% # Don't sort alphabetically
     ggplot(aes(value)) +
     facet_wrap(~ name, scales = "free", ncol=ncol) +
