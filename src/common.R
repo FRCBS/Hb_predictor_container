@@ -199,10 +199,13 @@ data_counts <- function(data) {
   # sizes <- bind_rows(helper(train), helper(validate)) %>%
   #   mutate(Dataset = c("train", "validate")) %>%
   #   relocate(Dataset)
-  sizes <- data %>% 
+  sizes <- data %>%
+    group_by(label) %>%
+    group_modify(helper)
+  sizes_by_age <- data %>% 
     mutate(age_class = cut(age, breaks=c(18, seq(25, 75, 5)), right = FALSE)) %>%
     group_by(label, age_class) %>% group_modify(helper)
-  return(sizes)
+  return(list(sizes=sizes, sizes_by_age=sizes_by_age))
 }
 
 # compute_deferral_by_age <- function(donation) {

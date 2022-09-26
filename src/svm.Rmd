@@ -215,9 +215,14 @@ if (!is.null(params$variable_summary_table_file)) {
 
 
 ```{r Data sizes by age, results="asis", echo=FALSE}
-sizes <- data_counts(data)
-visualise_deferral_by_age(sizes)
-kbl(sizes %>% group_by(label) %>% summarise(across(-age_class, sum))) %>% 
+res <- data_counts(data)
+sizes <- res$sizes
+sizes_by_age <- res$sizes_by_age
+visualise_deferral_by_age(sizes_by_age)
+kbl(sizes) %>% # %>% group_by(label) %>% summarise(across(-age_class, sum))) %>%
+# sizes <- data_counts(data)
+# visualise_deferral_by_age(sizes)
+# kbl(sizes %>% group_by(label) %>% summarise(across(-age_class, sum))) %>% 
   kable_styling()
 Id <- sprintf("%s-%s", params$model, params$sex)
 if (!is.null(params$sizes_table_file)) {     
