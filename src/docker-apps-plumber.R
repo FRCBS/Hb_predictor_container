@@ -32,11 +32,13 @@ default_Hb_cutoff_female <- 125
 default_Hb_input_unit <- "gperl"
 default_mode <- "initial"
 default_imbalance <- "smote"
+default_hyperparameters <- "finnish"
 
 is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
 
 global_random_seed <- default_seed
 hlen_exactly <- FALSE
+prefitted_models <- FALSE
 
 # Show the sizes of all objects in the global environment
 get_global_object_sizes <- function() {
@@ -225,17 +227,22 @@ hb_predictor3 <- function(ws) {
   error_messages=c()
 
   input_format = post$input_format
-  if (! input_format %in% c("FRCBS", "Sanquin", "Preprocessed"))
-    error_messages <- c(error_messages, "The input format should be either FRCBS, Sanquin, or Preprocessed")
+  if (! input_format %in% c("FRCBS", "Sanquin", "Preprocessed", "Prefitted"))
+    error_messages <- c(error_messages, "The input format should be either FRCBS, Sanquin, Preprocessed or Prefitted")
 
-  if (input_format != "Preprocessed") {
+  if (input_format %in% c("FRCBS", "Sanquin")) {
     if (!("donations_file_upload" %in% names(post)) || post$donations_file_upload$filename == "")
       error_messages <- c(error_messages, "You did not upload the donations file!")
     if (!("donors_file_upload" %in% names(post)) || post$donors_file_upload$filename == "")
       error_messages <- c(error_messages, "You did not upload the donors file!")
-  } else {
+  } else if (input_format == "Preprocessed") {
     if (!("preprocessed_file_upload" %in% names(post)) || post$preprocessed_file_upload$filename == "")
       error_messages <- c(error_messages, "You did not upload the preprocessed file!")
+  } else {  # Prefitted
+    if (!("preprocessed_file_upload" %in% names(post)) || post$preprocessed_file_upload$filename == "")
+      error_messages <- c(error_messages, "You did not upload the preprocessed file!")
+    if (!("prefitted_file_upload" %in% names(post)) || post$prefitted_file_upload$filename == "")
+      error_messages <- c(error_messages, "You did not upload the prefitted file!")
   }
   if ("Hb_cutoff_male" %in% names(post) && as.numeric(post$Hb_cutoff_male) <= 0)
     error_messages <- c(error_messages, "The Hb cutoff must be a positive number")
@@ -275,9 +282,20 @@ hb_predictor3 <- function(ws) {
     donor_specific_filename <- NULL
   }
   
-
+  if ("prefitted_file_upload" %in% names(post) && post$prefitted_file_upload$filename != "") {
+    prefitted_filename <- post$prefitted_file_upload$tempfile
+  } else {
+    prefitted_filename <- NULL
+  }
+  
   if (length(error_messages) > 0)
     return(list(type="final", error_messages=error_messages))
+  
+  #######################
+  #
+  # Process in parameters
+  #
+  #######################
   
   cat(sprintf("The input format is %s\n", input_format))
   
@@ -321,7 +339,7 @@ hb_predictor3 <- function(ws) {
   Hb_input_unit <- ifelse ("unit" %in% names(post), post$unit, default_Hb_input_unit)
   cat(sprintf("The parameter Hb_input_unit is %s\n", Hb_input_unit))
   
-  hyperparameters <- ifelse ("hyperparameters" %in% names(post), post$hyperparameters, "learn")
+  hyperparameters <- ifelse ("hyperparameters" %in% names(post), post$hyperparameters, default_hyperparameters)
   cat(sprintf("The parameter hyperparameters is %s\n", hyperparameters))
   
   
@@ -331,7 +349,7 @@ hb_predictor3 <- function(ws) {
   #
   ####################################################################
   
-  if (input_format != "Preprocessed") {
+  if (!input_format %in% c("Preprocessed","Prefitted")) {
     str(donors_o, nchar.max = 10000)
     upload_info <- c(get_info(donations_o), get_info(donors_o))
     use_col_names <- input_format != "FRCBS"
@@ -423,7 +441,7 @@ hb_predictor3 <- function(ws) {
   file.create("../output/exclusions.txt")  # Make the file empty
   logger <- new_logger(prefix="Preprocess:", file="../output/exclusions.txt")
   #print(logger, "testi")
-  if (input_format == "Preprocessed") {
+  if (input_format == "Preprocessed" || input_format == "Prefitted") {
     donation_specific_filename <- post$preprocessed_file_upload$tempfile
     fulldata_preprocessed <- readRDS(donation_specific_filename)
     preprocessed_info <- sprintf("<p>Preprocessed data: rows=%i, columns=%i</p>", nrow(fulldata_preprocessed), ncol(fulldata_preprocessed))
@@ -520,6 +538,53 @@ hb_predictor3 <- function(ws) {
   cat("Distribution of time series length\n")
   print(fulldata_preprocessed %>% count(donor, name="Length") %>% count(Length, name="Count"))
   
+  # Which models to run:
+  # This looks ugly because lmm and dlmm are done in the same Rmd.
+  tmp <- intersect(c("lmm", "dlmm"), names(post))
+  if (length(tmp) == 0) {
+    linear_models <- NULL
+  } else {
+    linear_models <- case_when(
+      length(tmp) == 1 ~ tmp[[1]],   # lmm or dlmm
+      length(tmp) == 2 ~ "both")
+  }
+  models <- intersect(c("dt", "bl", "rf", "svm"), names(post))
+  models <- c(models, linear_models)
+  
+  # Which sexes to compute:
+  sexes <- if (stratify_by_sex=="pooled") {
+    "both"
+  } else if (stratify_by_sex == "stratified") { 
+    c("male", "female") 
+  } else 
+    stratify_by_sex  # either "male" or "female" 
+  
+  if (!is.null(prefitted_filename)) {
+    
+    cmd <- sprintf("unzip -Z1 %s", prefitted_filename)  # Get a plain list of filenames
+    files <- system(cmd, intern=TRUE)
+    if (!all(str_detect(files, "^(rf|svm)-fit-(male|female|both).rds$"))) {  # Check that the filenames are of correct format
+      error_messages <- c(error_messages, sprintf("The prefitted zip file contained unknown filenames"))
+      return(list(type="final", error_messages=error_messages))
+    }
+    m <- str_match(files, "^(rf|svm)-fit-(male|female|both).rds$") # Returns a matrix of regex subgroups
+    fitted_models <- unique(m [,2])
+    fitted_sex <- unique(m [,3])
+    
+    if (length(setdiff(sexes, fitted_sex)) >  0) {
+      error_messages <- c(error_messages, sprintf("Not all requested sexes are contained in the prefitted zip package"))
+      return(list(type="final", error_messages=error_messages))      
+    }
+    if (length(setdiff(models, fitted_models)) >  0) {
+      error_messages <- c(error_messages, sprintf("Not all requested models are contained in the prefitted zip package"))
+      return(list(type="final", error_messages=error_messages))      
+    }
+    # Extract the models
+    cmd <- sprintf("cd /tmp; unzip -oj %s", prefitted_filename)
+    system(cmd)
+    prefitted_models <- TRUE
+  }
+  
   if (stratify_by_sex != "pooled") {
     male_donation_specific_filename   <- "../output/male_preprocessed.rds"
     female_donation_specific_filename <- "../output/female_preprocessed.rds"
@@ -554,8 +619,14 @@ hb_predictor3 <- function(ws) {
     myparams$donor_specific_file <- donor_specific_filename
   
   predictive_variables <- c()
-  for (parameter_name in names(post)) {
-    if (str_starts(parameter_name, "dv_")) predictive_variables <- append(predictive_variables, str_remove(parameter_name, "^dv_")) 
+  if (prefitted_models) {
+    model <- readRDS(sprintf("/tmp/%s", files[[1]]))  # Read the predictive variable names from some prefitted model
+    predictive_variables <- names(model$ptype)
+    rm(model)
+  } else {
+    for (parameter_name in names(post)) {
+      if (str_starts(parameter_name, "dv_")) predictive_variables <- append(predictive_variables, str_remove(parameter_name, "^dv_")) 
+    }
   }
   if (stratify_by_sex != "pooled") {
     predictive_variables <- setdiff(predictive_variables, "sex")
@@ -607,35 +678,23 @@ hb_predictor3 <- function(ws) {
   #
   ###################
 
-  # This looks ugly because lmm and dlmm are done in the same Rmd.
-  tmp <- intersect(c("lmm", "dlmm"), names(post))
-  if (length(tmp) == 0) {
-    linear_models <- NULL
-  } else {
-    linear_models <- case_when(
-      length(tmp) == 1 ~ tmp[[1]],
-      length(tmp) == 2 ~ "both")
-  }
-  
-  result_page_files <- character() # These will be included in the zip file
+
+  result_page_files <- character() # These will be included in the result zip file
   
   message("here1")
   
-  models <- intersect(c("dt", "bl", "rf", "svm"), names(post))
-  models <- c(models, linear_models)
   for (m in models) {
     cat(sprintf("Running model %s\n", m))
     myparams$model <- m
     is_linear_model <- m %in% c("lmm", "dlmm", "both")
+    if (m %in% c("rf", "svm")) {
+      myparams$prefitted_models <- prefitted_models
+    } else {
+      myparams$prefitted_models <- NULL
+    }
     pretty <- model_df %>% filter(model==m) %>% pull(pretty)
     rmd <- model_df %>% filter(model==m) %>% pull(rmd)
     #sexess <- if (stratify_by_sex && m != "random-forest")  c("male", "female") else c("both")
-    sexes <- if (stratify_by_sex=="pooled") {
-      "both"
-    } else if (stratify_by_sex == "stratified") { 
-      c("male", "female") 
-    } else 
-      stratify_by_sex  # either "male" or "female" 
     for (sex in sexes) {
       id <- paste(m, sex, sep="-")
       cat(sprintf("Running sex %s\n", sex))
@@ -861,7 +920,8 @@ hb_predictor3 <- function(ws) {
   files <- c(files, basename(result_page_files))
   system(sprintf("cd ../output; zip %s %s", zip_file, paste(files, collapse=" ")))
 
-  # Another zip file that contains all fitted models and train/validate data
+  # Another zip file that contains all fitted models and train/validate data.
+  # These are for testing purposes
   cmd <- sprintf("cd /tmp; zip tmp_rds.zip *.rds")
   system(cmd)
   
@@ -1011,17 +1071,23 @@ hb_predictor <- function(req){
             <input type="radio" value="Preprocessed", id="Preprocessed" name="input_format" />
             Preprocessed
           </label>
+          <label for="Prefitted">
+            <input type="radio" value="Prefitted", id="Prefitted" name="input_format" />
+            Prefitted
+          </label>
         </fieldset>
         
         <table id="input_table">
-        <tr id="donations_row"><td data-toggle="tooltip" data-placement="left" title="Text file where the columns are separated by the | character">Upload donations file:</td> <td><input type=file name="donations_file_upload"></td> </tr>
-        <tr id="donors_row"><td data-toggle="tooltip" data-placement="left" title="Text file where the columns are separated by the | character">Upload donors file:</td>    <td><input type=file name="donors_file_upload"></td> </tr>
-        <tr id="donor_specific_row" style="display: none"><td>Upload donor specific file:</td>    <td><input type=file name="donor_specific_file_upload"></td> </tr>
-        <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type=file name="preprocessed_file_upload"></td> </tr>
+        <tr id="donations_row"><td data-toggle="tooltip" data-placement="left" title="Text file where the columns are separated by the | character">Upload donations file:</td> <td><input type="file" name="donations_file_upload" /></td> </tr>
+        <tr id="donors_row"><td data-toggle="tooltip" data-placement="left" title="Text file where the columns are separated by the | character">Upload donors file:</td>    <td><input type="file" name="donors_file_upload" /></td> </tr>
+        <tr id="donor_specific_row" style="display: none"><td>Upload donor specific file:</td>    <td><input type="file" name="donor_specific_file_upload" /></td> </tr>
+        <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type="file" name="preprocessed_file_upload" /></td> </tr>
+        <tr id="prefitted_row" style="display: none"><td>Prefitted model file:</td>     <td><input type="file" name="prefitted_file_upload" /></td> </tr>
         <tr><td>Hb cutoff (male)</td>       <td><input id="Hb_cutoff_male" name="Hb_cutoff_male" value="{round(default_Hb_cutoff_male)}" maxlength="5" size="5">
           <!--<span id="male_unit">g/L</span>--></td> </tr>
         <tr><td>Hb cutoff (female)</td>     <td><input id="Hb_cutoff_female" name="Hb_cutoff_female" value="{round(default_Hb_cutoff_female)}" maxlength="5" size="5">
         <!--<span id="female_unit">g/L</span>--></td> </tr>
+        
         <tr><td>Hb unit</td>                <td>
         <select id="unit" name="unit">
           <option value="gperl" label="g/L" selected>g/L</option>
@@ -1029,6 +1095,7 @@ hb_predictor <- function(req){
           <option value="mmolperl" label="mmol/L">mmol/L</option>
         </select>
         </td></tr>
+        
         <tr><td data-toggle="tooltip" data-placement="left" title="Donors with less donations than this limit will be excluded">Minimum donations</td>      <td><input name="hlen" value="5" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td data-toggle="tooltip" data-placement="left" title="Either fraction between 0 and 1 or the number of donors n. If stratification by sex is chosen, then a sample will be taken with n males and n females.">Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
         <tr><td>Random seed</td>      <td><input name="seed" value="123" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
@@ -1079,11 +1146,12 @@ hb_predictor <- function(req){
         
         <tr id="southern_hemisphere_row"><td>Southern hemisphere</td>
             <td>
-            <input type="checkbox" value="on", id="southern-hemisphere" name="southern-hemisphere" />
+            <input type="checkbox" value="on" id="southern-hemisphere" name="southern-hemisphere" />
             </td>
         </tr>
         
-        <tr><td>Hyperparameters</td>                <td>
+        <tr id="hyperparameter_row"><td>Hyperparameters</td>                
+        <td>
         <select id="hyperparameters" name="hyperparameters">
           <option value="finnish" label="Finnish" selected>Finnish</option>
           <option value="dutch" label="Dutch">Dutch</option>
@@ -1120,35 +1188,28 @@ hb_predictor <- function(req){
         <fieldset>
           <legend>Which prediction model to use?</legend>
           
-          <label for="lmm">
-            <input type="checkbox" value="on", id="lmm" name="lmm" />
+          <label for="lmm" id="lmm_label">
+            <input type="checkbox" value="on" id="lmm" name="lmm" />
             Linear mixed model
           </label>
           
-          <label for="dlmm">
-            <input type="checkbox" value="on", id="dlmm" name="dlmm" />
+          <label for="dlmm" id="dlmm_label">
+            <input type="checkbox" value="on" id="dlmm" name="dlmm" />
             Dynamic linear mixed model
           </label>
 
-          <!--
-          <label for="decision-tree">
-            <input type="checkbox" value="on", id="decision-tree" name="dt" />
-            Mock decision tree
-          </label>
-          -->
-          
-          <label for="baseline">
-            <input type="checkbox" value="on", id="baseline" name="bl" />
+          <label for="baseline" id="baseline_label">
+            <input type="checkbox" value="on" id="baseline" name="bl" />
             Baseline model
           </label>
 
-          <label for="random-forest">
-            <input type="checkbox" value="on", id="random-forest" name="rf" checked />
+          <label for="random-forest" id="random-forest_label">
+            <input type="checkbox" value="on" id="random-forest" name="rf" checked />
             Random forest
           </label>
           
-          <label for="svm">
-            <input type="checkbox" value="on", id="svm" name="svm"  />
+          <label for="svm" id="svm_label">
+            <input type="checkbox" value="on" id="svm" name="svm"  />
             Support vector machine
           </label>
           

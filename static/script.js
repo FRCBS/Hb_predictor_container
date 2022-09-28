@@ -44,12 +44,25 @@ function set_hb_unit(unit_string) {
 // Some parts of the UI are shown only under certain conditions.
 function show_and_enable(e) {
     e.style.display = "table-row";
-    e.querySelector("input").disabled = false;
+    if (e == null)
+	alert("Is null");
+    is = e.querySelectorAll("input,select")
+    is.forEach((i) => {i.disabled = false;});
 }
 
 function hide_and_disable(e) {
     e.style.display = "none";
-    e.querySelector("input").disabled = true;
+    is = e.querySelectorAll("input,select");
+    is.forEach((i) => {	i.disabled = true;});
+}
+
+function enable(id) {
+    e = document.getElementById(id);
+    show_and_enable(e);
+}
+function disable(id) {
+    e = document.getElementById(id);
+    hide_and_disable(e);
 }
 
 function handle_input_format(e) {
@@ -59,7 +72,8 @@ function handle_input_format(e) {
     e3 = document.getElementById("donor_specific_row");
     e4 = document.getElementById("preprocessed_row");
     e5 = document.getElementById("max_diff_date_first_donation_row");
-    
+    labels = ["lmm_label", "dlmm_label", "baseline_label",
+	      "random-forest_label", "svm_label"];
     if (value == "FRCBS") {
 	set_hb_unit("gperl");
 	show_and_enable(e1);
@@ -67,6 +81,14 @@ function handle_input_format(e) {
 	show_and_enable(e3);
 	hide_and_disable(e4);
 	hide_and_disable(e5);
+	enable("southern_hemisphere_row");
+	enable("hyperparameter_row");
+	enable("hyperparameter_file_row");
+	enable("imbalance_row");
+	disable("prefitted_row");
+	enable("predictive-variables");
+
+	labels.forEach(enable);
     } else if (value == "Sanquin") {
 	set_hb_unit("gperdl");
 	show_and_enable(e1);
@@ -74,14 +96,51 @@ function handle_input_format(e) {
 	hide_and_disable(e3);
 	hide_and_disable(e4);
 	hide_and_disable(e5);
+	enable("southern_hemisphere_row");
+	enable("hyperparameter_row");
+	enable("hyperparameter_file_row");
+	enable("imbalance_row");
+	disable("prefitted_row");
+	enable("predictive-variables");
 
-    } else {
+	labels.forEach(enable);
+    } else if (value == "Preprocessed") {
+	set_hb_unit("gperdl");
+	hide_and_disable(e1);
+	hide_and_disable(e2);
+	hide_and_disable(e3);
+	show_and_enable(e4);
+	hide_and_disable(e5);
+	disable("southern_hemisphere_row");
+	enable("hyperparameter_row");
+	enable("hyperparameter_file_row");
+	enable("imbalance_row");
+	disable("prefitted_row");
+	enable("predictive-variables");
+
+	labels.forEach(enable);
+    } else if (value == "Prefitted") {
+	console.log("Selected prefitted");
 	set_hb_unit("gperl");
 	hide_and_disable(e1);
 	hide_and_disable(e2);
 	hide_and_disable(e3);
 	show_and_enable(e4);
 	hide_and_disable(e5);
+	disable("southern_hemisphere_row");
+	disable("hyperparameter_row");
+	disable("hyperparameter_file_row");
+	disable("imbalance_row");
+	enable("prefitted_row");
+	disable("predictive-variables");
+
+	disable("lmm_label");
+	disable("dlmm_label");
+	disable("baseline_label");
+	enable("random-forest_label");
+	enable("svm_label");
+    } else {
+	alert("Unknown value" + value);
     }
     
     console.log("Fieldset clicked: " + value);
@@ -160,6 +219,7 @@ document.onreadystatechange = function() {
 	document.getElementById("FRCBS").onchange = handle_input_format;
 	document.getElementById("Sanquin").onchange = handle_input_format;
 	document.getElementById("Preprocessed").onchange = handle_input_format;
+	document.getElementById("Prefitted").onchange = handle_input_format;
 	document.getElementById("unit").onchange = handle_hb_unit;
 	document.getElementById("hyperparameters").onchange = handle_hyperparameters;
 

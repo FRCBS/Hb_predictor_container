@@ -30,6 +30,7 @@ params:
   skip_train: FALSE
   compute_shap_values: TRUE
   create_datasets_bool: TRUE
+  prefitted_models: FALSE
 #   donor_specific_file: "~/FRCBS/interval_prediction/data/finngen_snip_prs-2020-07-29.rdata"
   donor_specific_file: NULL
   dev: "cairo_pdf" 
@@ -428,7 +429,7 @@ saveRDS(validate, file=sprintf("/tmp/rf-validate-%s.rds", params$sex))
 message("here8")
 
 fit_filename <- sprintf("/tmp/rf-fit-%s.rds", params$sex)
-if (use_pdf) {
+if (use_pdf || params$prefitted_models) {
   rrfFit_roc <- readRDS(fit_filename)
 } else {
   set.seed(global_random_seed)
