@@ -644,6 +644,9 @@ get_model_specs.train <- function(x){
 # We will dig out the ksvm fit object from Caret's fit object and
 # call its predict method directly.
 my_predict <- function(fit, newdata, type="response") {
+  library(magrittr)   # These are here to make parallelism work
+  library(dplyr)
+  library(kernlab)
   stopifnot("train" %in% class(fit) && "ksvm" %in% class(fit$finalModel))
   newdata <- predict(fit$preProcess, newdata)  # Preprocess the data the same way Caret does
   newdata <- newdata %>% select(-any_of(c("sex", "Hb", "Hb_deferral"))) 
@@ -653,21 +656,32 @@ my_predict <- function(fit, newdata, type="response") {
 
 use_decision_value_with_svm <- TRUE
 
+
 # The nsim parameter seems to have linear effect on running time
-compute_shap_values_fastshap <- function(model, validate, variables, n=1000, seed, nsim=100) {
+compute_shap_values_fastshap <- function(model, validate, variables, n=1000, seed, nsim=100, cores=1) {
   message("In function compute_shap_values_fastshap")
   set.seed(seed)
-  
+
   n <- min(n, nrow(validate))
   
   validate2 <- validate  %>% slice_sample(n=n) %>% select(-any_of(c("Hb_deferral", "Hb")))
+  
+  cl <- parallel::makePSOCKcluster(cores, outfile = "")
+  #cl <- cores
+  doParallel::registerDoParallel(cl)
 
+  my_predict <- my_predict  # This is here to make parallelism work
+  #helper <- function(model, validate2) {  
+    
+    
   if ("stanfit" %in% class(model)) {
     t <- as_tibble(rownames_to_column(as.data.frame(rstan::get_posterior_mean(model))))
     beta <- t %>% filter(str_detect(rowname, r"(^beta\[\d+\])")) %>% pull(`mean-all chains`) #select(rowname, mean=`mean-all chains`)
   }
   
   pfun_lmm <- function(object, newdata) {
+    library(magrittr)   # These are here to make parallelism work
+    library(dplyr)
     #message(colnames(newdata))
     #message(head(newdata$donb))
     #message(sprintf("In function pfun_lmm: rows=%i cols=%i", nrow(newdata), ncol(newdata)))
@@ -680,14 +694,15 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   }
   
   pfun_ranger <- function(object, newdata) {
+    library(ranger) # To make parallelism work
     predict(object, data = newdata, type="response")$predictions[,"Deferred"]
   }
-
+  
   # Not used currently as this doesn't perform preprocessing on newdata
   pfun_ksvm <- function(object, newdata) {
     predict(object, newdata = newdata, type="probabilities")[,2]
   }
-
+  
   # This uses decision values instead of probabilities
   pfun_ksvm_decision <- function(object, newdata) {
     my_predict(object, newdata = newdata, type="decision")[,1]
@@ -715,6 +730,8 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
   
   #print(pfun)
   
+  
+  
   result_code <- tryCatch(
     error = function(cnd) {
       msg <- paste("\nComputation of shap values failed:", cnd$message, 
@@ -728,25 +745,29 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
           shap <- fastshap::explain(model,   # This is for the baseline logistic regression
                                     feature_names = "previous_Hb",
                                     newdata = as.data.frame(validate2 %>% select(previous_Hb)),
-                                    exact = TRUE)
+                                    exact = TRUE, 
+                                    .parallel = TRUE)
         } else if ("stanfit" %in% class(model)) {
           shap <- fastshap::explain(model, 
                                     X = as.data.frame(validate2), 
                                     #newdata = as.data.frame(validate), 
                                     feature_names = setdiff(colnames(validate2), "donb"),
                                     pred_wrapper = pfun, 
-                                    nsim = nsim)
+                                    nsim = nsim,
+                                    .parallel = TRUE)
         } else {
           shap <- fastshap::explain(model, 
                                     X = as.data.frame(validate2),
                                     pred_wrapper = pfun, 
-                                    nsim = nsim)
+                                    nsim = nsim, 
+                                    .parallel = TRUE)
         }
       })
       shap <- as_tibble(shap)  # This drops the class "explain"
     }
     
   )
+  
   if (is.null(result_code)) {
     return(NULL)
   }
@@ -755,6 +776,14 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
     warning("Predict function failed in compute_shap_values_fastshap. You could try rerunning with a different seed")
     return(NULL)
   }
+  
+  #  return(shap)
+  #}
+  
+  #shap <- helper(model, validate2)
+  
+  parallel::stopCluster(cl)
+  
   n <- nrow(validate2)
   attributions <- shap %>% mutate(id=1:n)
   attributions <- pivot_longer(attributions, cols=!id) %>%

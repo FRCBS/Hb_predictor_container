@@ -118,6 +118,8 @@ rawresultdir = "../data/raw_results/"   # I store plot objects and tables in thi
 source("helper_functions.R")
 source("validate_stan_fit.R")
 
+number_of_cores <- set_cores_options(params$cores)
+
 data <- readRDS(params$input_file)
 
 data <- data %>%
@@ -396,7 +398,7 @@ shap_filename <- sprintf("/tmp/shap_values_%s_%s.rds", params$model, params$sex)
 if (use_pdf) {     
   res <- readRDS(shap_filename)   # Already computed when creating png from the Rmd
 } else {
-  res <- compute_shap_values_fastshap(fit, validate, variables, seed=global_random_seed) 
+  res <- compute_shap_values_fastshap(fit, validate, variables, seed=global_random_seed, cores=number_of_cores) 
   res <- res %>% mutate(Id=Id)
   saveRDS(res, shap_filename)
 }
