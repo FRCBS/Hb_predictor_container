@@ -1,3 +1,16 @@
+# Version 0.34 (2022-xx-yy)
+
+* Compute data set sizes and data set sizes by age groups separately as the former cannot be derived from the latter.
+
+* In the preprocessing the last five previous Hb values are now returned: previous_Hb, previous_Hb2, ..., previous_Hb5.
+  These can be used as predictors.
+
+* RF and SVM models can now be exported and imported (through the Prefitted input format).
+
+* The computation of SHAP values is now parallelised.
+
+* Small improvements to the user interface.
+
 # Version 0.33 (2022-05-25)
 
 * Variable summary tables are now exported. The table includes counts, counts of NA values, min, max,
