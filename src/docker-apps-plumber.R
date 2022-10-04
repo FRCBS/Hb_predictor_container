@@ -90,6 +90,30 @@ create_timing_table <- function(timing) {
   return(timing_table_string)
 }
 
+create_detail_table <- function(detail) {
+  # t <-
+  #   tibble(id=sprintf("detail-%s-%s", m, sex), 
+  #          model=str_to_sentence(pretty),
+  #          sex=sex,
+  #          html=sprintf("output/results-%s-%s.html", m, sex),
+  #          pdf=sprintf("output/results-%s-%s.pdf", m, sex))
+  # details_dfs[[length(details_dfs)+1]] <- t
+  # ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
+  #<a href="output/results-rf-male.pdf" target="_blank">pdf</a>
+  helper <- function(v, name) { sprintf("<a href='%s' target='_blank'>%s</a>", v, name) }
+  detail <- detail %>% mutate(html=helper(html, "html"), pdf=helper(pdf, "pdf"))
+  #print(detail)
+  detail_table_string <- kable(detail%>% select(Model=model, Sex=sex, Html=html, Pdf=pdf), format="html", digits=3, 
+                               caption="Detailed results",
+                               align="ll",
+                               #escale = FALSE,  # THIS DOES NOT SEEM TO WORK! Do not quote special characters in the html and pdf columns
+                               table.attr = "id='detail_table' class='table table-condensed'")
+  detail_table_string <- detail_table_string %>% 
+    str_replace_all(stringr::fixed("&lt;"), "<") %>% 
+    str_replace_all(stringr::fixed("&gt;"), ">")
+  return(detail_table_string)
+}
+
 model_df <- tribble(
   ~model, ~pretty, ~rmd,
   "dt", "decision tree",             "template.Rmd",
@@ -432,6 +456,7 @@ hb_predictor3 <- function(ws) {
   #    myparams$create_datasets_bool <- FALSE
   
   timing <- tibble(id=character(), model=character(), sex=character(), time=numeric(), unit=character())
+  detail <- tibble(id=character(), model=character(), sex=character(), html=character(), pdf=character())
   
   ################################
   #
@@ -510,6 +535,7 @@ hb_predictor3 <- function(ws) {
     donation_specific_filename <- "../output/preprocessed.rds"
     saveRDS(fulldata_preprocessed, file=donation_specific_filename)
     message(sprintf("Saved preprocessed data to file %s\n", donation_specific_filename))
+    ws$send(rjson::toJSON(list(type="computed", id="preprocess")))
     
     # Filter by time series length
     old_count <- nrow(fulldata_preprocessed); old_count2 <- ndonor(fulldata_preprocessed)
@@ -811,15 +837,21 @@ hb_predictor3 <- function(ws) {
       message("x3")
       
       # Create table of links to the detailed result pages
-      t <-
-        tibble(id=sprintf("detail-%s-%s", m, sex), 
-                pretty=str_to_sentence(pretty),
-                sex=sex,
-                html=sprintf("output/results-%s-%s.html", m, sex),
-                pdf=sprintf("output/results-%s-%s.pdf", m, sex))
-      details_dfs[[length(details_dfs)+1]] <- t
-      ws$send(rjson::toJSON(list(type="detail", details_df = purrr::transpose(t))))
-      result_page_files <- c(result_page_files, t$html, t$pdf)
+      detail <- detail %>% add_row(id=sprintf("detail-%s-%s", m, sex), 
+                                   model=str_to_sentence(pretty),
+                                   sex=sex,
+                                   html=sprintf("output/results-%s-%s.html", m, sex),
+                                   pdf=sprintf("output/results-%s-%s.pdf", m, sex))
+      # t <-
+      #   tibble(id=sprintf("detail-%s-%s", m, sex), 
+      #           pretty=str_to_sentence(pretty),
+      #           sex=sex,
+      #           html=sprintf("output/results-%s-%s.html", m, sex),
+      #           pdf=sprintf("output/results-%s-%s.pdf", m, sex))
+      # details_dfs[[length(details_dfs)+1]] <- t
+      ws$send(rjson::toJSON(list(type="detail", detail_table_string = create_detail_table(detail))))
+      #result_page_files <- c(result_page_files, t$html, t$pdf)
+      result_page_files <- unique(c(result_page_files, detail$html, detail$pdf))
       message("x4")
       
       if (is_linear_model) {
@@ -858,14 +890,14 @@ hb_predictor3 <- function(ws) {
   
   if (length(summary_tables) > 0) { 
     summary_table <- bind_rows(summary_tables)
+    write_excel_csv(summary_table, "../output/summary.csv")
+    summary_table_string <- create_summary_table(summary_table)
+    ws$send(rjson::toJSON(list(type="summary", summary_table_string = summary_table_string)))
   } else {  # If no models were selected, create an empty table to make sure the function create_summary_table still works
     summary_table <- tibble(Pretty=character(), Sex=character(), `MAE (g / L)`=double(), `RMSE (g / L)`=double(), 
                             `MAE (mmol / L)`=double(), `RMSE (mmol / L)`=double(),              
                             `AUROC value`=double(), `AUPR value`=double(), `F1 value`=double())
   }
-  write_excel_csv(summary_table, "../output/summary.csv")
-  summary_table_string <- create_summary_table(summary_table)
-  ws$send(rjson::toJSON(list(type="summary", summary_table_string = summary_table_string)))
   
   message("here3")
   
@@ -918,11 +950,11 @@ hb_predictor3 <- function(ws) {
   files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "sizes.csv", "variable_summary.csv", "histogram.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
              "exclusions.txt", "hyperparameters.json", "input_parameters.json")
   files <- c(files, basename(result_page_files))
-  system(sprintf("cd ../output; zip %s %s", zip_file, paste(files, collapse=" ")))
+  system(sprintf("cd ../output; rm %s; zip %s %s", zip_file, zip_file, paste(files, collapse=" ")))
 
   # Another zip file that contains all fitted models and train/validate data.
   # These are for testing purposes
-  cmd <- sprintf("cd /tmp; zip tmp_rds.zip *.rds")
+  cmd <- sprintf("cd /tmp; rm tmp_rds.zip; zip tmp_rds.zip *.rds")
   system(cmd)
   
   # Third zip file that contains the fitted RF and SVM models without original data
@@ -930,6 +962,7 @@ hb_predictor3 <- function(ws) {
     e <- expand.grid(c("svm", "rf"), c("male", "female", "both"))
     files <- sprintf("/tmp/%s-fit-%s.rds", e$Var1, e$Var2)
     files <- files[file.exists(files)]
+    file.remove("../output/svm-and-rf-models.zip")
     if (length(files) > 0) {
       cmd <- sprintf("cd ../output; zip -j svm-and-rf-models.zip %s", paste(files, collapse=" "))
       system(cmd)
@@ -947,7 +980,9 @@ hb_predictor3 <- function(ws) {
   print(get_global_object_sizes())
   
   details_df <- bind_rows(details_dfs)
-  return(list(type="final", summary_table=as.character(summary_table_string), details_df = purrr::transpose(details_df)))
+  return(list(type="final", 
+              #summary_table=as.character(summary_table_string), 
+              details_df = purrr::transpose(details_df)))
   
 }
 
@@ -961,14 +996,14 @@ hb_predictor <- function(req){
   # I had to break the html page into multiple parts because the format string for sprint can only be 8192 characters long
   
   info <- '
-  <div id="info-container" hidden>
+  <div id="info_container" style="display: none;">
     <h2>Progress info</h2>    
     <p>Computation started: <span id="start-time"></span></p>
     <p id="finish-time-container">Computation finished: <span id="finish-time"></span></p>
     <p>Elapsed time: <span id="time"></span></p>
     <p id="status-container">Status: <span id="status"></span></p>
     <div id="spinner-container">
-        <div class="lds-spinner" hidden ><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+        <div class="lds-spinner"  style="display: none;" ><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
     </div>
     <div id="error_messages"></div>
     <div id="warning_messages"></div>
@@ -977,46 +1012,49 @@ hb_predictor <- function(req){
   '           
                       
   results <- sprintf('
-    <div id="results-container" hidden>
+    <div id="results_container" style="display: none;">
       <h2>Results</h2>
       
+      <div id="summary_table_container" style="display: none;">
       <h3>Summary</h3>
-      <div id="table_container"></div>
+      <div></div>
+      </div>
+      
+      <div id="timing_table_container" style="display: none;">
       <h3>Time</h3>
-      <div id="timing_table_container"></div>
-          <!--
-            <table id="summary-table" class="table table-condensed">
-            </table>
-          -->
-          
-      <div id="download_results_container" hidden>
+      <div></div>
+      </div>
+
+
+      <div id="download_results_container"  style="display: none;">
       <h3>Download the results</h3>
       <ul>
-          <li> <a href="/output/summary.csv" target="_blank">Summary table</a> (CSV)</li>
-          <li id="effect-size"> <a href="/output/effect-size.csv" target="_blank">Effect size table</a> (CSV)</li>
-          <li id="variable-importance"> <a href="/output/variable-importance.csv" target="_blank">Variable importance table</a> (CSV)</li>
-          <li id="shap-value"> <a href="/output/shap-value.csv" target="_blank">Shap value table</a> (CSV)</li>
-          <li id="sizes"> <a href="/output/sizes.csv" target="_blank">Dataset sizes table</a> (CSV)</li>
-          <li id="variable_summary"> <a href="/output/variable_summary.csv" target="_blank">Variable summary table</a> (CSV)</li>
+          <li id="summary" style="display: none;"> <a href="/output/summary.csv" target="_blank">Summary table</a> (CSV)</li>
+          <li id="effect-size" style="display: none;"> <a href="/output/effect-size.csv" target="_blank">Effect size table</a> (CSV)</li>
+          <li id="variable-importance" style="display: none;"> <a href="/output/variable-importance.csv" target="_blank">Variable importance table</a> (CSV)</li>
+          <li id="shap-value" style="display: none;"> <a href="/output/shap-value.csv" target="_blank">Shap value table</a> (CSV)</li>
+          <li id="sizes" style="display: none;"> <a href="/output/sizes.csv" target="_blank">Dataset sizes table</a> (CSV)</li>
+          <li id="variable_summary" style="display: none;"> <a href="/output/variable_summary.csv" target="_blank">Variable summary table</a> (CSV)</li>
           <!-- <li id="deferral-age"> <a href="/output/deferral-age.csv" target="_blank">Deferral by age table</a> (CSV)</li> -->
-          <li id="histogram"> <a href="/output/histogram.csv" target="_blank">Histogram table</a> (CSV)</li>
-          <li id="prediction"> <a href="/output/prediction.csv" target="_blank">Prediction data</a> (CSV)</li>
-          <li id="download_hyperparameters"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
-          <li id="exclusions"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>
-          <li id="preprocessed"> <a href="/output/preprocessed.rds" target="_blank">Preprocessed data</a> (R binary)</li>
-          <li id="download_all_results"> <a href="/output/%s" target="_blank">All results</a> (ZIP)</li>
-          <li id="download_rf_svm_models"> <a href="/output/svm-and-rf-models.zip" target="_blank">RF and SVM models</a> (ZIP)</li>
-          <!--
-            <li id="train"> <a href="/output/train.csv" target="_blank">Train</a> </li>
-            <li id="validate"> <a href="/output/validate.csv" target="_blank">Validate</a> </li>
-          -->
+          <li id="histogram" style="display: none;"> <a href="/output/histogram.csv" target="_blank">Histogram table</a> (CSV)</li>
+          <li id="prediction" style="display: none;"> <a href="/output/prediction.csv" target="_blank">Prediction data</a> (CSV)</li>
+          <li id="download_hyperparameters" style="display: none;"> <a href="/output/hyperparameters.json" target="_blank">Learned hyperparameters</a> (JSON)</li>
+          <li id="exclusions" style="display: none;"> <a href="/output/exclusions.txt" target="_blank">Exclusions</a> </li>
+          <li id="preprocessed" style="display: none;"> <a href="/output/preprocessed.rds" target="_blank">Preprocessed data</a> (R binary)</li>
+          <li id="download_all_results" style="display: none;"> <a href="/output/%s" target="_blank">All results</a> (ZIP)</li>
+          <li id="download_rf_svm_models" style="display: none;"> <a href="/output/svm-and-rf-models.zip" target="_blank">RF and SVM models</a> (ZIP)</li>
       </ul>
       </div>
       
+      <div id="detailed_results_container"  style="display: none;">
       <h3>Detailed result pages</h3>
-      <table id="detailed-results" class="table table-condensed">
+      <div></div>
+      <!--
+      <table id="detailed_results" class="table table-condensed">
         <tr> <th>Model</th> <th>Sex</th> <th>html</th> <th>pdf</th> </tr>
       </table>
+      -->
+      </div>
     </div>
   ', zip_file)
 
@@ -1159,7 +1197,7 @@ hb_predictor <- function(req){
           <option value="learn" label="Learn">Learn</option>
         </select>
         </td></tr>
-        <tr id="hyperparameter_file_row" hidden>
+        <tr id="hyperparameter_file_row"  style="display: none;">
           <td>Upload hyperparameter file:</td>    
           <td><input type=file name="hyperparameter_file_upload"></td> 
         </tr>

@@ -83,7 +83,7 @@ function handle_input_format(e) {
 	hide_and_disable(e5);
 	enable("southern_hemisphere_row");
 	enable("hyperparameter_row");
-	enable("hyperparameter_file_row");
+	disable("hyperparameter_file_row");
 	enable("imbalance_row");
 	disable("prefitted_row");
 	enable("predictive-variables");
@@ -98,7 +98,7 @@ function handle_input_format(e) {
 	hide_and_disable(e5);
 	enable("southern_hemisphere_row");
 	enable("hyperparameter_row");
-	enable("hyperparameter_file_row");
+	disable("hyperparameter_file_row");
 	enable("imbalance_row");
 	disable("prefitted_row");
 	enable("predictive-variables");
@@ -113,7 +113,7 @@ function handle_input_format(e) {
 	hide_and_disable(e5);
 	disable("southern_hemisphere_row");
 	enable("hyperparameter_row");
-	enable("hyperparameter_file_row");
+	disable("hyperparameter_file_row");
 	enable("imbalance_row");
 	disable("prefitted_row");
 	enable("predictive-variables");
@@ -177,7 +177,7 @@ document.onreadystatechange = function() {
 
     
     //<label for="lmm">
-    //<input type="checkbox" value="on", id="lmm" name="lmm" />
+    //<input type="checkbox" value="on" id="lmm" name="lmm" />
     //Linear mixed model
     //</label>
     if (document.readyState == "complete") {
@@ -216,11 +216,14 @@ document.onreadystatechange = function() {
 	
 	console.log("Setting handleButtonPress");
 	document.getElementById("submit").onclick = handleButtonPress;
-	document.getElementById("FRCBS").onchange = handle_input_format;
-	document.getElementById("Sanquin").onchange = handle_input_format;
+	
+	document.getElementById("FRCBS").onchange        = handle_input_format;
+	document.getElementById("Sanquin").onchange      = handle_input_format;
 	document.getElementById("Preprocessed").onchange = handle_input_format;
-	document.getElementById("Prefitted").onchange = handle_input_format;
+	document.getElementById("Prefitted").onchange    = handle_input_format;
+	
 	document.getElementById("unit").onchange = handle_hb_unit;
+	
 	document.getElementById("hyperparameters").onchange = handle_hyperparameters;
 
 	window.addEventListener('keydown', handle_keypress, false);
@@ -272,12 +275,18 @@ document.onreadystatechange = function() {
 	el.innerHTML="";
 	var el = document.getElementById("info");
 	el.innerHTML="";
-	var el = document.getElementById("detailed-results").firstElementChild;  // the table body
-	for (i=el.childElementCount-1; i > 0; --i) {  // Remove table rows except the header row
-	    el.children[i].remove()
-	}	
-	document.getElementById("results-container").hidden = true;
-	document.getElementById("download_results_container").hidden = true;
+	//var el = document.getElementById("detailed_results_container");//.firstElementChild;  // the table body
+	
+	// for (i=el.childElementCount-1; i > 0; --i) {  // Remove table rows except the header row
+	//     el.children[i].remove()
+	//}
+	document.getElementById("detailed_results_container").style.display = "none";
+	document.getElementById("results_container").style.display = "none";
+	// Hide the result container and all its children
+	el = document.getElementById("download_results_container");
+	lis = el.querySelectorAll("li");
+	lis.forEach((li) => {li.style.display = "none";});	
+	el.style.display = "none";
 	computed = [];
 	
 	httpRequest.onreadystatechange = handleResponseForUpload;
@@ -290,7 +299,7 @@ document.onreadystatechange = function() {
 	httpRequest.setRequestHeader("Accept", "application/json");
 	httpRequest.send(formData);
 	console.log("Timeout is " + httpRequest.timeout);
-	running = true;
+        running = true;
 	document.getElementById("submit").disabled = true;
 	document.getElementById("finish-time-container").style.display = "none";
 	//document.getElementsByClassName("lds-spinner")[0].removeAttribute("hidden");
@@ -301,7 +310,7 @@ document.onreadystatechange = function() {
 	set_time(0);
 	interval_id = window.setInterval(interval_callback, 1000);  // Once a second
 	document.getElementById("start-time").innerHTML = new Date().toString();//.substr(0, 19);
-	document.getElementById("info-container").removeAttribute("hidden");
+	document.getElementById("info_container").style.display = "";
 	
     }
     
@@ -377,11 +386,12 @@ document.onreadystatechange = function() {
 	}
     }
 
+    // Not used anymore
     function add_rows_to_details_table(data) {
 	// Add pointers to separate result pages in the details table
 	console.log(`Details dataframe has ${data.details_df.length} rows`);
 	// get the tbody element under the table element
-	detailed_results = document.getElementById("detailed-results").firstElementChild;  
+	detailed_results = document.getElementById("detailed_results").firstElementChild;  
 	for (i=0; i < data.details_df.length; ++i) {   // iterate over rows of the table
             var wrapper= document.createElement('tbody');
             e = data.details_df[i];
@@ -390,6 +400,7 @@ document.onreadystatechange = function() {
             console.log(t)
             detailed_results.appendChild(wrapper.firstChild);
 	}
+	document.getElementById("detailed_results_container").style.display = "";
     }
 
 
@@ -438,40 +449,50 @@ document.onreadystatechange = function() {
 	    document.getElementById("finish-time-container").style.display = "block";
 	    document.getElementById("finish-time").innerHTML = new Date().toString();//.substr(0, 19);
 	    
-            document.getElementById("download_results_container").removeAttribute("hidden");
+            document.getElementById("download_results_container").style.display = "";
 	    
 	    console.log("Type of data is " + typeof(data))
 	    add_error_messages(data)
 	    add_warning_messages(data)
 
-	    // Show the link to the zip file containing rf and svm models
-	    function svm_or_rf(s) { return s.startsWith("rf") || s.startsWith("svm"); }
-	    if (computed.filter(svm_or_rf).length > 0) {   // Were any svm or rf models computed?
-		document.getElementById("download_rf_svm_models").style.display = "";
-	    } else {
-		document.getElementById("download_rf_svm_models").style.display = "none";
+	    function rincludes(a, r) {  // Checks if any element of array a matches to regex r
+		return(a.filter((i) => {return i.match(r);}).length > 0);
 	    }
 	    
-	    if (!document.getElementById("random-forest").checked) {
-		document.getElementById("variable-importance").style.display = "none";
+	    // Show the link to the zip file containing rf and svm models
+	    if (rincludes(computed, "^(rf|svm)")) {   // Were any svm or rf models computed?
+		document.getElementById("download_rf_svm_models").style.display = "";
+	    }
+
+	    if (computed.includes("preprocess")) {
+		document.getElementById("preprocessed").style.display = "";
+		document.getElementById("exclusions").style.display = "";
+		document.getElementById("download_all_results").style.display = "";
+	    }
+	    
+	    if (rincludes(computed, "^rf")) {
+		document.getElementById("variable-importance").style.display = "";
 		//document.getElementById("detail-rf").style.display = "none";
 	    }
-	    if (!document.getElementById("lmm").checked && !document.getElementById("dlmm").checked) {
-		document.getElementById("effect-size").style.display = "none";
+	    if (rincludes(computed, "^(lmm|dlmm)")) {
+		document.getElementById("effect-size").style.display = "";
 		//document.getElementById("detail-lmm-male").style.display = "none";
 		//document.getElementById("detail-lmm-female").style.display = "none";
 	    }
-	    
-	    //add_rows_to_details_table(data);
-	    
-	    //document.getElementById("results-container").removeAttribute("hidden");  
-	    
-	    if (document.querySelector('input[name="input_format"]:checked').value == "Preprocessed")
-		document.getElementById("preprocessed").style.display = "none";
+	    if (rincludes(computed, "^(lmm|dlmm|svm|rf)")) {
+		document.getElementById("shap-value").style.display = "";
+	    }
+	    if (rincludes(computed, "^(lmm|dlmm|svm|rf|bl)")) {
+		["sizes", "variable_summary", "histogram", "prediction", "exclusions", "download_all_results"].forEach((li) => {
+		    document.getElementById(li).style.display = "";
+		});
+	    }
+	    if (computed.length > 0)
+		document.getElementById("results_container").style.display = "";  
 	} else if (data.type == "status") {
 	    // Show status
 	    if (data.status == "Ready") {   // This is not very pretty. Try to do it better later.
-		document.getElementById("results-container").removeAttribute("hidden");  
+		document.getElementById("results_container").style.display = "";  
 	    }
 	    document.getElementById("status").innerHTML = data.status;
 	} else if (data.type == "info") {
@@ -479,43 +500,43 @@ document.onreadystatechange = function() {
 	    document.getElementById("info").innerHTML += data.result;
 	} else if (data.type == "summary") {
 	    // Show summary table
-	    document.getElementById("table_container").innerHTML = data.summary_table_string;
+	    el = document.getElementById("summary_table_container");
+	    el.style.display = "";
+	    document.getElementById("summary").style.display = "";  // download link
+	    el.querySelector('div').innerHTML =
+		data.summary_table_string;
 	} else if (data.type == "computed") {
 	    console.log("Computed " + data.id);
 	    computed.push(data.id);
+	    document.getElementById("results_container").style.display = "";  
 	} else if (data.type == "timing") {
 	    // Show timing table
-	    document.getElementById("timing_table_container").innerHTML = data.timing_table_string;
+	    el=document.getElementById("timing_table_container");
+	    el.style.display = "";
+	    el.querySelector('div').innerHTML =
+		data.timing_table_string;
+	} else if (data.type == "detail") {
+	    // Show timing table
+	    el=document.getElementById("detailed_results_container");
+	    el.style.display = "";
+	    el.querySelector('div').innerHTML =
+		data.detail_table_string;
 	} else if (data.type == "error") {
 	    // Show error
-	    add_error_messages(data)
-	    add_warning_messages(data)
+	    add_error_messages(data);
+	    add_warning_messages(data);
 	} else if (data.type == "warning") {
 	    // Show error
-	    add_error_messages(data)
-	    add_warning_messages(data)
-	} else if (data.type == "detail") {
-	    add_rows_to_details_table(data);
-	    document.getElementById("results-container").removeAttribute("hidden");  
-	}
+	    add_error_messages(data);
+	    add_warning_messages(data);
+	}//  else if (data.type == "detail") {
+	//     add_rows_to_details_table(data);
+	//     document.getElementById("results_container").style.display = "";  
+	// }
     }
 
-    // This is not used anymore.
-    // function handleResponse() {
-    // 	console.log("In handleResponse, readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
-    // 	if (httpRequest.readyState == 4 && httpRequest.status == 200) {                                   // SUCCESS
-    // 	    var data = JSON.parse(httpRequest.responseText);
-    // 	    process_json_result(data);
-    // 	} else if (httpRequest.readyState == 4 && httpRequest.status != 200) {                            // FAIL
-    // 	    console.log("Server error! readyState: " + httpRequest.readyState + " status: " + httpRequest.status);
-    // 	    //document.getElementsByClassName("lds-spinner")[0].style.display = "none";
-    // 	    //clearInterval(interval_id);  // stop the timer
-    // 	    stop_waiting(interval_id);
-    // 	    el = document.getElementById("error_messages");
-    // 	    el.innerHTML = "<p>Server error!  readyState: " + httpRequest.readyState + " status: " + httpRequest.status + "</p>  ";
-    // 	}
-    // }
-    
+
+    // Computation has finished, so stop the spinner animation.
     function stop_waiting(interval_id) {
 	document.getElementsByClassName("lds-spinner")[0].style.display = "none";
 	console.log("interval_id is: " + interval_id);
@@ -539,7 +560,7 @@ document.onreadystatechange = function() {
 	return result;
     }
     
-    // Set elapsed time
+    // Update elapsed time
     function set_time(milliseconds) {
 	//date = new Date(milliseconds).toISOString().substr(11, 8);
 	date = seconds_to_dhms(milliseconds / 1000);
