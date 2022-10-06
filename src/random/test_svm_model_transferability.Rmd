@@ -1,0 +1,77 @@
+---
+title: "Test SVM transferability"
+author: "Jarkko Toivonen"
+date: "2022-10-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ISLR2)
+```
+
+## R Markdown
+
+```{r}
+Default = as_tibble(Default)
+Default
+```
+
+```{r}
+summary(Default)
+```
+
+```{r}
+my_fit <- function(data, method) {
+  fit <- caret::train(default ~ ., data = as.data.frame(data), 
+                      #svmFit_roc <- caret::train(x = train %>% select(-Hb_deferral), y = train %>% pull(Hb_deferral),
+                      method = method, 
+                      trControl = caret::trainControl(method="none", 
+                                                      classProbs = TRUE,
+                                                      sampling = NULL,
+                                                      summaryFunction = twoClassSummary, 
+                                                      returnData = FALSE), 
+                      verbose = FALSE, 
+                      #tuneGrid = data.frame(svm_hyperparameters),
+                      preProcess = c("center","scale"),
+                      metric="ROC")
+  fit
+}
+```
+
+```{r}
+lfit <- my_fit(Default, "svmLinear")
+rfit <- my_fit(Default, "svmRadial")
+```
+
+
+```{r}
+lfit
+```
+
+```{r}
+rfit
+```
+
+```{r Set all elements of the support vectors to zero}
+clean_lfit <- lfit
+clean_rfit <- rfit
+clean_lfit$finalModel@xmatrix[[1]][,] <- 0
+clean_rfit$finalModel@xmatrix[[1]][,] <- 0
+```
+
+
+```{r}
+validate <- Default# %>% select(-default) 
+predict(lfit, validate) %>% table
+predict(clean_lfit, validate) %>% table # Does produce the same result as the previous line, probably out of sheer luck
+predict(rfit, validate) %>% table
+predict(clean_rfit, validate) %>% table # Does not produce the same result as the previous line
+```
+
+
+
+
+
+
+
