@@ -190,6 +190,7 @@ document.onreadystatechange = function() {
 	dvs = ["days_to_previous_fb", "age", "previous_Hb_def", "year",                 
 	       "warm_season", "consecutive_deferrals", "recent_donations", "recent_deferrals",     
 	       "hour", "previous_Hb", "previous_Hb2", "previous_Hb3", "previous_Hb4", "previous_Hb5",
+	       "days_to_previous_Hb", "days_to_previous_Hb2", "days_to_previous_Hb3", "days_to_previous_Hb4", "days_to_previous_Hb5", 
 	       "Hb_first", "sex", "nb_donat"]  ;
 	el = document.getElementById("predictive-variables");
 	for (i=0; i < dvs.length; ++i) {
@@ -199,7 +200,8 @@ document.onreadystatechange = function() {
 	    inp.setAttribute("type", "checkbox");
 	    inp.setAttribute("value", "on");
 	    if (["nb_donat", "year", "previous_Hb2", "previous_Hb3",
-		 "previous_Hb4", "previous_Hb5"].includes(dvs[i])) 
+		 "previous_Hb4", "previous_Hb5", "days_to_previous_Hb", "days_to_previous_Hb2",
+		 "days_to_previous_Hb3", "days_to_previous_Hb4", "days_to_previous_Hb5"].includes(dvs[i])) 
 		inp.checked = false;
 	    else
 		inp.checked = true;
@@ -282,7 +284,8 @@ document.onreadystatechange = function() {
 	//}
 	document.getElementById("detailed_results_container").style.display = "none";
 	document.getElementById("results_container").style.display = "none";
-	// Hide the result container and all its children
+	document.getElementById("summary_table_container").style.display = "none";
+	// Hide the download result container and all its children
 	el = document.getElementById("download_results_container");
 	lis = el.querySelectorAll("li");
 	lis.forEach((li) => {li.style.display = "none";});	

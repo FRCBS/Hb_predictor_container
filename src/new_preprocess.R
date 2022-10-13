@@ -455,7 +455,14 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
            previous_Hb2 = lag(Hb, n=2, default=NA),
            previous_Hb3 = lag(Hb, n=3, default=NA),
            previous_Hb4 = lag(Hb, n=4, default=NA),
-           previous_Hb5 = lag(Hb, n=5, default=NA)
+           previous_Hb5 = lag(Hb, n=5, default=NA),
+           days_to_previous_Hb  = as.integer(round(dateonly - lag(dateonly, n=1, default=NA))),
+           days_to_previous_Hb2 = as.integer(round(dateonly - lag(dateonly, n=2, default=NA))),
+           days_to_previous_Hb3 = as.integer(round(dateonly - lag(dateonly, n=3, default=NA))),
+           days_to_previous_Hb4 = as.integer(round(dateonly - lag(dateonly, n=4, default=NA))),
+           days_to_previous_Hb5 = as.integer(round(dateonly - lag(dateonly, n=5, default=NA))),
+           w = as.integer(round(dateonly - lag(dateonly, n=5, default=NA))),
+           
     ) %>%
     fill(previous_Hb) %>% # fills NA with previous non-NA
     mutate(consecutive_deferrals = consecutive_deferrals_f(Hb_deferral)) %>%
@@ -566,6 +573,7 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
                  "Hb_deferral", "nb_donat_progesa", "nb_donat_outside",
                  "first_event", "previous_Hb", "year", "warm_season", "Hb_first", "hour", "consecutive_deferrals", "recent_donations",
                  "previous_Hb2", "previous_Hb3", "previous_Hb4", "previous_Hb5", 
+                 "days_to_previous_Hb", "days_to_previous_Hb2", "days_to_previous_Hb3", "days_to_previous_Hb4", "days_to_previous_Hb5", 
                  "recent_deferrals")
   # Keep label column, if it is in the input
   variables <- c(variables, intersect(names(data), "label"))

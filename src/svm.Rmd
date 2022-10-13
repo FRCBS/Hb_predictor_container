@@ -424,9 +424,9 @@ if (use_pdf || params$prefitted_models) {
                              tuneGrid = data.frame(svm_hyperparameters),
                              preProcess = c("center","scale"),
                              metric="ROC")
-  svmFit_roc$terms <- NULL # This could leaks private data
+  #svmFit_roc$terms <- NULL # This could leaks private data
+  #svmFit_roc$finalModel@ymatrix <- NULL
   #svmFit_roc$finalModel@xmatrix[[1]] <- NULL   # Apparently this cannot be removed! Otherwise the prediction function doesn't work.
-  svmFit_roc$finalModel@ymatrix <- NULL
   saveRDS(svmFit_roc, fit_filename)
   sink(file=stderr(), type="output"); toc(); sink()
 }

@@ -465,7 +465,7 @@ if (use_pdf || params$prefitted_models) {
   message("here10")
 
   sink(file=stderr(), type="output"); toc(); sink()
-  rrfFit_roc$finalModel$predictions <- NULL   # This could leak private information
+  #rrfFit_roc$finalModel$predictions <- NULL   # This could leak private information
   saveRDS(rrfFit_roc, fit_filename)
 }
 

@@ -42,6 +42,16 @@ descript <- tibble(Variable = c("donor", "Hb", "days_to_previous_fb", "age", "pr
                                    "Sex of the donor")
 )
 
+tmp <- tribble(~Variable, ~Pretty, ~Type, ~Explanation,
+                "days_to_previous_Hb",  "Days to previous Hb",   "numeric (int)", "Time (in days) between current and previous Hb measurement",
+                "days_to_previous_Hb2", "Days to previous Hb 2", "numeric (int)", "Time (in days) between current and lag 2 Hb measurement",
+                "days_to_previous_Hb3", "Days to previous Hb 3", "numeric (int)", "Time (in days) between current and lag 3 Hb measurement",
+                "days_to_previous_Hb4", "Days to previous Hb 4", "numeric (int)", "Time (in days) between current and lag 4 Hb measurement",
+                "days_to_previous_Hb5", "Days to previous Hb 5", "numeric (int)", "Time (in days) between current and lag 5 Hb measurement",
+)
+
+descript <- bind_rows(descript, tmp)
+
 #tibble_row(Variable="one_deferral", Pretty="At least one deferral", Type="numeric (int)", Explanation="At least one deferral")
 
 donor_descript <- tibble(
@@ -99,7 +109,8 @@ summary_plotter <- function(df, variable_descriptions, color, breaks=waiver(), n
     to_pretty(variable_descriptions) %>%
     #gather() %>%
     pivot_longer(cols=everything()) %>%
-    filter(!(str_detect(name, "^Previous Hb [2-5]") & is.na(value))) %>%   # Drop these explicitly so they won't cause a warning
+    filter(!(str_detect(name, "^Previous Hb [2-5]") & is.na(value)),     # Drop these explicitly so they won't cause a warning
+           !(str_detect(name, "^Days to previous Hb( [2-5])?") & is.na(value))) %>%
     mutate(name = factor(name, levels=variable_descriptions$Pretty))  %>% # Don't sort alphabetically
     ggplot(aes(value)) +
     facet_wrap(~ name, scales = "free", ncol=ncol) +
