@@ -81,6 +81,11 @@ function handle_input_format(e) {
 	show_and_enable(e3);
 	hide_and_disable(e4);
 	hide_and_disable(e5);
+
+	enable("hb_cutoff_male_row");
+	enable("hb_cutoff_female_row");
+	enable("hb_unit_row");
+
 	enable("southern_hemisphere_row");
 	enable("hyperparameter_row");
 	disable("hyperparameter_file_row");
@@ -96,6 +101,11 @@ function handle_input_format(e) {
 	hide_and_disable(e3);
 	hide_and_disable(e4);
 	hide_and_disable(e5);
+
+	enable("hb_cutoff_male_row");
+	enable("hb_cutoff_female_row");
+	enable("hb_unit_row");
+
 	enable("southern_hemisphere_row");
 	enable("hyperparameter_row");
 	disable("hyperparameter_file_row");
@@ -111,6 +121,11 @@ function handle_input_format(e) {
 	hide_and_disable(e3);
 	show_and_enable(e4);
 	hide_and_disable(e5);
+
+	disable("hb_cutoff_male_row");
+	disable("hb_cutoff_female_row");
+	disable("hb_unit_row");
+
 	disable("southern_hemisphere_row");
 	enable("hyperparameter_row");
 	disable("hyperparameter_file_row");
@@ -134,6 +149,10 @@ function handle_input_format(e) {
 	enable("prefitted_row");
 	disable("predictive-variables");
 
+	disable("hb_cutoff_male_row");
+	disable("hb_cutoff_female_row");
+	disable("hb_unit_row");
+	
 	disable("lmm_label");
 	disable("dlmm_label");
 	disable("baseline_label");

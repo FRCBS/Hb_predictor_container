@@ -457,6 +457,7 @@ hb_predictor3 <- function(ws) {
   
   timing <- tibble(id=character(), model=character(), sex=character(), time=numeric(), unit=character())
   detail <- tibble(id=character(), model=character(), sex=character(), html=character(), pdf=character())
+  computed <- c()
   
   ################################
   #
@@ -536,6 +537,7 @@ hb_predictor3 <- function(ws) {
     saveRDS(fulldata_preprocessed, file=donation_specific_filename)
     message(sprintf("Saved preprocessed data to file %s\n", donation_specific_filename))
     ws$send(rjson::toJSON(list(type="computed", id="preprocess")))
+    computed <- c(computed, "preprocess")
     
     # Filter by time series length
     old_count <- nrow(fulldata_preprocessed); old_count2 <- ndonor(fulldata_preprocessed)
@@ -828,7 +830,8 @@ hb_predictor3 <- function(ws) {
       ws$send(rjson::toJSON(list(type="summary", summary_table_string = create_summary_table(bind_rows(summary_tables)))))
       
       ws$send(rjson::toJSON(list(type="computed", id=id)))
-
+      computed <- c(computed, id)
+      
       message("x2")
 
       p <- read_csv(prediction_filename)
@@ -946,9 +949,24 @@ hb_predictor3 <- function(ws) {
   
   message("here5")
   
+  #############################################
+  #
   # Create a zip package containing all results
-  files <- c("version.txt", "timing.csv", "summary.csv", "prediction.csv", "sizes.csv", "variable_summary.csv", "histogram.csv", "effect-size.csv", "variable-importance.csv", "shap-value.csv", 
-             "exclusions.txt", "hyperparameters.json", "input_parameters.json")
+  #
+  #############################################
+  
+  
+  rest <- setdiff(computed, "preprocessed")
+  files <- c("version.txt", "timing.csv", "input_parameters.json")
+  if (length(computed) > 0) files <- c(files, "exclusions.txt")
+  if (length(rest) > 0) {
+    files <- c(files, "summary.csv", "prediction.csv", "sizes.csv", "variable_summary.csv", "histogram.csv", "shap-value.csv", "hyperparameters.json") 
+  }
+  if (any(str_detect(rest, "^rf-")))
+    files <- c(files, "variable-importance.csv")
+  if (any(str_detect(rest, "^d?lmm-")))
+    files <- c(files, "effect-size.csv")
+  
   files <- c(files, basename(result_page_files))
   system(sprintf("cd ../output; rm %s; zip %s %s", zip_file, zip_file, paste(files, collapse=" ")))
 
@@ -1121,12 +1139,12 @@ hb_predictor <- function(req){
         <tr id="donor_specific_row" style="display: none"><td>Upload donor specific file:</td>    <td><input type="file" name="donor_specific_file_upload" /></td> </tr>
         <tr id="preprocessed_row" style="display: none"><td>Preprocessed file:</td>     <td><input type="file" name="preprocessed_file_upload" /></td> </tr>
         <tr id="prefitted_row" style="display: none"><td>Prefitted model file:</td>     <td><input type="file" name="prefitted_file_upload" /></td> </tr>
-        <tr><td>Hb cutoff (male)</td>       <td><input id="Hb_cutoff_male" name="Hb_cutoff_male" value="{round(default_Hb_cutoff_male)}" maxlength="5" size="5">
+        <tr id="hb_cutoff_male_row"><td>Hb cutoff (male)</td>       <td><input id="Hb_cutoff_male" name="Hb_cutoff_male" value="{round(default_Hb_cutoff_male)}" maxlength="5" size="5">
           <!--<span id="male_unit">g/L</span>--></td> </tr>
-        <tr><td>Hb cutoff (female)</td>     <td><input id="Hb_cutoff_female" name="Hb_cutoff_female" value="{round(default_Hb_cutoff_female)}" maxlength="5" size="5">
+        <tr id="hb_cutoff_female_row"><td>Hb cutoff (female)</td>     <td><input id="Hb_cutoff_female" name="Hb_cutoff_female" value="{round(default_Hb_cutoff_female)}" maxlength="5" size="5">
         <!--<span id="female_unit">g/L</span>--></td> </tr>
         
-        <tr><td>Hb unit</td>                <td>
+        <tr id="hb_unit_row"><td>Hb unit</td>                <td>
         <select id="unit" name="unit">
           <option value="gperl" label="g/L" selected>g/L</option>
           <option value="gperdl" label="g/dL">g/dL</option>
@@ -1134,7 +1152,7 @@ hb_predictor <- function(req){
         </select>
         </td></tr>
         
-        <tr><td data-toggle="tooltip" data-placement="left" title="Donors with less donations than this limit will be excluded">Minimum donations</td>      <td><input name="hlen" value="5" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
+        <tr><td data-toggle="tooltip" data-placement="left" title="Donors with less donation attempts than this limit will be excluded">Minimum donation attempts</td>      <td><input name="hlen" value="5" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td data-toggle="tooltip" data-placement="left" title="Either fraction between 0 and 1 or the number of donors n. If stratification by sex is chosen, then a sample will be taken with n males and n females.">Sample fraction/size</td>        <td><input name="sample_fraction" value="1.00" maxlength="5" size="5"></td> </tr>
         <tr><td>Random seed</td>      <td><input name="seed" value="123" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
         <tr><td>Number of cores</td>      <td><input name="cores" value="{default_cores}" pattern="^[0-9]+$" maxlength="5" size="5"></td> </tr>
