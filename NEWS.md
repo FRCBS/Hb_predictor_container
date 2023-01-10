@@ -1,11 +1,13 @@
-# Version 0.34 (2022-xx-yy)
+# Version 0.34 (2023-01-10)
 
 * Compute data set sizes and data set sizes by age groups separately as the former cannot be derived from the latter.
 
 * In the preprocessing the last five previous Hb values are now returned: previous_Hb, previous_Hb2, ..., previous_Hb5.
-  These can be used as predictors.
+  And also corresponding variables days_to_previous_Hb[1-5].
+  These can now be used as predictors.
 
-* RF and SVM models can now be exported and imported (through the Prefitted input format).
+* RF and SVM models can now be exported and imported (through the Prefitted input format). But SVM model
+  contains individual level data!
 
 * The computation of SHAP values is now parallelised.
 

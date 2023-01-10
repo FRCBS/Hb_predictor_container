@@ -5,7 +5,8 @@
 #FROM rocker/r-base:latest
 #FROM rocker/r-base:3.6.3
 #FROM rocker/r-ubuntu:18.04
-FROM rocker/r-ubuntu:20.04
+#FROM rocker/r-ubuntu:20.04
+FROM rocker/r-ubuntu:22.04
 
 ## install debian packages needed for tidyverse
 #RUN add-apt-repository -y "ppa:marutter/rrutter3.5"
