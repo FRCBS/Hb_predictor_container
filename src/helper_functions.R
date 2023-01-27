@@ -299,26 +299,31 @@ stratified_sample <- function(df, stratify_by_sex, size, seed,
       ungroup()
   } else {
     size <- as.integer(size)
-    counts <- enframe(tvt_ratios, "label", "count") %>%
-      mutate(count=as.integer(count*size))
+    counts <- enframe(tvt_ratios, "label", "target_count") %>%
+      mutate(target_count=as.integer(target_count*size))
     r <- nrow(counts)
-    counts[r, "count"] <- as.integer(size - sum(counts$count[1:(r-1)]))   # Make sure the result is exactly 'size' (or 2*size in the stratify_by_sex case)
+    counts[r, "target_count"] <- as.integer(size - sum(counts$target_count[1:(r-1)]))   # Make sure the result is exactly 'size' (or 2*size in the stratify_by_sex case)
     print(counts)    
     n <- n_distinct(df[[donor_field]])
     if (stratify_by_sex) {
+      data_sizes <- donors %>% count(sex) %>% deframe   # Number of male and female donors
+      stopifnot(size <= data_sizes$male & size <= data_sizes$female)     # Cannot sample larger than the data
       g <- donors %>%
         group_by(label, .data[[sex_field]]) 
     } else {
+      stopifnot(size <= nrow(donors))    # Cannot sample larger than the data
       g <- donors %>%
         group_by(label) 
     }
-    strata <- g %>%
-      group_split()
-    keys <- g %>%
-      group_keys() %>%
-      inner_join(counts)
+    g <- g %>% nest() %>% ungroup() %>% inner_join(counts) %>% mutate(n = map_int(data, nrow))
+    # strata <- g %>%
+    #   group_split()
+    # keys <- g %>%
+    #   group_keys() %>%
+    #   inner_join(counts)
     #print(keys)
-    donors <- map2_dfr(strata, keys$count, function(stratum, count) slice_sample(stratum, n=count))
+    print(g)
+    donors <- pmap_dfr(g, function(data, n, target_count, ...) slice_sample(data, n=min(target_count, n)))
   }
   result <- df %>% semi_join(donors, by=donor_field)
   return(result)

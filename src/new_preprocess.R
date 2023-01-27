@@ -55,10 +55,10 @@ read_donors <- function(donor_file) {
 
 # max_diff_date_first_donation is a non-negative integer, which specifies the maximum allowed difference
 # between min(KEY_DONAT_INDEX_DATE) and DONOR_DATE_FIRST_DONATION
-freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
+do_preprocessing <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit,
                              southern_hemisphere, max_diff_date_first_donation, restrict_time_window=TRUE, logger)
 {
-  message("In function freadFRC")
+  message("In function do_preprocessing")
   
   
   
@@ -180,7 +180,11 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
   donation <- donation %>% mutate(sex=fct_recode(sex, "female" = "F", "male" = "M"),
                                   sex=fct_relevel(sex, c("male", "female")))  # Give fixed order to levels so that caret's
                                                                                   # variable coding is predictable
-
+  
+  # Make sure sex cannot be NA
+  stopifnot(sum(is.na(donation$sex)) == 0)
+  stopifnot(n_distinct(donation$sex) <= 2)
+  
   #Sort
   donation <- donation %>% arrange(date)  
   #Add the 13 char string
@@ -590,6 +594,15 @@ freadFRC <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, Hb_input
     arrange(donor)
   toc()
   
+  # Verify that outside the given columns, there are no NAs.
+  res <- sum(map_int(df %>% select(
+    -starts_with("previous_Hb"), 
+    -starts_with("days_to_previous_Hb"), 
+    -"days_to_previous_fb", 
+    -nb_donat_progesa, 
+    -nb_donat_outside), function(v) sum(is.na(v))))
+  stopifnot(res == 0)
+  
   message(sprintf("Final preprocessed data has %i donations and %i donors\n", nrow(data), ndonor(data)))
   invisible(data)
   return(data)
@@ -697,7 +710,7 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
   
   helper <- function(donations2, donors2, logger) {
     #cat(paste(format(get_object_sizes(rlang::current_env()), n=Inf), collapse="\n"))
-    freadFRC(donations2, donors2, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
+    do_preprocessing(donations2, donors2, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
              southern_hemisphere, max_diff_date_first_donation, restrict_time_window=restrict_time_window, 
              logger=logger)
   }
