@@ -307,7 +307,7 @@ stratified_sample <- function(df, stratify_by_sex, size, seed,
     n <- n_distinct(df[[donor_field]])
     if (stratify_by_sex) {
       data_sizes <- donors %>% count(sex) %>% deframe   # Number of male and female donors
-      stopifnot(size <= data_sizes$male & size <= data_sizes$female)     # Cannot sample larger than the data
+      stopifnot(size <= data_sizes[["male"]] & size <= data_sizes[["female"]])     # Cannot sample larger than the data
       g <- donors %>%
         group_by(label, .data[[sex_field]]) 
     } else {

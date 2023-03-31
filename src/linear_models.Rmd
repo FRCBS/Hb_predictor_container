@@ -188,6 +188,7 @@ source("helper_functions.R")
 source("validate_stan_fit.R")
 ```
 
+
 ```{r Load datas, echo=FALSE, message=FALSE}
 
 data <- readRDS(params$input_file)

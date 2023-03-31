@@ -274,8 +274,11 @@ hb_predictor3 <- function(ws) {
     error_messages <- c(error_messages, "The Hb cutoff must be a positive number")
   if ("unit" %in% names(post) && ! post$unit %in% c("gperl", "gperdl", "mmolperl"))
     error_messages <- c(error_messages, "The Hb unit must be either gperl, gperdl, or mmolperl")
-  if ("hlen" %in% names(post) && is.na(as.integer(post$hlen)))
-    error_messages <- c(error_messages, "The minimum number of donations must be an integer larger or equal to 2")
+  if ("hlen" %in% names(post) ) {
+    i <- as.integer(post$hlen)
+    if (is.na(i) || length(i) != 1 || i < 2)
+      error_messages <- c(error_messages, "The minimum number of donation attempts must be an integer larger than or equal to 2")
+  }
   if ("stratify_by_sex" %in% names(post) && ! post$stratify_by_sex %in% c("pooled", "stratified", "male", "female"))
     error_messages <- c(error_messages, "The stratify_by_sex option must be either pooled, stratified, male or female")
   if ("imbalance" %in% names(post) && ! post$imbalance %in% c("none", "smote"))
@@ -656,6 +659,21 @@ hb_predictor3 <- function(ws) {
       if (str_starts(parameter_name, "dv_")) predictive_variables <- append(predictive_variables, str_remove(parameter_name, "^dv_")) 
     }
   }
+  
+  # Check that the time-series are long enough to accommodate the previous_Hb and days_to_previous_Hb variables
+  v <- keep(predictive_variables, function(x) str_detect(x, "^previous_Hb[2-5]$|^days_to_previous_Hb[2-5]$"))
+  if (length(v) > 0) {
+    for (x in v) {
+      i <- str_extract(x, ".*([2-5])", 1)
+      i <- as.integer(i)
+      if (hlen <= i) {
+        error_messages <- c(error_messages, sprintf("Cannot use variable %s because minimum number of donation attempts is %i", x, hlen))
+      }
+    }
+    if (length(error_messages) > 0)
+      return(list(type="final", error_messages=error_messages))  
+  }
+  
   if (stratify_by_sex != "pooled") {
     predictive_variables <- setdiff(predictive_variables, "sex")
   }
@@ -759,6 +777,9 @@ hb_predictor3 <- function(ws) {
       shap_value_filename <- sprintf("/tmp/shap-value-%s-%s.csv", m, sex)
       myparams["shap_value_table_file"] <- shap_value_filename
 
+      # Store all parameters to file for debugging purposes
+      saveRDS(myparams, sprintf("/tmp/myparams-%s-%s.rds", m, sex))
+      
       # Remove possible old results to avoid confusion if an algorithm errors out
       if (file.exists(summary_filename))
         file.remove(summary_filename)
