@@ -1,3 +1,7 @@
+# Version 0.35 (2024-02-14)
+
+* Fixed a bug in parallel computation of shap values.
+
 # Version 0.34 (2023-01-10)
 
 * Compute data set sizes and data set sizes by age groups separately as the former cannot be derived from the latter.
