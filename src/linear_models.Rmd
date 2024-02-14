@@ -551,6 +551,8 @@ run_linear_model <- function(Id, Model, Pretty, Sex, stan_model, stan_parameters
   } else {
     last_donations <- pred.list$x[results$last_events,]  # Compute shap values using last donations only, like in other methods
     last_donations <- last_donations %>% mutate(donb = results$new_donbs[,1])
+    last_donations_filename <- sprintf("/tmp/last_donations_%s_%s.rds", Model, Sex)
+    saveRDS(last_donations, last_donations_filename)
     shap <- compute_shap_values_fastshap(fit, last_donations, variables, seed=global_random_seed, cores=number_of_cores) 
     shap <- shap %>% mutate(Id=Id)
     #res <- compute_shap_values_shapper(rrfFit_roc$finalModel, train, validate, variables)

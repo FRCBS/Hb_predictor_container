@@ -757,7 +757,7 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
                                     feature_names = "previous_Hb",
                                     newdata = as.data.frame(validate2 %>% select(previous_Hb)),
                                     exact = TRUE, 
-                                    .parallel = TRUE)
+                                    parallel = TRUE)
         } else if ("stanfit" %in% class(model)) {
           shap <- fastshap::explain(model, 
                                     X = as.data.frame(validate2), 
@@ -765,13 +765,13 @@ compute_shap_values_fastshap <- function(model, validate, variables, n=1000, see
                                     feature_names = setdiff(colnames(validate2), "donb"),
                                     pred_wrapper = pfun, 
                                     nsim = nsim,
-                                    .parallel = TRUE)
+                                    parallel = TRUE)
         } else {
           shap <- fastshap::explain(model, 
                                     X = as.data.frame(validate2),
                                     pred_wrapper = pfun, 
                                     nsim = nsim, 
-                                    .parallel = TRUE)
+                                    parallel = TRUE)
         }
       })
       shap <- as_tibble(shap)  # This drops the class "explain"
