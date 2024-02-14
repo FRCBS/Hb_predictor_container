@@ -286,7 +286,7 @@ do_preprocessing <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, 
 
   donation <- donation %>% mutate(dateonly = date(date))
   
-  # Drop donors whose Hb is NA
+  # Drop donations whose Hb is NA
   old_count <- nrow(donation); old_count2 <- ndonor(donation)
   donation <- donation %>%
     filter(!is.na(Hb))
@@ -482,8 +482,8 @@ do_preprocessing <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, 
     mutate(warm_season = get_season(month(dateonly), {{southern_hemisphere}}))
   toc()
   
-  # Fix values where hour is 0
-  #hour.mean <- mean(data$hour)
+  # Fix values where hour is 0.
+  # This is actually wrong: it should probably be mean of non-zero hours, but the error is small.
   data <- mutate(data, hour = ifelse(hour == 0, mean(data$hour), hour))
   
 
@@ -517,7 +517,7 @@ do_preprocessing <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, 
   
 
   if (restrict_time_window) {
-    # Drop donors who haven't go any donations in the last year of the five-year window [time_window_start,time_window_end]
+    # Drop donors who haven't got any donations in the last year of the five-year window [time_window_start,time_window_end]
     any_donations_during_last_year <- function(dateonly, time_window_end) {
       year_ago <- time_window_end - lubridate::dyears(1)
       return(any(year_ago <= dateonly & dateonly <= time_window_end))
@@ -718,7 +718,10 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
   if (cores == 1) {
     data <- helper(donations, donors, logger)
   } else {
-    # Split the donors into 'cores' group and preprocess them in parallel
+    # Split the donors into 'cores' group and preprocess them in parallel.
+    # This has two problems with regard to parallelization:
+    # * midnight values for hour are replaced by the mean
+    # * end of time window is computed in the do_preprocessing function. It should be done outside it.
     loggers <- map(1:cores, function(i) {new_logger(prefix=sprintf("Preprocess %i:", i), 
                                                     file=sprintf("/tmp/exclusions-%i.txt", i))})
     folds <- createFolds(1:nrow(donors), k = cores, list = TRUE, returnTrain = FALSE)
