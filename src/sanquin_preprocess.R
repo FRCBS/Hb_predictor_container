@@ -42,8 +42,8 @@ read_sanquin_donors <- function(donor_file) {
 
 
 # The first two parameters can be either filenames or dataframes
-sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, southern_hemisphere,
-                               max_diff_date_first_donation, restrict_time_window=TRUE, cores=1, logger) {
+sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, southern_hemisphere=FALSE,
+                               max_diff_date_first_donation, restrict_time_window=FALSE, cores=1, logger) {
   #tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
@@ -55,7 +55,7 @@ sanquin_preprocess <- function(donations, donors, Hb_cutoff_male, Hb_cutoff_fema
   
   helper <- function(donations2, donors2, logger) {
     #cat(paste(format(get_object_sizes(rlang::current_env()), n=Inf), collapse="\n"))
-    freadFRC(donations2, donors2, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
+    do_preprocessing(donations2, donors2, Hb_cutoff_male, Hb_cutoff_female, Hb_input_unit, 
              southern_hemisphere, max_diff_date_first_donation, restrict_time_window=restrict_time_window, 
              logger=logger)
   }

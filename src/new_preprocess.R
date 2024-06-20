@@ -92,7 +92,7 @@ do_preprocessing <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, 
 
   
 
-  mytemp <- ymd_hm(sprintf("%s %04i", donation$date, donation$phleb_start))
+  mytemp <- ymd_hm(sprintf("%s %04i", donation$date, coalesce(donation$phleb_start, 0)))
   mm <- is.na(mytemp)
   message("Failed to parse dates:", sum(mm), "\n")
   if (sum(mm) > 0) {
@@ -159,6 +159,8 @@ do_preprocessing <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, 
     select(!!!variables) %>%
     filter(donor %in% common_donors) #Remove extra donors to get clean join  
 
+  rm(donor)
+  
   donation <- donation %>%  
     filter(donor %in% common_donors) #Remove extra donors to get clean join  
   
@@ -483,8 +485,7 @@ do_preprocessing <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, 
   toc()
   
   # Fix values where hour is 0.
-  # This is actually wrong: it should probably be mean of non-zero hours, but the error is small.
-  data <- mutate(data, hour = ifelse(hour == 0, mean(data$hour), hour))
+  data <- mutate(data, hour = ifelse(hour == 0, mean(data$hour[data$hour != 0]), hour))
   
 
   
@@ -550,23 +551,25 @@ do_preprocessing <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, 
     }
   }
   
-  # This is for Belgian data
-  old_count <- nrow(data); old_count2 <- ndonor(data)
-  data2 <- data %>%
-    group_by(donor) %>%
-    arrange(dateonly) %>%
-    group_map(possibly_drop_last, .keep=TRUE) %>%
-    bind_rows()
-  # Get the time series from which the last donation would be dropped
-  bad_donors <- setdiff(data, data2)$donor
-  bad_data <- data %>% filter(donor %in% bad_donors)
-  saveRDS(bad_data, "/tmp/bad_data.rds")
-  data <- data2
-  rm(data2)
-  msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because second last event had low hb but volume drawn > 100\n", 
-                 old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
-  message(msg)
-  print(logger, msg)
+  if (FALSE) {
+    # This is for Belgian data
+    old_count <- nrow(data); old_count2 <- ndonor(data)
+    data2 <- data %>%
+      group_by(donor) %>%
+      arrange(dateonly) %>%
+      group_map(possibly_drop_last, .keep=TRUE) %>%
+      bind_rows()
+    # Get the time series from which the last donation would be dropped
+    bad_donors <- setdiff(data, data2)$donor
+    bad_data <- data %>% filter(donor %in% bad_donors)
+    saveRDS(bad_data, "/tmp/bad_data.rds")
+    data <- data2
+    rm(data2)
+    msg <- sprintf("Dropped %i / %i donations (%i / %i donors) because second last event had low hb but volume drawn > 100\n", 
+                   old_count - nrow(data), old_count, old_count2 - ndonor(data), old_count2)
+    message(msg)
+    print(logger, msg)
+  }
   
   if (compute_donation_counts) {
     data <- data %>% group_by(donor) %>% mutate(nb_donat_progesa = n()) %>% ungroup()
@@ -595,7 +598,7 @@ do_preprocessing <- function(donation, donor, Hb_cutoff_male, Hb_cutoff_female, 
   toc()
   
   # Verify that outside the given columns, there are no NAs.
-  res <- sum(map_int(df %>% select(
+  res <- sum(map_int(data %>% select(
     -starts_with("previous_Hb"), 
     -starts_with("days_to_previous_Hb"), 
     -"days_to_previous_fb", 
@@ -694,7 +697,7 @@ get_object_sizes <- function(e = rlang::global_env()) {
 }
 
 preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female = 125, Hb_input_unit = "gperl",
-                       southern_hemisphere=FALSE, max_diff_date_first_donation, restrict_time_window=TRUE, cores=1, logger) {
+                       southern_hemisphere=FALSE, max_diff_date_first_donation, restrict_time_window=FALSE, cores=1, logger) {
 #  tic()
   tic()
   if (is.character(donations)) {   # is a filename instead of a dataframe?
@@ -720,7 +723,7 @@ preprocess <- function(donations, donors, Hb_cutoff_male = 135, Hb_cutoff_female
   } else {
     # Split the donors into 'cores' group and preprocess them in parallel.
     # This has two problems with regard to parallelization:
-    # * midnight values for hour are replaced by the mean
+    # * midnight values for hour are replaced by the mean: maybe the error is small as data is large and number of cores is small
     # * end of time window is computed in the do_preprocessing function. It should be done outside it.
     loggers <- map(1:cores, function(i) {new_logger(prefix=sprintf("Preprocess %i:", i), 
                                                     file=sprintf("/tmp/exclusions-%i.txt", i))})
