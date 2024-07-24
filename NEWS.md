@@ -1,3 +1,11 @@
+# Version 0.36 (2024-07-24)
+
+* Fixed some bugs
+
+* Disabled Belgian special case
+
+* Disabled 5-year time-window
+
 # Version 0.35 (2024-02-14)
 
 * Fixed a bug in parallel computation of shap values.
